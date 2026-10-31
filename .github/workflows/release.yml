@@ -2,6 +2,10 @@ name: Compilar e publicar TRAMA para Windows
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/release-trigger.txt'
 
 permissions:
   contents: write
