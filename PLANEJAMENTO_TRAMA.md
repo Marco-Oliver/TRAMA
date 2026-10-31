@@ -1,274 +1,212 @@
-# PLANEJAMENTO TRAMA — fonte de verdade do projeto
+# TRAMA — Como o sistema funciona
 
-> **Status:** fotografia do projeto em 31/10/2026. Documento vivo, não é promessa de que tudo já funciona.
->
-> **Projeto:** [Marco-Oliver/TRAMA](https://github.com/Marco-Oliver/TRAMA)
->
-> **Release pública:** v1.9.0, publicada em 31/10/2026. Código de referência da release: commit 92553125f6472ab4fef87893d2dc3109159a994f.
->
-> **Correções ainda NÃO publicadas:** branch fix/critical-audit-20261031. Passou em 97 testes de regressão e 10 cenários adversariais, tanto em Windows quanto em Linux. Não integra o instalador v1.9.0.
->
-> **Regra de leitura:** uma capacidade só pode ser apresentada como entregue se existir no código da versão indicada e houver evidência adequada. Não confundir protótipo, teste automatizado e uso real no computador do estudante.
+**Estado documentado:** 31 de outubro de 2026  
+**Versão pública:** 1.9.0 (Windows)  
+**Projeto:** [GitHub — TRAMA](https://github.com/Marco-Oliver/TRAMA)
 
----
+Este documento descreve a finalidade do TRAMA, as funcionalidades existentes, o caminho dos materiais até o Obsidian e as melhorias previstas. **Recursos disponíveis hoje e ideias futuras estão separados.**
 
-## 1. Visão, finalidade e decisões firmadas
+## 1. O que é o TRAMA?
 
-**TRAMA é, principalmente, uma automação de conhecimento pessoal para a Academia do Programador.** Sua função central é transformar fontes dispersas em um cofre Obsidian legível, navegável, rastreável e durável.
+O **TRAMA é um aplicativo de automação de estudos**. Ele reúne materiais de aulas, analisa o conteúdo, relaciona informações e cria uma biblioteca de conhecimento em arquivos Markdown compatíveis com o Obsidian.
 
-O usuário poderia fazer o fluxo manualmente: baixar transcrição, enviar a um modelo de IA, solicitar resumo, criar Markdown, conectar referências, guardar links e atualizar o Obsidian. O TRAMA automatiza esse trabalho intermediário.
+Seu objetivo inicial é organizar o conhecimento adquirido na **Academia do Programador** para que o estudante consiga revisar o curso mesmo meses ou anos depois.
 
-**O Obsidian é o produto principal do fluxo, não um mero banco de dados para IA.** Deve permitir estudo humano sem qualquer assistente; o uso posterior por ChatGPT, Claude ou outras IAs externas é uma vantagem adicional, não a única finalidade.
+O TRAMA não é o destino final do conhecimento: **o resultado principal é o cofre do Obsidian**, que permanece útil mesmo sem abrir o TRAMA ou conversar com uma IA.
 
-**O aplicativo TRAMA não deve substituir nem aprisionar o Obsidian.** Os arquivos Markdown, links wiki e materiais locais devem continuar acessíveis no Obsidian mesmo sem o TRAMA.
+O fluxo que o TRAMA automatiza poderia ser feito manualmente: baixar a transcrição, pedir a uma IA que faça um resumo, copiar as explicações, localizar o código do professor, associar fontes, escrever notas Markdown e criar links no Obsidian.
 
-O objetivo de curto prazo é permitir uma revisão fiel do curso após o encerramento previsto para dezembro de 2026, especialmente no período de estudos de dezembro/janeiro e na preparação para buscar trabalho de desenvolvimento a partir de fevereiro.
+O sistema reduz esse trabalho repetitivo, mantendo a participação do estudante na seleção dos materiais.
 
-### Princípios obrigatórios
+## 2. Para quem ele foi feito?
 
-1. **Fidelidade ao curso:** preservar o modo de ensinar do professor e os códigos realmente demonstrados. Não antecipar métodos, atalhos, abstrações ou recursos que não tenham sido encontrados nas fontes cadastradas; se houver lacuna, declarar a lacuna.
-2. **Rastreabilidade:** diferenciar fala original, código encontrado, interpretação do modelo, hipótese e revisão humana. Incluir número da aula, gravação, horário, arquivo, linha e/ou commit quando existirem; jamais inventar uma referência.
-3. **Leitura humana primeiro:** notas Markdown claras, resumidas quando apropriado, mas completas quanto ao escopo, com navegação simples, links internos e mapa do Obsidian útil.
-4. **Preservação:** nunca alterar a transcrição ou o código originais para “consertar” um erro. Registrar correções e dúvidas em notas próprias, mantendo a trilha de evidências. Proteger edições humanas.
-5. **Automação de baixo atrito:** o usuário fornece os arquivos e links disponíveis; a automação organiza e processa. Não pressupor acesso automático a contas, Classroom, Meet ou vídeo.
-6. **Custo controlado:** funcionamento local e pendências sem API; chamadas a provedores externos apenas quando autorizadas. Respeitar limites, informar falhas e não induzir uso pago.
-7. **Escopo especializado:** o primeiro público é o próprio estudante da Academia do Programador. O funil curricular é contexto de organização, não prova de que determinados conteúdos foram ensinados.
-8. **Estado explícito:** distinguir *implementado na release*, *implementado apenas em branch*, *parcial*, *planejado*, *hipótese/ideia* e *dependente de testes reais*.
+A primeira versão é especializada nos estudos da Academia do Programador. O percurso informado pelo estudante inclui:
 
-### Não objetivos do momento
-
-- Não desenvolver uma plataforma genérica de estudos para qualquer curso neste ciclo.
-- Não transformar o TRAMA em um editor substituto do Obsidian.
-- Não construir ou treinar um modelo de IA do zero.
-- Não tornar o “Professor IA” pré-requisito para o Obsidian funcionar.
-- Não desenvolver agora recursos adicionais sugeridos em conversas, como explorador completo de pastas GitHub ou acesso automático ao Classroom. Podem ser reavaliados **depois** das prioridades.
-- Não ampliar uma ideia informal para requisito implementado sem decisão explícita do usuário.
-
-## 2. Ordem de prioridades — não mudar sem decisão explícita
-
-**Etapa zero — documentação de estado atual (esta entrega).**
-Criar e manter este documento antes de novas funcionalidades. Registrar decisões, código real, limitações e critérios de conclusão; atualizar junto com mudanças relevantes. O README é apresentação pública e pode ser revisado depois.
-
-**1 — Obsidian excelente (prioridade máxima de produto).**
-Produzir uma biblioteca completa, fácil de navegar **à mão**, com:
-- Visão por módulo, aula e gravações V01/V02/V03, quando identificadas.
-- Resumo fiel por aula, exemplos realmente usados, conceitos, atividades, decisões e dúvidas.
-- Links para o vídeo original e horários verificáveis; quando ausentes, informar que não foram encontrados.
-- Referências para repositórios, caminhos, linhas e commit quando disponível.
-- Backlinks e mapa/Graph View do Obsidian que façam sentido, não apenas links artificiais.
-- Consolidação da evolução entre aulas, evitando tratar uma primeira menção como domínio comprovado.
-- Notas adequadas para consulta por pessoas e, posteriormente, por IAs externas.
-
-**2 — Automação confiável (base técnica).**
-Garantir ingestão, classificação, extração, cruzamento de fontes, integridade, proteção de dados, reprocessamento, testes, atualizações e desempenho em escala. Em especial:
-- Dúvidas estruturadas e persistentes: *pendente*, *investigando*, *hipótese*, *corroborada por evidências* ou *contraditória*.
-- Ao chegar uma aula ou revisão nova do código, localizar dúvidas antigas relacionadas e reavaliar **somente** as evidências pertinentes.
-- Nunca apagar interpretações antigas: guardar histórico do que mudou, de quando mudou e por quais fontes. Evidência encontrada em aula posterior pode esclarecer uma dúvida anterior, mas não torna a transcrição original falsa automaticamente.
-- Diferenciar confirmação de que *um trecho existe* de confirmação de que *a explicação pedagógica está correta*. O resumo gerado por IA não é prova independente.
-- Recuperação após interrupções, backups e simulações de acervo de aproximadamente 100–200 aulas.
-- Reforços de segurança, performance, testes Windows e migração entre versões.
-
-**3 — IA Professor (depois das etapas anteriores).**
-Recurso adicional de conversa e estudo, **somente leitura do acervo**: responder com base no Obsidian/fontes, explicar como foi ensinado, criar desafios e comentar soluções. Não deve editar nem reescrever o cofre. Qualidade comparável à de ferramentas excelentes é uma meta sujeita à escolha do modelo e a testes reais, nunca uma garantia. Não antecipar implementação nesta etapa.
-
-**Oportunidade futura, sem escopo aprovado:** eventualmente avaliar uma plataforma de estudos para outras áreas e a integração de um modelo avançado. Não abrir tarefas de desenvolvimento para isso agora.
-
-## 3. Contexto curricular conhecido
-
-A Academia segue um percurso por módulos (aproximadamente mensal; ordem informada pelo estudante). A organização inicial do TRAMA acompanha:
-
-1. Lógica de Programação.
-2. Programação Orientada a Objetos.
-3. Desenvolvimento Web.
-4. Banco de Dados.
-5. Testes.
-6. APIs e Backend.
-7. Frontend (Angular e React).
-8. Desenvolvimento Agêntico.
+1. Lógica de Programação;
+2. Programação Orientada a Objetos;
+3. Desenvolvimento Web;
+4. Banco de Dados;
+5. Testes;
+6. APIs e Backend;
+7. Frontend (Angular e React);
+8. Desenvolvimento Agêntico;
 9. TCC.
 
-**Regra:** conhecer o nome e a ordem de um módulo não equivale a conhecer suas aulas, atividades, resultados, exercícios ou código. O TRAMA só deve afirmar o que foi estudado se houver material que sustente essa informação.
+Esses nomes ajudam a organizar a biblioteca. **O sistema não pode concluir que determinado assunto foi ensinado somente porque faz parte de um módulo.** O conteúdo precisa aparecer nas fontes cadastradas.
 
-### Modelo mental das fontes
+O foco é preservar **como o professor ensinou**, incluindo exemplos de código, sequência de aprendizado, atividades registradas e referências originais — não substituir tudo por explicações genéricas de programação.
 
-- **Transcrição:** registro da fala, potencialmente com erros automáticos de reconhecimento.
-- **Código Git:** evidência de que determinada implementação consta de um commit/arquivo; não prova autoria, quando foi estudado ou se o aluno dominou o tema.
-- **Classroom/print/documento:** contexto, instruções ou informações visíveis; planejamento de aula não é prova de que a atividade foi realizada.
-- **Resumo gerado:** interpretação auxiliar, nunca confirmação independente de outra interpretação da mesma origem.
-- **Vídeo/áudio:** fonte de revisão quando necessário; somente o link pode estar disponível atualmente.
-- **Decisão humana:** esclarecimento ou correção registrada pelo usuário com preservação do original.
+## 3. O caminho dos materiais até o Obsidian
 
-## 4. Estado comprovável do aplicativo v1.9.0 (main/release)
+```text
+MATERIAIS SELECIONADOS PELO ESTUDANTE
+Transcrições, prints, documentos, links de aulas, repositórios
+                         |
+                         v
+                  IMPORTAÇÃO TRAMA
+Identificação de aula, gravação, tipo de fonte e armazenamento
+                         |
+                         v
+                ANÁLISE E ORGANIZAÇÃO
+Python prepara trechos e contexto; IA opcional extrai resumos
+                         |
+                         v
+                 CRUZAMENTO DE FONTES
+Aula + conceitos + materiais do Classroom + código do GitHub
+                         |
+                         v
+                    COFRE OBSIDIAN
+Módulos, aulas, projetos, conceitos, links internos e referências
+                         |
+             +-----------+-----------+
+             v                       v
+    ESTUDO MANUAL          CONSULTA POR IA EXTERNA
+      NO OBSIDIAN             (fora do TRAMA)
+```
 
-### 4.1 Tecnologias e estrutura
+O TRAMA **não acessa automaticamente o Classroom e não baixa os vídeos**. Nesta fase, o estudante escolhe os arquivos e fornece os links. Isso também evita que a automação dependa de credenciais ou de técnicas de acesso não implementadas.
 
-- Python 3.11+ para backend/orquestração; SQLite local como catálogo e cache.
-- Interface HTML/CSS/JavaScript apresentada em janela desktop com pywebview/WebView2, usando arquivos locais.
-- Markdown em cofre Obsidian; fontes e registros locais não são hospedados no GitHub do projeto.
-- Git e repositórios GitHub públicos ou locais para indexação de código.
-- Integração opcional com Gemini, Groq e OpenRouter, configurada pelo usuário; modelos específicos e disponibilidade dependem dos provedores.
-- PyInstaller + Inno Setup para empacotamento Windows; GitHub Actions para testes, instalação de CI e release.
+### 3.1 O que pode ser informado
 
-Referências técnicas centrais:
-- [main.py](main.py): CLI (gui, init, import, process, repo, status, rebuild).
-- [knowledge_bridge/bridge.py](knowledge_bridge/bridge.py): API de ponte e operações da interface.
-- [knowledge_bridge/auto_ingest.py](knowledge_bridge/auto_ingest.py): importação em lote, links e materiais visuais.
-- [knowledge_bridge/pipeline.py](knowledge_bridge/pipeline.py): orquestração, análise, comparação e repositórios.
-- [knowledge_bridge/ai.py](knowledge_bridge/ai.py): chamadas aos provedores, limites e prompts.
-- [knowledge_bridge/code_intel.py](knowledge_bridge/code_intel.py): indexação, evidências e sanitização de trechos.
-- [knowledge_bridge/store.py](knowledge_bridge/store.py): tabelas SQLite de fontes, análises, trechos, relações e escritas.
-- [knowledge_bridge/publishing.py](knowledge_bridge/publishing.py): arquivos e estrutura do Obsidian.
-- [knowledge_bridge/memory_atlas.py](knowledge_bridge/memory_atlas.py): atlas temporal e contexto anterior.
-- [knowledge_bridge/vault_index.py](knowledge_bridge/vault_index.py): leitura de Markdown, busca e grafo da biblioteca.
-- [knowledge_bridge/secure_keys.py](knowledge_bridge/secure_keys.py): chaves de API protegidas com DPAPI no Windows.
-- [knowledge_bridge/update_service.py](knowledge_bridge/update_service.py): consulta de releases e verificação SHA-256.
-- [trama_launcher.py](trama_launcher.py) e [.github/workflows/release.yml](.github/workflows/release.yml): inicialização e distribuição Windows.
+| Material | Comportamento atual |
+| --- | --- |
+| Transcrições `.txt` e `.md` | Importadas, preservadas e analisadas em trechos |
+| Prints `.png`, `.jpg`, `.jpeg`, `.webp` | Importados; leitura visual automatizada quando houver Gemini configurado e autorizado |
+| PDF e DOCX | Importados como materiais; alguns dados podem ser extraídos conforme o fluxo e o provedor disponível |
+| Links de Classroom, Meet e Drive | Registrados como referências às aulas |
+| Repositórios GitHub ou Git locais | Indexação de arquivos, trechos de código e referências |
+| Vídeos | Mantidos por **link**; o TRAMA não copia nem transcreve automaticamente o arquivo de vídeo |
 
-### 4.2 Entrada e processamento existentes
+Os materiais podem ser enviados em lote, colocados numa fila de importação e associados a aulas. A interface também aceita colagem de imagens no fluxo previsto.
 
-**Implementado:**
-- Selecionar cofre e importar transcrições TXT/MD, imagens, PDFs e DOCX nos fluxos suportados; fila de materiais e colagem de prints.
-- Agrupar gravações com identificação explícita de aula e V01/V02/V03, com limites para inferências.
-- Cadastrar contexto e links de Classroom/Meet/Drive e associar repositórios GitHub ou locais.
-- Preservar fontes no cofre, gerar resumos estruturados por trechos via IA opcional e registrar pendências se não houver provedor/cota.
-- Consultar fontes anteriores pertinentes (contexto limitado) e comparar menções da transcrição com evidências de código.
-- Produzir relatórios e notas com ressalvas de hipótese, possíveis correções e evolução.
-- Reconstruir índice do Obsidian a partir dos dados já disponíveis, sem exigir nova chamada de IA para cada reconstrução.
-- Exibir notas, busca, informações relacionadas e grafo parcial do cofre na interface.
+### 3.2 Como as aulas são identificadas
 
-**Não implementado ou não confirmado como comportamento completo:**
-- Login automático no Classroom ou download automático de aulas e vídeos.
-- Transcrição integral de áudio/vídeo pelo próprio TRAMA, ou validação automática universal do áudio contra o TXT.
-- Investigação persistente de dúvidas antigas acionada automaticamente por **aulas futuras** e atualização documentada de conclusões passadas.
-- Garantia de interpretação factual correta só porque o horário ou arquivo citado existe.
-- Navegador Git completo (árvore de arquivos editável/navegável como IDE) embutido.
-- IA Professor conversacional integrada.
-- Prova de desempenho com o acervo pessoal inteiro.
+O sistema reconhece padrões de nomes como `Aula 01` e associa marcadores `V01`, `V02`, `V03` a gravações distintas da mesma aula, quando o nome permite essa interpretação.
 
-### 4.3 Saída Obsidian hoje
+Não inventa números de aulas pela posição do arquivo na lista. Materiais sem identificação suficiente podem ficar pendentes de revisão.
 
-O [Publisher](knowledge_bridge/publishing.py) escreve uma estrutura orientada à leitura e a links Wiki. Entre as áreas:
-- **01-Meu-Conhecimento:** conceitos, módulos, índices e Mapa-da-Evolucao.
-- **02-Minhas-Aulas:** notas de aulas/gravações e visões gerais.
-- **03-Meus-Projetos:** notas associadas aos repositórios.
-- **90-Sistema:** índices/relatórios de processamento e pendências.
-- **99-Anexos:** transcrições e materiais originais, contexto adicional.
+## 4. O que o Python faz?
 
-A organização efetiva é guiada pelas fontes cadastradas: não prometer que todo módulo ou aula já tem notas ou que todos os links e horários estarão completos. O mapa atual registra menções, relações candidatas e o que foi visto nas fontes disponíveis. **Ele não é ainda o ciclo completo de investigação e autocorreção desejado.**
+O backend Python é responsável pelas tarefas estruturadas e repetitivas:
 
-### 4.4 Segurança e preservação atuais
+- Identificar e catalogar as fontes, impedindo reimportações desnecessárias.
+- Copiar os arquivos permitidos para uma área de anexos do cofre.
+- Separar transcrições longas em partes menores para análise.
+- Selecionar contexto de aulas anteriores e materiais relacionados.
+- Consultar repositórios, localizar evidências de código e armazenar caminhos, linhas e referência de commit.
+- Conferir a estrutura das respostas da IA e descartar horários ou referências inválidos, conforme as verificações disponíveis.
+- Registrar o progresso e reaproveitar análises de trechos que não mudaram.
+- Gerar e reconstruir as notas Markdown, índices e links do Obsidian.
+- Manter um banco SQLite local para o catálogo, o progresso e os resultados intermediários.
 
-- Chaves de API locais com DPAPI no Windows.
-- Confirmar antes de enviar materiais à IA externa; provedores possuem seus próprios limites e políticas.
-- Evitar importação de links simbólicos; limitar caminhos e tamanhos de anexos conforme código.
-- Preservação das fontes originais e controle de escritas automáticas, com arquivos de proposta em certos conflitos com edição humana.
-- Dados pessoais, cofre, transcrições e credenciais **não** fazem parte do repositório ou instalador distribuído.
-- Release tem hash SHA-256, **não** possui certificado de assinatura digital.
-- Testes automatizados não comprovam proteção absoluta contra vazamento de segredos ou perda de dados.
+**O Python organiza e verifica aquilo que é verificável por código.** Ele não compreende, sozinho, todas as explicações do professor.
 
-## 5. Correções críticas desenvolvidas, mas fora da versão pública
+## 5. Para que a IA é usada hoje?
 
-**Branch:** [fix/critical-audit-20261031](https://github.com/Marco-Oliver/TRAMA/tree/fix/critical-audit-20261031)
+A IA é **opcional** e ajuda a interpretar o conteúdo recebido. Os provedores previstos na versão atual são **Gemini, Groq e OpenRouter**, mediante configuração de chaves e disponibilidade dos respectivos serviços.
 
-**Status:** implementadas na branch e validadas em [execução Linux + Windows](https://github.com/Marco-Oliver/TRAMA/actions/runs/41173887741), sem merge na main e sem novo instalador.
+O sistema pode solicitar à IA que extraia:
+- Resumo do trecho/aula e tipo de encontro.
+- Conceitos ensinados ou mencionados e explicações presentes na fonte.
+- Ferramentas, atividades, exemplos e acontecimentos relevantes.
+- Trechos incertos ou termos que precisam de revisão.
+- Possíveis relações entre a fala da aula e evidências localizadas no repositório.
 
-| Problema | Situação na release v1.9.0 | Situação na branch |
-| --- | --- | --- |
-| Mesclar indevidamente C, C# e C++ | Risco identificado | Normalização/consolidação corrigida e coberta por teste |
-| Arquivo armazenado alterado mantendo tamanho | Verificação insuficiente em um caminho | Hash do conteúdo e verificação da cópia, com teste |
-| Credenciais em código enviado à IA | Filtro incompleto | Padrões comuns ampliados, com testes; **não garante 100% dos segredos** |
+**A IA não é a fonte de verdade.** Um conceito pode ter sido interpretado incorretamente; uma coincidência entre a transcrição e um trecho de código não prova que o professor utilizou aquele código naquela aula.
 
-**Testes da branch:** 97 regressões + 10 adversariais aprovados no Linux; 97 regressões + 10 adversariais aprovados no Windows; auditoria de pacote aprovada. Isso **não** significa que o usuário já testou a nova versão no próprio Windows, nem que as mudanças já estejam no instalador v1.9.0.
+Quando não há chave, permissão ou cota, o sistema preserva os materiais e sinaliza trabalho pendente. Uma assinatura ChatGPT Plus ou Claude Pro não é necessária para o processamento atualmente implementado.
 
-Antes de publicar uma versão nova: revisar alterações, integrar a branch de forma controlada, incrementar versão, executar pipeline completo Windows e conferir o release, sem sobrescrever v1.9.0.
+## 6. O que o Obsidian recebe?
 
-## 6. Lacunas e riscos conhecidos (backlog, não promessas)
+O TRAMA produz arquivos Markdown organizados, em geral, nas seguintes áreas:
 
-| Prioridade de avaliação | Lacuna | Critério de conclusão sugerido |
-| --- | --- | --- |
-| Alta | Qualidade do resumo e fidelidade ao professor | Avaliação humana com transcrições/códigos representativos e referências clicáveis; distinguir inferência de fato |
-| Alta | Dúvidas que amadurecem em aulas futuras | Persistência, investigação incremental, trilha de revisões e casos simulados de dúvida→evidência nova→reavaliação |
-| Alta | Integridade do cofre e atualizações | Backup/teste de migração com SQLite, Markdown e notas humanas antes/depois de atualização |
-| Alta | Proteção de credenciais | Filtros mais amplos, exclusões de arquivos sensíveis e conferência do que será enviado |
-| Média | Segurança da interface | Revisar CSP/superfície de conteúdo importado sem quebrar o aplicativo |
-| Média | Escala com 100–200 aulas | Testes de volume e métricas de tempo/memória, inclusive com máquina modesta como referência |
-| Média | Windows/WebView2 visual | Abrir e navegar na GUI em ambiente real; validar tamanhos de janela, eventos, erros e reabertura |
-| Média | Instalação e upgrade | Testar duas versões publicáveis consecutivas, instalar/reinstalar/atualizar/desinstalar preservando dados |
-| Média | Explicações da IA | Declaração de incerteza, revisão das referências e limites de contexto; não afirmar que IA interpreta perfeitamente |
-| Posterior | Conveniência da navegação Git dentro do TRAMA | Explorar pastas/código e relacionar aulas, sem comprometer o Obsidian nem ampliar escopo presente |
+| Área | Conteúdo |
+| --- | --- |
+| `01-Meu-Conhecimento` | Conceitos, módulos, índices e mapa da evolução |
+| `02-Minhas-Aulas` | Notas por aula e gravação, resumos e contexto |
+| `03-Meus-Projetos` | Repositórios, arquivos e referências de código |
+| `90-Sistema` | Estado do processamento e pendências |
+| `99-Anexos` | Transcrições originais, documentos e materiais de apoio |
 
-**Observações de estado:** CI de release da v1.9.0 passou com 92 testes de regressão e 10 adversariais, compilação, self-test do EXE e smoke test de instalação/reinstalação/desinstalação. São verificações automatizadas, não uma avaliação de experiência em uso cotidiano. O README ainda contém uma frase condicional sobre a primeira publicação do instalador; revisar texto na próxima atualização do README, não assumir que release esteja indisponível.
+As notas podem conter links internos do Obsidian (`[[conceito]]`), informações de origem e relações entre aulas. Isso permite navegar manualmente pelo conhecimento e utilizar o **Graph View**, além de pesquisar aulas e conceitos.
 
-## 7. Fluxo-alvo de produção de conhecimento
+O mapa de evolução atual mostra a primeira menção **entre as fontes já cadastradas**, possíveis retomadas e vínculos candidatos com código. Ele não comprova domínio do assunto nem representa automaticamente todo o percurso curricular.
 
-1. Usuário seleciona cofre e fornece as fontes disponíveis: TXT/MD, prints, PDF/DOCX, contexto/links da aula e um ou mais repositórios.
-2. TRAMA verifica formato, integridade, aula/gravação e proveniência; preserva original e separa fontes de inferências.
-3. Python identifica o módulo mais plausível, trechos e evidências; não inventa aula, atividade realizada nem domínio.
-4. Gemini/Groq/OpenRouter, quando autorizados e disponíveis, produzem interpretação estruturada. O Python filtra saída, valida horários e associações concretas.
-5. Se houver ambiguidade, pesquisar fontes disponíveis em ordem apropriada (transcrição original, código relevante, contexto/README/documentos, outras aulas), com limites de custo e informação.
-6. Incertezas não resolvidas ficam visíveis, **não** viram conclusões definitivas; trabalho de investigação longitudinal ainda é objetivo de implementação.
-7. O Publisher gera Markdown navegável para estudo humano, com fonte/horário/arquivo/linha quando disponíveis; notas pessoais permanecem preservadas.
-8. Uma aula futura pode motivar reavaliação de uma dúvida antiga, **quando o mecanismo de revisão progressiva for implementado**. Registrar evidência nova e histórico sem reescrever o original.
-9. O estudante consegue ler tudo manualmente no Obsidian; uma IA externa poderá consultar os mesmos documentos sem se tornar dependência estrutural do TRAMA.
+A interface do TRAMA também permite consultar uma biblioteca de notas, buscar materiais relacionados e visualizar uma representação do grafo. Isso **não significa que o aplicativo Obsidian completo esteja embutido no TRAMA**.
 
-### Exemplo de comportamento desejado, NÃO implementado integralmente
+### Exemplo do resultado esperado
 
-Aula 35 tem termo transcrito incorretamente; o GitHub da época não resolve → estado *pendente*. Aula 37 traz termo e código compatíveis → sugerir correção da Aula 35 com links e justificativa, mantendo transcrição, primeira hipótese e possibilidade de revisão humana. Aula 50 pode contradizer a hipótese → reabrir a análise. Não executar correção silenciosa da fala original.
+Ao revisar **construtores em C#**, o estudante deve conseguir localizar a aula em que o tema apareceu, o resumo fiel à explicação, exemplos do código realmente registrado, conceitos relacionados e, quando disponível, o link e o minuto da gravação.
 
-## 8. Critérios de aceitação das próximas etapas
+Se uma referência não existe nas fontes disponíveis, a nota não deve inventá-la.
 
-### Etapa 1 — Obsidian excelente
+O Obsidian precisa ser bom para **leitura humana**. A eventual consulta por ChatGPT, Claude ou outra IA é um uso adicional da biblioteca, não o motivo único de sua organização.
 
-- Notas legíveis e úteis sem abrir TRAMA nem conversar com IA.
-- Estrutura modular e índices por aulas/gravações, conceitos e projetos.
-- Exemplos de código do professor apresentados de forma clara e ligados a arquivos/commits corretos, quando existentes.
-- Caminho para localizar gravação e minuto real de uma explicação; ausência registrada honestamente.
-- Backlinks e grafo com conexões úteis; evitar falsos relacionamentos.
-- Dúvidas, hipóteses e correções visíveis e separadas de afirmações verificadas.
-- Revisar uma amostra real de conteúdos e comparar com as fontes antes de declarar a etapa concluída.
+## 7. O que já existe e o que ainda não existe?
 
-### Etapa 2 — Automação confiável
+| Capacidade | Situação |
+| --- | --- |
+| Importar transcrições, imagens e documentos suportados | **Disponível na v1.9.0** |
+| Registrar links de aulas e organizar gravações | **Disponível na v1.9.0** |
+| Importar/indexar repositórios Git | **Disponível na v1.9.0** |
+| Gerar resumos estruturados com IA opcional | **Disponível na v1.9.0**, sujeito ao provedor e à qualidade da fonte |
+| Gerar Markdown, índices, links e mapa temporal | **Disponível na v1.9.0** |
+| Consultar biblioteca e grafo na janela do TRAMA | **Disponível na v1.9.0** |
+| Comparar transcrições e evidências de código | **Disponível parcialmente**, com relações e hipóteses a conferir |
+| Guardar dúvidas apontadas na análise | **Disponível de forma simples** |
+| Reabrir automaticamente uma dúvida antiga com evidências da Aula 37 ou 50 | **Ainda não implementado como ciclo completo** |
+| Corrigir transcrição automaticamente por áudio/vídeo original | **Não implementado** |
+| Entrar no Classroom e baixar todas as aulas automaticamente | **Não implementado** |
+| Navegar numa árvore completa de arquivos Git como numa IDE | **Não implementado** |
+| Conversar com uma IA Professor dentro do TRAMA | **Não implementado** |
+| Virar uma plataforma genérica de estudos de qualquer área | **Possibilidade distante, não é foco atual** |
 
-- Processar lotes repetidos sem duplicações indevidas ou perda de originais.
-- Testar arquivos alterados, cópias corrompidas, falhas de IA, interrupções e retomada.
-- Investigar dúvidas antigas quando surgem evidências, com histórico e controle de reprocessamento.
-- Garantir isolamento de segredos e confirmação de qualquer envio à IA.
-- Ensaiar acervo sintético de 100–200 aulas e múltiplos repositórios, com medições.
-- Validar backup e migração de dados, instalação/atualização, e compatibilidade Windows GUI.
+## 8. O que já foi validado?
 
-### Etapa 3 — IA Professor (a definir depois)
+A versão **1.9.0** foi publicada com instalador Windows produzido pelo GitHub Actions. O processo de publicação passou por testes automatizados de código, criação do executável, instalação, reinstalação e desinstalação no Windows de CI.
 
-- Consultar o cofre em leitura apenas, com perguntas, explicações e desafios baseados nas fontes.
-- Não afirmar que a ausência de uma fonte comprova que o assunto nunca foi visto.
-- Não editar o Obsidian nem substituir o mecanismo de organização.
-- Só considerar recurso concluído após demonstrar qualidade real do modelo e das referências; não construir agora.
+Isso **não equivale a testes completos no computador do estudante**. Ainda faltam observações de uso real com WebView2, o cofre do Obsidian, aulas pessoais e limites das contas de IA.
 
-## 9. Regras de trabalho para agentes e futuras conversas
+### Correções que ainda não estão no instalador
 
-1. **Ler integralmente este documento antes de planejar ou modificar o TRAMA.** Conferir README, código e branch atual: o documento pode estar desatualizado; discrepâncias precisam ser explicitadas, nunca encobertas.
-2. **Não inferir que uma conversa autoriza implementação.** Discussão de ideias não equivale a pedido de mudança. Respeitar o escopo e pedir autorização quando necessário.
-3. **Não antecipar prioridade 2 ou 3 para entregar algo vistoso.** A ordem acordada é documentação → Obsidian → automação → IA Professor.
-4. **Atualizar este arquivo junto de mudanças relevantes** (arquitetura, comportamento, segurança, regra de negócio, estado de testes, liberação, decisão de escopo). Editar a seção adequada, não apenas acrescentar cronologia.
-5. Marcar itens com estado preciso: previsto / em andamento / testado na branch / integrado à main / disponível no instalador / validado no PC.
-6. **Não inventar provas, dados ou métricas.** Não alegar testes Windows, verificações de IA ou arquivos reais sem resultados observados.
-7. **Preservar dados do usuário e evitar escrita destrutiva.** Preferir alterações incrementais e reversíveis. Nunca colocar tokens, dados de aulas pessoais ou cofres reais no GitHub.
-8. Proteger a release pública: branch de trabalho para código, testes antes de integrar, versão nova para instalador; não sobrescrever tags/assets.
-9. Na entrega, explicar: o que mudou, os arquivos alterados, testes realizados e pendências, o que continua fora da versão pública.
-10. Código e fatos técnicos prevalecem sobre a narrativa do documento. Se houver divergência, apontar e corrigir a documentação.
+Uma branch separada, [`fix/critical-audit-20261031`](https://github.com/Marco-Oliver/TRAMA/tree/fix/critical-audit-20261031), contém três melhorias:
 
-## 10. Registro de decisões e atualizações
+1. Evitar que conceitos diferentes como `C`, `C#` e `C++` sejam fundidos.
+2. Detectar anexos alterados mesmo quando têm o mesmo tamanho.
+3. Ampliar a ocultação de formatos comuns de credenciais em trechos de código.
 
-| Data | Decisão/registro | Estado |
-| --- | --- | --- |
-| 31/10/2026 | Publicação da versão Windows 1.9.0; smoke tests de release aprovados. | Publicado |
-| 31/10/2026 | Três correções críticas em fix/critical-audit-20261031: conceitos, integridade e ocultação de segredos. | Testadas na branch; ainda não publicadas |
-| 31/10/2026 | Definido que o TRAMA **automatiza** a criação/manutenção de um Obsidian voltado primeiro ao estudo humano; consumo por IA externa é secundário. | Decisão de produto |
-| 31/10/2026 | Ordem de prioridades: 1) Obsidian excelente; 2) automação confiável; 3) IA Professor depois. | Decisão de produto |
-| 31/10/2026 | Criar o MD mestre antes de iniciar a etapa 1, para evitar perda de contexto e confusão entre estados. | Esta entrega |
-| 31/10/2026 | Possibilidade de produto genérico e mais integrações comentada, **sem inclusão no escopo ativo**. | Ideia estacionada |
+Essas alterações passaram em **97 testes de regressão e 10 cenários adversariais em Linux**, e os mesmos resultados em **Windows**. **Não estão incorporadas à versão pública 1.9.0.**
 
-**Próxima ação aprovada nesta conversa:** somente documentação do estado atual. Implementação das melhorias das etapas 1, 2 ou 3 requer decisão/autorização posterior.
+## 9. Limitações conhecidas
+
+- **Fidelidade do conteúdo:** uma IA pode interpretar errado um trecho de fala ou produzir uma explicação incompleta. Referências existentes não comprovam por si só a correção pedagógica.
+- **Dúvidas antigas:** o mapa relaciona conceitos entre aulas, mas ainda não investiga e atualiza automaticamente hipóteses antigas quando chegam novas evidências.
+- **Privacidade:** o Obsidian, dados SQLite e chaves ficam locais; contudo, material enviado por escolha do usuário a uma IA externa segue as políticas daquele provedor. A ocultação automática de segredos não é infalível.
+- **Notas editadas:** há mecanismos para não sobrescrever silenciosamente edições humanas, mas backups e testes de conflito continuam importantes.
+- **Atualizações:** o instalador não tem assinatura digital. SHA-256 ajuda na integridade do download; a migração completa entre versões com bibliotecas reais ainda precisa de testes.
+- **Escala e desempenho:** o comportamento com um conjunto grande, na ordem de 100–200 aulas e vários repositórios, ainda precisa de medição controlada.
+- **Interface:** testes de backend e instalador não substituem testes visuais em diferentes computadores Windows.
+
+## 10. Próximas evoluções do TRAMA
+
+As melhorias serão avaliadas nesta ordem. **Elas estão planejadas e não devem ser confundidas com o que já foi entregue.**
+
+### 1. Obsidian excelente
+
+Aperfeiçoar a qualidade, a completude, a legibilidade e a navegação das notas: aulas, módulos, conceitos, códigos, links, horários e mapa de relações. O resultado deve ser útil para revisão manual sem depender de nenhuma IA conectada.
+
+### 2. Automação confiável
+
+Melhorar integridade, segurança, preservação de dados, desempenho e validação no Windows. Evoluir o cruzamento de fontes para guardar dúvidas, encontrar novas evidências em aulas posteriores e registrar revisões **sem modificar as fontes originais**.
+
+### 3. IA Professor (futura)
+
+Estudar uma ferramenta de conversa dentro do TRAMA que **apenas leia** a biblioteca, explique tópicos conforme as aulas, proponha desafios e ajude na revisão. Ela não deve editar o cofre e só fará sentido se a qualidade das respostas for realmente útil.
+
+### Ideias comentadas, sem desenvolvimento previsto agora
+
+Um explorador de arquivos dos repositórios dentro do TRAMA e, no futuro, uma versão de estudos aplicável a outras áreas. Essas ideias não alteram o foco atual.
 
 ---
 
-**Este documento é uma especificação viva.** Não é evidência de funcionamento por si só. Antes de avançar, confronte-o com a branch, os testes, a release e amostras reais do Obsidian.
+**Resumo:** o TRAMA automatiza a transformação de materiais de estudo em um Obsidian organizado. A biblioteca deve continuar acessível, compreensível e útil para o estudante independentemente do próprio TRAMA. Este documento pode ser atualizado conforme as funcionalidades do sistema evoluírem.
