@@ -17,7 +17,7 @@ class NativeBootTests(TestCase):
             'open_obsidian','open_attachment','open_video_link','window_action',
             'save_classroom_context','import_classroom_materials',
             'ai_status','save_ai_key','remove_ai_key',
-            'test_ai','open_ai_test_report','check_updates','open_update_page','prepare_update','launch_update'
+            'test_ai','open_ai_test_report','teacher_ask','teacher_reset','check_updates','open_update_page','prepare_update','launch_update'
         })
         self.assertTrue(all(callable(v) for v in public.values()))
         self.assertNotIn('window',public)
