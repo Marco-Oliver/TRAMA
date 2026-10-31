@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS uncertainties (
 CREATE TABLE IF NOT EXISTS uncertainty_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT, uncertainty_id TEXT NOT NULL,
  status TEXT NOT NULL, evidence_digest TEXT NOT NULL,
- source_digest TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+ source_digest TEXT NOT NULL, candidate TEXT NOT NULL, evidence_json TEXT NOT NULL,
+ created_at TEXT DEFAULT CURRENT_TIMESTAMP,
  FOREIGN KEY(uncertainty_id) REFERENCES uncertainties(id)
 );
 CREATE INDEX IF NOT EXISTS idx_uncertainties_source ON uncertainties(source_id);
@@ -188,6 +189,8 @@ class Store:
                 (uid, source_id, source_digest, label, question, candidate,
                  status, digest, serialized))
             self.conn.execute("""INSERT INTO uncertainty_events
-                (uncertainty_id, status, evidence_digest, source_digest)
-                VALUES (?, ?, ?, ?)""", (uid, status, digest, source_digest))
+                (uncertainty_id, status, evidence_digest, source_digest,
+                 candidate, evidence_json)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+                (uid, status, digest, source_digest, candidate, serialized))
         return True
