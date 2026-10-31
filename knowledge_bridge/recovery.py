@@ -127,7 +127,7 @@ def restore_backup(archive_path: Path, destination_vault: Path) -> dict:
                     continue
                 pure = PurePosixPath(name)
                 if (pure.is_absolute() or ".." in pure.parts or "\\" in name or
-                        ":" in name or name.startswith(".") and name != DB_FILE):
+                        ":" in name or not pure.parts or any(part in ("", ".") for part in pure.parts)):
                     raise ValueError("Caminho inseguro no ZIP: " + name)
                 if stat.S_IFMT(info.external_attr >> 16) == stat.S_IFLNK:
                     raise ValueError("Backup contém atalho simbólico.")
