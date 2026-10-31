@@ -98,7 +98,7 @@ class TeacherTests(unittest.TestCase):
         result = teacher_answer(self.vault, "Corrija Hello World em C#",
                                 "corrigir", 'Console.WriteLine("Olá mundo);', [], bot)
         self.assertTrue(result["ok"])
-        self.assertIn("não execut", bot.prompts[0])
+        self.assertIn("Nunca execute código", bot.prompts[0])
 
     def test_sensitive_values_masked_before_sending_context(self):
         self.hello.write_text("# Chave em C#\n\n"
