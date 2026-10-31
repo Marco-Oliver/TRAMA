@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .ai import BudgetStopped, FreeAIRouter, NoFreeProvider, read_env
-from .content import chunks, file_hash, lesson_identity, slug, timed_lines
+from .content import chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines
 from .code_intel import index_repository, match_lesson_to_repository, find_code_line
 from .publishing import Publisher
 from .store import Store
@@ -223,7 +223,7 @@ class Application:
             known = set()
             for result in all_results:
                 for item in result.get("conceitos", []):
-                    k = slug(item["nome"])
+                    k = concept_slug(item["nome"])
                     if k not in known:
                         combined["conceitos"].append(item)
                         known.add(k)
