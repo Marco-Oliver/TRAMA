@@ -133,7 +133,10 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     </div><div class="setting-block"><h3>Biblioteca do Obsidian</h3>
     <p>Selecione a pasta original do seu Obsidian. Ela continua acessível mesmo sem o TRAMA.</p>
     <code>${escapeHTML(app.snapshot?.vault||'Nenhum cofre selecionado')}</code>
-    <button id="choose-vault">Selecionar pasta do Obsidian</button></div>
+    <button id="choose-vault">Selecionar pasta do Obsidian</button>
+    <p>Crie uma cópia do cofre antes de migrar ou atualizar. O ZIP não é criptografado e não é enviado a um servidor.</p>
+    <button id="backup-vault">Criar backup local (.zip)</button>
+    <p id="backup-message" class="setting-status" aria-live="polite">Nenhum backup iniciado.</p></div>
   <div class="setting-block"><h3>IA gratuita · chaves protegidas</h3>
     <p>Escolha uma conta Free <strong>sem faturamento</strong>. Chaves são protegidas pelo Windows (DPAPI). Modelos pagos não são selecionados.</p>
     <label for="ai-provider">Provedor</label><select id="ai-provider"><option value="gemini">Google Gemini API Free</option><option value="groq">GroqCloud Free</option><option value="openrouter">OpenRouter free</option></select>
@@ -177,6 +180,14 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     }
   });
   el.querySelector('#choose-vault').addEventListener('click',chooseVault);
+  el.querySelector('#backup-vault').addEventListener('click', async()=>{
+    if(!confirm('Criar ZIP local do cofre? Ele conterá suas notas e fontes sem criptografia. Guarde-o com cuidado.'))return;
+    const button=el.querySelector('#backup-vault'),status=el.querySelector('#backup-message');
+    button.disabled=true;status.textContent='Preparando backup verificado…';
+    try{const r=await call('backup_vault',true);
+      status.textContent=r?.message||'Backup não concluído.';}
+    finally{button.disabled=false;}
+  });
   const renderStatus=async()=>{const r=await call('ai_status');const p=el.querySelector('#ai-status');if(!p)return;
    if(!r){p.textContent='Configuração indisponível.';return;}
    const names=Object.entries(r.configured||{}).filter(([k,v])=>v).map(([k])=>k).join(', ');p.textContent='Chaves configuradas: '+(names||'nenhuma')+'.';};
