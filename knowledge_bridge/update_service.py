@@ -11,7 +11,7 @@ import re
 import urllib.request
 import urllib.error
 
-VERSION = '1.9.0'
+VERSION = '2.0.0'
 _REPO = re.compile(r'^[A-Za-z0-9_.-]{1,80}/[A-Za-z0-9_.-]{1,100}$')
 _VERSION = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:[-+][A-Za-z0-9.-]+)?$')
 
@@ -30,7 +30,7 @@ def check_release(repo: str, opener=None) -> dict:
     opener = opener or urllib.request.urlopen
     url = f'https://api.github.com/repos/{repo}/releases/latest'
     req = urllib.request.Request(url, headers={'Accept':'application/vnd.github+json',
-        'User-Agent':'TRAMA-Update-Check/1.9'})
+        'User-Agent':'TRAMA-Update-Check/2.0'})
     try:
         with opener(req, timeout=12) as response:
             body = response.read(100_000)
