@@ -60,7 +60,10 @@ class ReliableAutomation(unittest.TestCase):
         self.assertIn("Aula-037", page)
         self.assertIn("não são confirmação", page)
         self.assertIn("Dúvidas", (self.vault / "00-Inicio/Dashboard.md").read_text(encoding="utf-8"))
-        history_len = len(self.app.store.uncertainty_events(updated["id"]))
+        history = self.app.store.uncertainty_events(updated["id"])
+        self.assertEqual(json.loads(history[0]["evidence_json"]), [])
+        self.assertEqual(json.loads(history[-1]["evidence_json"])[0]["lesson"], "Aula-037")
+        history_len = len(history)
         self.app.publisher.rebuild()
         self.assertEqual(len(self.app.store.uncertainty_events(updated["id"])), history_len)
 
@@ -92,6 +95,19 @@ class ReliableAutomation(unittest.TestCase):
         self.assertEqual(self.app.store.get_source(source["id"])["status"], "NEEDS_REVIEW")
         self.assertEqual(file.read_text(encoding="utf-8"), "[0:03] CONTEÚDO CORROMPIDO")
 
+    def test_rebuild_refuses_tampered_cached_input_without_overwriting_notes(self):
+        source = self.add_lesson(1, "[0:04] O console mostrou texto.")
+        self.analyze(source, concepts=[
+            {"nome":"Console","explicacao":"Exibe texto","tempo":"0:04"}])
+        self.app.publisher.rebuild()
+        note = next((self.vault / "02-Minhas-Aulas/Aula-001").glob("*.md"))
+        before = note.read_bytes()
+        file = self.vault / source["stored_path"]
+        file.write_text("[0:04] ALTERADO", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "alterada"):
+            self.app.publisher.rebuild()
+        self.assertEqual(note.read_bytes(), before)
+
     def test_batch_interruption_resumes_cached_chunks(self):
         lesson = ("[0:01] O professor falou de console.\n" +
                   "[0:02] Exemplos de console.\n" + "Texto adicional sobre console. " * 550 +
@@ -115,10 +131,10 @@ class ReliableAutomation(unittest.TestCase):
         self.app.ai.analyze = second
         self.app.process()
         self.assertEqual(self.app.store.get_source(source["id"])["status"], "PUBLISHED")
-        self.assertEqual(len(again), len(calls) - 1 if False else
-                         self.app.store.conn.execute(
-                             "SELECT COUNT(*) FROM chunks WHERE source_id=?",
-                             (source["id"],)).fetchone()[0] - 1)
+        total_chunks = self.app.store.conn.execute(
+            "SELECT COUNT(*) FROM chunks WHERE source_id=?",
+            (source["id"],)).fetchone()[0]
+        self.assertEqual(len(again), total_chunks - 1)
         self.assertIn("Parte um", self.app.store.analysis(source["id"], source["digest"])["resumo"])
 
     def test_verified_backup_restores_manual_notes_and_sqlite(self):
