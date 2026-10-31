@@ -1,0 +1,59 @@
+# TRAMA — local-only user data and credentials
+# These files belong to the user's computer, never to GitHub.
+
+# Obsidian vaults, knowledge records and transcripts
+TRAMA-Vault/
+*-Vault/
+Meu-Obsidian/
+Obsidian/
+.base-conhecimento/
+**/.base-conhecimento/
+**/.obsidian/
+transcricoes/
+transcrições/
+aulas-importadas/
+dados-pessoais/
+user-data/
+userdata/
+backups/
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.db-journal
+
+# Credentials, local configuration and error logs
+.env
+.env.*
+!.env.example
+config.env
+config.local.*
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.*
+credentials.*
+logs/
+*.log
+*.trace
+
+# Python, build artifacts and platform cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+.buildvenv/
+build/
+dist/
+release/
+*.spec.backup
+.DS_Store
+Thumbs.db
+
+# Local IDE configuration
+.vscode/
+.idea/
