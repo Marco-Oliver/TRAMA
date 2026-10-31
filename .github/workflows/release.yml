@@ -55,6 +55,9 @@ jobs:
           if (-not (Test-Path $compiler)) { throw 'Inno Setup indisponível' }
           & $compiler 'TRAMA_Instalador.iss'
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path release\TRAMA_Setup.exe)) { throw 'Instalador não gerado' }
+      - name: Instalar, reinstalar e desinstalar no Windows real de CI
+        shell: pwsh
+        run: ./tools/windows_installer_smoke.ps1
       - name: Hash SHA-256 do instalador
         shell: pwsh
         run: |

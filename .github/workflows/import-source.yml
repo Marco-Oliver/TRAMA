@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'TRAMA_GitHub_Source_1_9.tar.gz'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 permissions:
   contents: write
