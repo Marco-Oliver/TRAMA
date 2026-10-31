@@ -95,8 +95,10 @@ def select_sources(vault: Path, question: str, mode: str,
     ranked = [(_score(n, terms, mode), n) for n in notes] if terms else []
     ranked = [(score, n) for score, n in ranked if score > 0]
     ranked.sort(key=lambda pair: (-pair[0], pair[1].relative.casefold()))
-    if not ranked and (mode == "desafiar" or not terms):
-        # A broad question can use the module overview and sampled lessons.
+    if not ranked and not terms:
+        # Only a truly broad request may suggest topics from the course.
+        # A named subject that was not taught must never fall back to
+        # unrelated lessons, including in challenge mode.
         broad = [n for n in notes if n.relative.startswith("01-Meu-Conhecimento/Modulos/")]
         broad += [n for n in notes if n.relative.startswith("02-Minhas-Aulas/")]
         ranked = [(1, n) for n in broad]
