@@ -73,9 +73,19 @@ def create_backup(vault: Path, destination: Path) -> dict:
             with zipfile.ZipFile(temp, "w", compression=zipfile.ZIP_DEFLATED,
                                  compresslevel=5, allowZip64=True) as archive:
                 for rel, original in files:
-                    archive.write(original, arcname=rel)
-                    with archive.open(rel, "r") as copied:
-                        sha, size = _hash_stream(copied)
+                    # ZipInfo uses portable / separators on Windows and Linux.
+                    # Stream bytes once directly into the ZIP and hash them.
+                    info = zipfile.ZipInfo(rel)
+                    info.compress_type = zipfile.ZIP_DEFLATED
+                    info.external_attr = 0o600 << 16
+                    sha256 = hashlib.sha256()
+                    size = 0
+                    with original.open("rb") as inp, archive.open(info, "w") as out:
+                        for block in iter(lambda: inp.read(1024 * 1024), b""):
+                            sha256.update(block)
+                            size += len(block)
+                            out.write(block)
+                    sha = sha256.hexdigest()
                     # Reject files that changed during creation.
                     with original.open("rb") as current:
                         after, current_size = _hash_stream(current)
