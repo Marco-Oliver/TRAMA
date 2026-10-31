@@ -314,7 +314,7 @@ class Publisher:
         if variant_warnings:
             rows.extend(['', '**Grafias de nomes a conferir:**', ''])
             rows.extend('- '+_escape_md(w) for w in variant_warnings)
-        rows.extend(['', '**Conceitos ensinados ou mencionados:**', ''] +
+        rows.extend(['', '**Conceitos identificados pela IA (conferir na fonte):**', ''] +
                     ([f'- {link}' for link in concept_links] if concept_links else ['*Nenhum conceito técnico comprovado nesta aula.*']))
         rows += ['', '## Evolução e relações com aulas anteriores', '',
                  '> As conexões abaixo vêm de conceitos identificados pela IA em fontes cadastradas. '
@@ -361,7 +361,7 @@ class Publisher:
                     found_code=True
                     ref=f"{slug(repo['name'])}-{repo['sha'][:7]}"
                     rows.append(f"- [[{ref}|{_escape_md(repo['name'])}]] — código relacionado por conceito; "
-                                f"ex.: `{_escape_md(matches[0]['path'])}:{matches[0]['line']}`. "
+                                f"ex.: {_code_ref(repo, matches[0]['path'], matches[0]['line'])}. "
                                 '**Possível relação; não comprova autoria nem momento da implementação.**')
             except (ValueError, KeyError, TypeError):
                 continue
@@ -443,7 +443,10 @@ class Publisher:
                             gravacao=video, estado="resumida_com_ia" if analysis else "aguardando_ia")
         body = [head, f"# {Path(src['label']).stem}", "", "## Resumo da aula"]
         if analysis:
-            body += [analysis.get("resumo", "Sem resumo."), "", "## Conceitos ensinados (extraídos pela IA)"]
+            body += [analysis.get("resumo", "Sem resumo."), "",
+                     "## Conceitos identificados pela IA (conferir na fonte)", "",
+                     "> Os nomes e explicações abaixo são interpretações da transcrição. "
+                     "Um termo mencionado não significa que foi ensinado ou dominado."]
             for c in concepts:
                 name = c.get("nome","")
                 if not name:
@@ -517,7 +520,7 @@ class Publisher:
             body.append(f"### [[{project_ref}|{_escape_md(repo['name'])}]]")
             body.append("*Conexão sugerida por conceito mencionado + código encontrado; não prova autoria nem que foi programado nesta aula.*")
             for e in matched:
-                body.append(f"- `{e['concept']}` — `{_escape_md(e['path'])}:{e['line']}` no commit `{repo['sha'][:10]}`")
+                body.append(f"- `{e['concept']}` — {_code_ref(repo, e['path'], e['line'])} no commit `{repo['sha'][:10]}`")
             project_matches.append((repo, payload))
         if not project_matches:
             body.append("*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
@@ -531,14 +534,14 @@ class Publisher:
                      "> Interpretação assistida por IA, não confirmação de autoria, domínio nem data exata da implementação."]
             for item in result.get('relacoes',[]):
                 body.append(f"- **{_escape_md(item['conceito'])}** ({item['tempo'] or 'sem minuto'}): "
-                            f"{_escape_md(item['evolucao'])} — `{_escape_md(item['path'])}:{item['line']}` "
+                            f"{_escape_md(item['evolucao'])} — {_code_ref(repo, item['path'], item['line'])} "
                             f"**[{item['status']}]**")
             for item in result.get('novidades',[]):
                 body.append(f"- **Possível novidade — {_escape_md(item['conceito'])}:** "
                             f"{_escape_md(item['explicacao'])} ({item['tempo'] or 'sem minuto'})")
             for item in result.get('correcoes',[]):
                 body.append(f"- **Possível erro de transcrição:** `{_escape_md(item['ouvido'])}` → "
-                            f"`{_escape_md(item['sugestao'])}` — `{_escape_md(item['path'])}:{item['line']}` "
+                            f"`{_escape_md(item['sugestao'])}` — {_code_ref(repo, item['path'], item['line'])} "
                             f"**[{item['status']}]**")
         if not validated_any:
             body.append('*Ainda sem comparação pela IA; relações acima são pistas verificadas de texto e código.*')
@@ -551,7 +554,7 @@ class Publisher:
                     continue
                 suggested.append(key)
                 body.append(f"- **HIPÓTESE, não correção automática:** `{_escape_md(hint['heard'])}` pode corresponder a "
-                            f"`{hint['candidate']}`, encontrado em `{_escape_md(hint['path'])}:{hint['line']}` "
+                            f"`{hint['candidate']}`, encontrado em {_code_ref(repo, hint['path'], hint['line'])} "
                             f"({repo['name']}); confira o vídeo antes de confirmar.")
         if not suggested:
             body.append("*Nenhuma correção fundamentada encontrada.*")
@@ -667,7 +670,7 @@ class Publisher:
                 ext = Path(e["path"]).suffix.lower()
                 lang = {".cs":"csharp", ".ts":"typescript", ".tsx":"tsx", ".js":"javascript",
                         ".jsx":"jsx", ".py":"python", ".sql":"sql"}.get(ext,"text")
-                body += [f"### `{e['concept']}` — `{_escape_md(e['path'])}:{e['line']}`", "",
+                body += [f"### `{e['concept']}` — {_code_ref(repo, e['path'], e['line'])}", "",
                          f"```{lang}", e["snippet"].replace("```","` ` `"), "```", ""]
             if not payload.get("evidence"):
                 body.append("*Nenhum símbolo da lista rastreada encontrado.*")
@@ -832,7 +835,7 @@ class Publisher:
                    "## Módulos vistos nos materiais", "", "- [[Mapa-da-Evolucao|Mapa de evolução com horários e código]]"]
         context += [f"- [[{m}|{m.replace('-', ' ')}]]: {len(entries)} fonte(s)" for m,entries in module_map.items()]
         context += ["", "## Conceitos encontrados"]
-        context += [f"- [[{k}|{_escape_md(v[0][0])}]] — ensinado; domínio a verificar" for k,v in sorted(concept_map.items())]
+        context += [f"- [[{k}|{_escape_md(v[0][0])}]] — identificado pela IA; confirmar na fonte" for k,v in sorted(concept_map.items())]
         context += ["", "## Evolução: antes na aula, agora no código"]
         for repo,payload in repo_info:
             matches=[]
