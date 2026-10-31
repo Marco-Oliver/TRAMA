@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const escapeHTML = value => String(value??'').replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-const app={view:'lessons',tab:'Nota completa',snapshot:null,note:null,selected:null,filter:''};
+const app={view:'lessons',tab:'Nota completa',snapshot:null,note:null,selected:null,filter:'',listFilter:'all'};
 let bridge=null;
 const categories={lessons:'02-Minhas-Aulas',knowledge:'01-Meu-Conhecimento',projects:'03-Meus-Projetos'};
 const titles={lessons:'Minhas Aulas',knowledge:'Meu Conhecimento',projects:'Meus Projetos',library:'Biblioteca do Obsidian'};
@@ -25,13 +25,19 @@ function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
  }
 
  if(app.filter){const q=app.filter.toLowerCase();matches=matches.filter(n=>(n.title+' '+n.id+' '+n.lesson).toLowerCase().includes(q));}
+ if(app.listFilter==='favorites'){const saved=new Set(app.snapshot?.favorites||[]);matches=matches.filter(n=>saved.has(n.id));}
+ if(app.listFilter==='recent'){matches=[...matches].sort((a,b)=>{
+  const aTime=Date.parse(a.updated||'')||0,bTime=Date.parse(b.updated||'')||0;
+  return bTime-aTime||a.id.localeCompare(b.id);
+ }).slice(0,20);}
  return matches;
 }
 function renderNavigation(){document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.view===app.view));}
-async function setView(view){app.view=view;app.filter='';app.tab=view==='lessons'?'Nota completa':'Resumo';$('search-all').value='';$('list-search').value='';renderNavigation();await render();}
+async function setView(view){app.view=view;app.filter='';app.listFilter='all';app.tab=view==='lessons'?'Nota completa':'Resumo';$('search-all').value='';$('list-search').value='';renderNavigation();await render();}
 async function render(){if(!app.snapshot)return;if(app.view==='library'){await renderLibraryView();return;}if(['graph','home','settings','teacher'].includes(app.view)){renderOverlay();return;}
  $('library-workspace').classList.add('hidden');$('overlay-screen').classList.add('hidden');$('list-panel').classList.remove('hidden');$('note-panel').classList.remove('hidden');$('details-panel').classList.remove('hidden');
  $('list-title').textContent=titles[app.view]||'Minha Biblioteca';
+ document.querySelectorAll('[data-list-filter]').forEach(btn=>btn.classList.toggle('active',btn.dataset.listFilter===app.listFilter));
  $('btn-context').style.display=app.view==='lessons'?'':'none';
  $('list-search').placeholder=app.view==='lessons'?'Buscar aulas...':'Buscar notas...';
  const notes=getNotes();if(!notes.some(n=>n.id===app.selected))app.selected=notes[0]?.id||null;
@@ -126,10 +132,10 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
  if(app.view==='settings'){
   el.innerHTML=`<div class="wide-header"><h2>Ajustes</h2><p>O cofre do Obsidian é a fonte principal. O TRAMA não cria outra biblioteca.</p></div>
   <div class="settings-grid"><div class="setting-block"><h3>Atualizações do TRAMA</h3>
-    <p>Versão atual: <strong>2.0.0</strong>. Quando houver um canal oficial publicado no GitHub, você poderá verificar e abrir a versão nova sem ZIP.</p>
+    <p><strong>Versão instalada: 2.0.0.</strong> Para atualizar: clique em Verificar, depois em Baixar e confirme a instalação. Você não precisa reinstalar Python nem baixar arquivos ZIP.</p>
     <button id="check-updates">Verificar atualizações</button>
-    <p id="update-message" class="setting-status">O canal oficial ainda não foi publicado.</p>
-    <button id="install-update" class="hidden">Baixar atualização verificada</button>
+    <p id="update-message" class="setting-status">Clique em “Verificar atualizações” para consultar o GitHub.</p>
+    <button id="install-update" class="hidden">Baixar e instalar nova versão</button>
     <button id="open-update" class="hidden">Ver detalhes no GitHub</button>
     </div><div class="setting-block"><h3>Biblioteca do Obsidian</h3>
     <p>Selecione a pasta original do seu Obsidian. Ela continua acessível mesmo sem o TRAMA.</p>
@@ -222,8 +228,11 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
   await renderStatus();return;
  }
  if(app.view==='home'){
-  el.innerHTML=`<div class="wide-header"><h2>Seu conhecimento, organizado.</h2><p>Um lugar para conectar aulas, pessoas, materiais, conhecimentos e projetos sem substituir o Obsidian.</p></div><div class="settings-grid"><div class="setting-block"><h3>Minhas aulas</h3><p>Links das gravações, contexto do Classroom, transcrições, pessoas e projetos relacionados.</p><button id="home-lessons">Abrir Aulas</button></div><div class="setting-block"><h3>Minha biblioteca</h3><p>Os arquivos Markdown reais do Obsidian, acessíveis no mesmo cofre.</p><button id="home-library">Abrir Biblioteca</button></div></div>`;
-  el.querySelector('#home-lessons').addEventListener('click',()=>setView('lessons'));el.querySelector('#home-library').addEventListener('click',()=>setView('library'));return;
+  el.innerHTML=`<div class="wide-header"><h2>Seu conhecimento, organizado.</h2><p>Um lugar para conectar aulas, pessoas, materiais, conhecimentos e projetos sem substituir o Obsidian.</p></div><div class="settings-grid"><div class="setting-block"><h3>1. Conectar Obsidian</h3><p>Escolha seu cofre em Ajustes. As notas continuam locais e acessíveis mesmo sem o TRAMA.</p><button id="home-settings">Conectar meu cofre</button></div><div class="setting-block"><h3>2. Organizar minhas aulas</h3><p>Adicione transcrições, prints, links e códigos para criar notas e materiais de revisão.</p><button id="home-lessons">Ver minhas aulas</button></div><div class="setting-block"><h3>3. Estudar com IA Professor</h3><p>Peça explicações, desafios ou ajuda com código usando suas notas, sem modificar o cofre.</p><button id="home-teacher">Abrir IA Professor</button></div><div class="setting-block"><h3>Biblioteca e backup</h3><p>Revise as notas e, antes de atualizar, crie uma cópia em Ajustes.</p><button id="home-library">Abrir biblioteca</button></div></div>`;
+  el.querySelector('#home-settings').addEventListener('click',()=>setView('settings'));
+  el.querySelector('#home-teacher').addEventListener('click',()=>setView('teacher'));
+  el.querySelector('#home-lessons').addEventListener('click',()=>setView('lessons'));
+  el.querySelector('#home-library').addEventListener('click',()=>setView('library'));return;
  }
  const graph=await call('graph');const nodes=graph?.nodes||[],edges=graph?.edges||[];
  el.innerHTML=`<div class="wide-header"><h2>Grafo de conexões</h2><p>${nodes.length} notas e ${edges.length} links reais entre arquivos do Obsidian.</p></div><div class="graph-box" id="graph-box"><svg id="graph-svg" viewBox="0 0 1000 700" aria-label="Grafo das notas"></svg></div>`;
@@ -333,7 +342,15 @@ function bind(){document.querySelectorAll('.nav-item').forEach(el=>el.addEventLi
    if(event.key==='F11'){event.preventDefault();toggleFullscreen();}
    else if(event.key==='Escape' && !$('classroom-dialog').open && !$('auto-dialog').open && window.__tramaFullscreen){event.preventDefault();toggleFullscreen();}
  });
- $('search-all').addEventListener('keydown',async e=>{if(e.key==='Enter'){app.filter=e.target.value.trim();libraryState.search=app.filter;app.view='library';await render();}});
+ async function runGlobalSearch(){
+   app.filter=$('search-all').value.trim();libraryState.search=app.filter;
+   app.view='library';renderNavigation();await render();
+ }
+ $('search-all').addEventListener('keydown',async e=>{if(e.key==='Enter'){e.preventDefault();await runGlobalSearch();}});
+ $('btn-search-all').addEventListener('click',runGlobalSearch);
+ document.querySelectorAll('[data-list-filter]').forEach(btn=>btn.addEventListener('click',async()=>{
+   app.listFilter=btn.dataset.listFilter;await render();
+ }));
  $('list-search').addEventListener('input',async e=>{app.filter=e.target.value.trim();await render();});}
 async function start(){bridge=window.pywebview?.api||window.__TRAMA_API__||null;bind();if(!bridge){notify('Abra pelo aplicativo TRAMA no Windows.');return;}await refresh();}
 if(window.pywebview?.api||window.__TRAMA_API__){start();}else{window.addEventListener('pywebviewready',start,{once:true});}
