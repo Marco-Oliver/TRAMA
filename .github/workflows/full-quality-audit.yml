@@ -1,0 +1,85 @@
+name: Auditoria completa — personas, visual e segurança
+on:
+  push:
+    branches:
+      - fix/quality-personas-ui-security-20261031
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  python:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Instalar dependências
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Checar sintaxe Python
+        run: python -m compileall -q knowledge_bridge tests
+      - name: Executar todos os testes desde o início
+        run: python -m unittest discover -s tests -q
+      - name: Executar cenários adversariais
+        run: python qa_adversarial.py
+      - name: Auditoria de arquivos e possíveis credenciais
+        run: python tools/audit_release.py
+      - name: Conferir sintaxe JS
+        run: |
+          node --check knowledge_bridge/ui/library.js
+          node --check knowledge_bridge/ui/app.js
+          node --check knowledge_bridge/ui/teacher.js
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preparar Playwright Chromium
+        run: |
+          npm install --no-save --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+      - name: Testar fluxos reais da interface com API fictícia
+        run: node tests/ui_smoke.mjs
+      - name: Salvar capturas das telas testadas
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: telas-trama-auditadas
+          path: ui-smoke-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
+  installer:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Dependências de build
+        run: python -m pip install --disable-pip-version-check -r requirements.txt "pyinstaller>=6.10,<7"
+      - name: Compilar executável do zero
+        run: python -m PyInstaller --clean --noconfirm TRAMA.spec
+      - name: Auto-teste instalado
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path '.\dist\TRAMA\TRAMA.exe').Path
+          $result = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -Wait
+          if ($result.ExitCode -ne 0) { throw "Executável falhou: $($result.ExitCode)" }
+      - name: Compilar instalador sem publicar
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' 'TRAMA_Instalador.iss'
+          if ($LASTEXITCODE -ne 0) { throw "Falha na compilação do instalador" }
+      - name: Testar instalação reinstalação e desinstalação
+        shell: pwsh
+        run: ./tools/windows_installer_smoke.ps1
