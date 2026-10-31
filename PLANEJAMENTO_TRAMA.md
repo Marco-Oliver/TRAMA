@@ -249,6 +249,39 @@ python main.py restore --backup "C:\\Backups\\TRAMA_Backup.zip" --restore-to "C:
 - A restauração sempre cria uma nova pasta; **não é migração automática ou atualização do instalador**.
 - A integração e publicação de uma nova versão Windows ainda dependem da validação e do release específico.
 
+## 9.3 IA Professor — recurso experimental desenvolvido após a v1.9.0
+
+A versão em desenvolvimento [`feat/ia-professor-20261031`](https://github.com/Marco-Oliver/TRAMA/tree/feat/ia-professor-20261031) acrescenta uma aba de **IA Professor**, separada da automação que produz notas. **Ainda não está no instalador público 1.9.0.**
+
+### O que faz
+
+- **Explicar e revisar:** o aluno pergunta sobre um conteúdo que aparece nas notas do Obsidian. O TRAMA procura trechos relevantes e um modelo de IA produz uma explicação em português.
+- **Criar desafios:** o modelo propõe atividades progressivas ligadas ao material encontrado, sem entregar a solução completa imediatamente.
+- **Corrigir código:** o aluno cola um trecho e recebe observações, pistas e explicações, sem que o aplicativo execute esse código.
+- **Continuar a conversa:** perguntas e respostas recentes são utilizadas apenas enquanto a janela permanece aberta. O aluno pode iniciar uma nova conversa; o histórico não vira arquivo no Obsidian.
+- **Consultar as fontes:** cada resposta traz referências às notas realmente selecionadas para aquela consulta, com botão para abri-las na biblioteca. O sistema rejeita respostas sem uma referência válida ao conjunto fornecido.
+
+### Como funciona
+
+1. O aluno seleciona um modo, escreve uma pergunta e, se necessário, cola um trecho de código.
+2. O Python **consulta somente arquivos Markdown do cofre selecionado**, sem utilizar serviços externos para realizar a busca. A seleção usa termos do assunto, título, caminho e conteúdo das notas, com contexto limitado.
+3. O aplicativo solicita **autorização explícita a cada envio**. Apenas então envia a pergunta e os trechos selecionados a um provedor gratuito configurado.
+4. Gemini, Groq ou OpenRouter, conforme as chaves e cotas configuradas pelo estudante, gera a resposta. O modelo deve tratar as fontes como dados não confiáveis, respeitar o conteúdo documentado e declarar limitações.
+5. O aplicativo verifica se as referências devolvidas pelo modelo pertencem às notas efetivamente recuperadas. Se não houver fonte apropriada, não solicita resposta à IA e informa que falta material.
+6. A resposta aparece em uma conversa dentro do TRAMA. **Nenhuma nota, transcrição, repositório ou banco de dados é alterado pela IA Professor.**
+
+### Segurança, privacidade e limites
+
+- Chaves continuam protegidas pelo Windows DPAPI; o recurso não depende de ChatGPT Plus ou Claude Pro e não usa uma assinatura dessas ferramentas como API.
+- O envio de dados à IA depende de consentimento explícito; os provedores externos têm suas próprias políticas, cotas e condições de cobrança.
+- A conversa existe apenas na memória da sessão do aplicativo. Não há armazenamento automático de histórico no Obsidian.
+- Código colado **não é executado**. O TRAMA oculta formatos comuns de credenciais do contexto enviado, mas isso não detecta todos os segredos: o usuário deve remover tokens e senhas antes de enviar.
+- O sistema confirma que uma referência de nota existe entre as fontes consultadas; **isso não comprova que cada afirmação produzida pelo modelo esteja correta**. O aluno deve conferir as evidências em casos importantes.
+- A qualidade pedagógica depende do material presente no cofre e do modelo gratuito disponível. A IA Professor não garante equivalência ao ChatGPT ou Claude.
+- Não há treinamento de um modelo próprio; o Python faz busca, seleção e validações, e o provedor de IA redige a resposta.
+
+**Objetivo de aceitação:** explicar Hello World com as aulas reais, gerar desafios compatíveis com o conteúdo registrado, comentar um exercício de C# sem utilizar recursos não estudados e citar notas realmente presentes. Esses testes de qualidade pedagógica com material pessoal ainda precisam de avaliação humana.
+
 ## 10. Próximas evoluções do TRAMA
 
 As melhorias serão avaliadas nesta ordem. **Elas estão planejadas e não devem ser confundidas com o que já foi entregue.**
@@ -265,9 +298,9 @@ Aperfeiçoar a qualidade, a completude, a legibilidade e a navegação das notas
 
 Melhorar integridade, segurança, preservação de dados, desempenho e validação no Windows. Evoluir o cruzamento de fontes para guardar dúvidas, encontrar novas evidências em aulas posteriores e registrar revisões **sem modificar as fontes originais**.
 
-### 3. IA Professor (futura)
+### 3. IA Professor (experimental, ainda não publicado)
 
-Estudar uma ferramenta de conversa dentro do TRAMA que **apenas leia** a biblioteca, explique tópicos conforme as aulas, proponha desafios e ajude na revisão. Ela não deve editar o cofre e só fará sentido se a qualidade das respostas for realmente útil.
+O recurso experimental de conversa, explicações, desafios e revisão de código foi implementado na branch de desenvolvimento descrita acima. Sua aceitação depende da qualidade das respostas com o cofre real e da validação da interface no Windows. A IA Professor não escreve no cofre e não substitui o processo de organização do Obsidian.
 
 ### Ideias comentadas, sem desenvolvimento previsto agora
 
