@@ -590,6 +590,7 @@ class Bridge:
             return {'ok': False, 'message': 'Pergunta, modo ou código inválido.'}
         if not self._teacher_lock.acquire(blocking=False):
             return {'ok': False, 'message': 'O Professor já está respondendo outra pergunta.'}
+        router = None
         try:
             vault = self._vault()
             if vault is None:
@@ -610,7 +611,6 @@ class Bridge:
             env['MAX_REQUESTS_PER_RUN'] = '3'
             router = FreeAIRouter(env)
             from .teacher import teacher_answer
-            self._teacher_requests += 1   # Count attempted sends, including API failures.
             result = teacher_answer(vault, question, mode, code,
                                     self._teacher_history, router)
             if result.get('ok'):
@@ -625,6 +625,8 @@ class Bridge:
             # No raw model output or user content in error messages.
             return {'ok': False, 'message': 'O Professor não conseguiu consultar as notas; tente novamente.'}
         finally:
+            if router is not None:
+                self._teacher_requests += router.attempts
             self._teacher_lock.release()
 
     def teacher_reset(self):
