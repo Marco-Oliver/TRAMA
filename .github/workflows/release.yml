@@ -49,9 +49,10 @@ jobs:
       - name: Testar executável Windows
         shell: pwsh
         run: |
-          & .\dist\TRAMA\TRAMA.exe --self-test
-          if ($LASTEXITCODE -ne 0) {
-            Write-Output "TRAMA.exe saiu com código $LASTEXITCODE"
+          $exe = (Resolve-Path '.\dist\TRAMA\TRAMA.exe').Path
+          $process = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -Wait
+          if ($process.ExitCode -ne 0) {
+            Write-Output "TRAMA.exe saiu com código $($process.ExitCode)"
             $logs = @((Join-Path $env:LOCALAPPDATA 'TRAMA\logs\inicializacao.log'), (Join-Path $env:USERPROFILE 'inicializacao-trama.log'))
             foreach ($log in $logs) { if (Test-Path $log) { Write-Output "Log de falha: $log"; Get-Content $log -Tail 120 } }
             throw 'Executável não iniciou'
