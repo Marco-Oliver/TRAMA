@@ -184,6 +184,8 @@ class Application:
             self.log("Nenhuma transcrição cadastrada. Adicione .txt ou .md à pasta de entrada.")
             return {"aulas":0, "conceitos":0, "projetos":len(self.store.repositories())}
         for src in sources:
+            # Validate even already-cached analyses before reusing their notes.
+            text = self._verified_transcript(src)
             # Só reprocessa se o conteúdo mudou ou a nota ainda está pendente.
             context_rows = self.publisher._context_rows(src['lesson'] or '')
             context_payload = [item for _, item in context_rows]
@@ -195,7 +197,6 @@ class Application:
             if was_done:
                 self.log(f"Já analisada, ignorando: {src['label']}")
                 continue
-            text = self._verified_transcript(src)
             pieces = chunks(text)
             all_results = []
             self.store.update_status(src["id"], "PROCESSING")
