@@ -230,7 +230,8 @@ As funcionalidades abaixo pertencem à branch [`feat/automacao-confiavel-2026103
 
 - Em **Ajustes**, o usuário pode autorizar a criação de um **ZIP local verificado**, contendo as notas Markdown, anexos e uma cópia consistente do banco SQLite, inclusive configurações locais do Obsidian quando presentes no cofre.
 - O sistema gera um manifesto com tamanhos e hashes SHA-256 dos arquivos; verifica que não houve alteração durante a cópia. Um backup pré-existente não deve ser sobrescrito.
-- A restauração é disponibilizada por linha de comando e exige uma **pasta nova**, nunca um cofre existente. O ZIP é verificado e restaurado em área temporária antes de expor a biblioteca restaurada.
+- Em **Ajustes**, também é possível **Restaurar backup em uma pasta nova**, selecionando o ZIP e a pasta que receberá o cofre restaurado. O arquivo é verificado e restaurado primeiro em área temporária; o cofre ativo não é substituído.
+- Backup e restauração também têm comandos de linha de comando, úteis para manutenção. A restauração exige uma pasta nova, nunca um cofre existente.
 - **Os backups não são criptografados e não são enviados ao GitHub**; a pessoa precisa guardá-los em local privado.
 
 Comandos disponíveis para uso técnico:
@@ -245,7 +246,7 @@ python main.py restore --backup "C:\\Backups\\TRAMA_Backup.zip" --restore-to "C:
 - A IA não confirma sozinha que o professor realmente falou um termo.
 - A biblioteca pode continuar contendo classificações por módulo baseadas em palavras-chave, sujeitas a revisão.
 - Testes com acervos fictícios não provam desempenho nem fidelidade do conteúdo real no computador pessoal.
-- Os comandos de restauração são para criar uma nova pasta; **não são migração automática ou atualização do instalador**.
+- A restauração sempre cria uma nova pasta; **não é migração automática ou atualização do instalador**.
 - A integração e publicação de uma nova versão Windows ainda dependem da validação e do release específico.
 
 ## 10. Próximas evoluções do TRAMA
