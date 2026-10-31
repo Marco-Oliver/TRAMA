@@ -159,8 +159,14 @@ def render_uncertainties(store) -> tuple[str, list[tuple[str, str]]]:
                             f"arquivo `{_safe(e['path'],180)}:{e['line']}`.")
         body += ["", "## Histórico da revisão", ""]
         for ev in events:
+            past = json.loads(ev["evidence_json"])
+            summary = ", ".join(
+                (e.get("lesson", "") if e.get("kind") == "aula_posterior"
+                 else e.get("path", ""))
+                for e in past[:5]) or "nenhuma referência adicional"
             body.append(f"- {ev['created_at']} — **{ev['status']}** "
-                        f"(evidências: `{ev['evidence_digest'][:12]}`).")
+                        f"(fontes: {_safe(summary, 260)}; "
+                        f"registro `{ev['evidence_digest'][:12]}`).")
         body += ["", "## Próxima conferência", "",
                  "Confira a transcrição e, se necessário, o vídeo original. "
                  "O TRAMA não altera a fala do professor nem declara a dúvida resolvida por conta própria."]
