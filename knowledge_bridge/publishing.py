@@ -17,6 +17,7 @@ from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, 
 from .store import Store
 from .memory_atlas import make_atlas, render_atlas, lesson_order, norm
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections
+from .learning_review import refresh_uncertainties, render_uncertainties
 
 
 def _escape_md(s: object) -> str:
@@ -580,7 +581,8 @@ class Publisher:
         return rel, concepts, modules
 
     def rebuild(self):
-        """Deriva índices/notas consolidadas apenas de análises de fontes guardadas."""
+        """Deriva notas e revisão incremental das fontes originais cadastradas."""
+        refresh_uncertainties(self.db)
         self._atlas = make_atlas(self.db)
         concept_map = defaultdict(list)
         module_map = defaultdict(list)
@@ -847,12 +849,19 @@ class Publisher:
         # fontes do Obsidian; não consome requisições nem deduz domínio.
         atlas = self._atlas
         self.write("01-Meu-Conhecimento/Mapa-da-Evolucao.md", render_atlas(atlas))
+        doubts_index, doubts_notes = render_uncertainties(self.db)
+        for relative, note_text in doubts_notes:
+            self.write(relative, note_text)
+        self.write("01-Meu-Conhecimento/Indice-de-Duvidas.md", doubts_index)
         context = ["# MEU_CONTEXTO — Guia para IA", "",
                    "> Este documento resume **o que foi abordado nos materiais**, não comprova domínio pessoal.",
                    "> Use as notas vinculadas como evidência antes de recomendar recursos de programação.", "",
                    "## Módulos vistos nos materiais", "", "- [[Mapa-da-Evolucao|Mapa de evolução com horários e código]]"]
         context += [f"- [[{m}|{m.replace('-', ' ')}]]: {len(entries)} fonte(s)" for m,entries in module_map.items()]
-        context += ["", "## Conceitos encontrados"]
+        context += ["", "## Dúvidas e interpretações pendentes",
+                    "- [[Indice-de-Duvidas|Índice rastreável de dúvidas e evidências posteriores]]",
+                    "> Evidências posteriores são pistas, nunca correções confirmadas automaticamente.",
+                    "", "## Conceitos encontrados"]
         context += [f"- [[{k}|{_escape_md(v[0][0])}]] — identificado pela IA; confirmar na fonte" for k,v in sorted(concept_map.items())]
         context += ["", "## Evolução: antes na aula, agora no código"]
         for repo,payload in repo_info:
@@ -882,7 +891,8 @@ class Publisher:
                     "- Para quebra-cucas, oriente em pequenas etapas e evite solução completa sem pedido."]
         self.write("00-Inicio/MEU_CONTEXTO.md", "\n".join(context)+"\n")
         index = ["# Minha Biblioteca", "", "## Comece aqui", "- [[MEU_CONTEXTO]] — contexto para IAs", "",
-                 "## Conhecimentos", "- [[Mapa-da-Evolucao|Mapa de evolução do aprendizado]]"]
+                 "## Conhecimentos", "- [[Mapa-da-Evolucao|Mapa de evolução do aprendizado]]",
+                 "- [[Indice-de-Duvidas|Dúvidas e referências para revisão]]"]
         index += [f"- [[{module}|{module.replace('-', ' ')}]]" for module in module_map]
         index += ["", "## Aulas — abra a visão geral para reunir V01, V02 e demais materiais"]
         index += [f"- [[02-Minhas-Aulas/{lesson}/00-Visao-geral|{lesson} — visão geral]]" for lesson in all_lessons]
