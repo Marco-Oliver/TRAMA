@@ -482,13 +482,24 @@ class Publisher:
         self._append_context(body, lesson)
         # Source-grounded anchors make timestamps navigable without
         # modifying the preserved transcript in 99-Anexos.
+        # Only publish anchored excerpts that help review the notes.
+        # The complete, unmodified transcript remains in 99-Anexos;
+        # copying every timed line here makes large vaults unwieldy.
+        referenced_times = {str(c.get("tempo", "")).strip()
+                            for c in concepts if isinstance(c, dict)}
+        if analysis:
+            for category in ("pessoas", "atividades", "ferramentas", "marcos"):
+                referenced_times.update(str(item.get("tempo", "")).strip()
+                    for item in analysis.get(category, [])
+                    if isinstance(item, dict))
+        referenced_times.update(t for t, _sentence in evidence_excerpt(text))
         indexed = {}
         for stamp, sentence in timed_lines(text):
-            if stamp != "sem horário" and stamp not in indexed:
+            if stamp in referenced_times and stamp != "sem horário" and stamp not in indexed:
                 indexed[stamp] = sentence
         if indexed:
             body += ["", "## Trechos da transcrição com horários verificáveis", "",
-                     "> Horários da transcrição; o vídeo original não foi conferido."]
+                     "> Trechos selecionados da transcrição; os horários não foram confirmados no vídeo."]
             for stamp, sentence in indexed.items():
                 body.append(f"- **{stamp}** — {_escape_md(sentence[:420])} ^{_time_id(stamp)}")
         body += ["", "## Fontes originais", f"- Transcrição: [[{Path(src['stored_path']).stem}]]",
@@ -521,6 +532,13 @@ class Publisher:
             body.append("*Conexão sugerida por conceito mencionado + código encontrado; não prova autoria nem que foi programado nesta aula.*")
             for e in matched:
                 body.append(f"- `{e['concept']}` — {_code_ref(repo, e['path'], e['line'])} no commit `{repo['sha'][:10]}`")
+                snippet = str(e.get("snippet", "")).strip()
+                if snippet:
+                    ext = Path(e["path"]).suffix.lower()
+                    language = {".cs": "csharp", ".ts": "typescript", ".tsx": "tsx",
+                                ".js": "javascript", ".jsx": "jsx", ".py": "python",
+                                ".sql": "sql"}.get(ext, "text")
+                    body.extend(["", f"```{language}", snippet.replace("```", "` ` `"), "```", ""])
             project_matches.append((repo, payload))
         if not project_matches:
             body.append("*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
