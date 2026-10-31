@@ -164,6 +164,26 @@ class ReliableAutomation(unittest.TestCase):
         self.assertEqual(self.app.store.analysis(old[0]["id"], old[0]["digest"])["resumo"],
                          "Revisão da aula com fontes.")
 
+    def test_windows_settings_backup_requires_consent_and_keeps_keys_out_of_archive(self):
+        from unittest.mock import Mock, patch
+        from types import SimpleNamespace
+        from knowledge_bridge.bridge import Bridge, PublicApi
+        self.add_lesson(1, "[0:03] Conteúdo protegido.")
+        gui = Bridge()
+        gui.settings = {"vault": str(self.vault)}
+        destination = self.base / "gui-backup.zip"
+        gui._window = Mock()
+        gui._window.create_file_dialog.return_value = [str(destination)]
+        api = PublicApi(gui)
+        self.assertFalse(api.backup_vault(False)["ok"])
+        self.assertFalse(destination.exists())
+        with patch.dict("sys.modules", {"webview": SimpleNamespace(SAVE_DIALOG="save")}):
+            result = api.backup_vault(True)
+        self.assertTrue(result["ok"], result)
+        with zipfile.ZipFile(destination) as archive:
+            self.assertIn(".base-conhecimento/estado.sqlite3", archive.namelist())
+            self.assertNotIn("api_keys.dpapi.json", archive.namelist())
+
     def test_tampered_zip_is_rejected_without_destination_files(self):
         self.add_lesson(1, "[0:01] Conteúdo.")
         archive = self.base / "original.zip"
