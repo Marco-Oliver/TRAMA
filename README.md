@@ -85,9 +85,9 @@ Na aba **IA Professor**, você pode pedir explicações, gerar desafios progress
 
 ## 📦 Instalação
 
-> **Estado da distribuição:** a versão 1.9.0 já foi publicada. A versão 2.0.0 será disponibilizada neste mesmo endereço após a aprovação dos testes finais e a publicação oficial.
+> **Versão atual: 2.0.0 (Windows).** Publicada em 31/10/2026 com instalador e verificação SHA-256. A versão anterior, 1.9.0, continua disponível no [histórico de releases](https://github.com/Marco-Oliver/TRAMA/releases).
 
-**[⬇️ Baixar TRAMA para Windows (última versão publicada)](https://github.com/Marco-Oliver/TRAMA/releases/latest/download/TRAMA_Setup.exe)**
+**[⬇️ Baixar TRAMA 2.0.0 para Windows](https://github.com/Marco-Oliver/TRAMA/releases/download/v2.0.0/TRAMA_Setup.exe)**
 
 1. Baixe `TRAMA_Setup.exe` pela página de [Releases](https://github.com/Marco-Oliver/TRAMA/releases).
 2. Execute o instalador e abra **TRAMA** pelo menu Iniciar.
@@ -98,7 +98,7 @@ Na aba **IA Professor**, você pode pedir explicações, gerar desafios progress
 
 ### Atualizações
 
-O aplicativo possui um mecanismo para consultar releases e baixar instaladores com verificação de hash SHA-256. **A atualização não é silenciosa:** você confirma a instalação. A atualização entre 1.9.0 e 2.0.0 será submetida a um teste específico de preservação de dados; recomenda-se criar backup antes de instalar.
+O aplicativo possui um mecanismo para consultar releases e baixar instaladores com verificação de hash SHA-256. **A atualização não é silenciosa:** você confirma a instalação. O upgrade da 1.9.0 para a 2.0.0 passou nos testes automatizados do Windows, com banco e anotação pessoal preservados. **Faça backup do seu cofre antes de atualizar**, especialmente se tiver notas editadas manualmente.
 
 ## 🔐 Privacidade e segurança
 
@@ -138,7 +138,8 @@ O fluxo em [`.github/workflows/release.yml`](.github/workflows/release.yml) exec
 3. Compilação do **TRAMA.exe** com todos os recursos locais.
 4. Teste do executável compilado com `--self-test`.
 5. Geração do **TRAMA_Setup.exe**, instalação silenciosa em ambiente Windows de CI, novo teste do executável instalado e desinstalação.
-6. Verificação SHA-256 antes de disponibilizar o release.
+6. Teste real de atualização do instalador anterior (1.9.0 → 2.0.0) com cofre de demonstração e nota pessoal preservados.
+7. Verificação SHA-256 antes de disponibilizar o release.
 
 **Limite dos testes:** essa automação não substitui a validação visual da janela, do WebView2 em diferentes PCs, nem a avaliação factual de respostas reais do Gemini com suas aulas e projetos.
 
