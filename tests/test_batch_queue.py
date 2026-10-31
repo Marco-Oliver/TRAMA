@@ -80,7 +80,8 @@ class QueuedImportTests(TestCase):
             r=self.bridge.process_staged('https://example.com/material',True)
         self.assertTrue(r['ok'])
         self.assertEqual(len(FakeOrganizer.received),1)
-        self.assertEqual(FakeOrganizer.received[0][0],[path])
+        self.assertEqual(len(FakeOrganizer.received[0][0]), 1)
+        self.assertTrue(FakeOrganizer.received[0][0][0].samefile(path))
         self.assertTrue(FakeOrganizer.received[0][2])
         self.assertEqual(self.bridge.staged_items()['items'],[])
 
