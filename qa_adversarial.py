@@ -16,7 +16,7 @@ from pathlib import Path
 from knowledge_bridge.content import concept_slug, lesson_identity
 from knowledge_bridge.memory_atlas import make_atlas, related_prior, render_atlas
 from knowledge_bridge.pipeline import Application
-from knowledge_bridge.update_service import check_release, download_verified_installer
+from knowledge_bridge.update_service import check_release, download_verified_installer, VERSION, version_tuple
 from knowledge_bridge.vault_index import VaultIndex
 
 checks=[]
@@ -158,7 +158,9 @@ def reject_malicious_updates():
         def read(self,n):return self.raw[:n]
     bad=json.dumps({'tag_name':'v99.0.0','html_url':'https://evil.example/release','assets':[{'name':'TRAMA_Setup.exe'}]}).encode()
     assert check_release('trusted/repo',opener=lambda *a,**k: Dummy(bad))['ok']==False
-    good=json.dumps({'tag_name':'v1.9.2','html_url':'https://github.com/trusted/repo/releases/tag/v1.9.2','assets':[{'name':'TRAMA_Setup.exe'}]}).encode()
+    current = version_tuple(VERSION)
+    newer = f'v{current[0]}.{current[1]}.{current[2]+1}'
+    good=json.dumps({'tag_name':newer,'html_url':f'https://github.com/trusted/repo/releases/tag/{newer}','assets':[{'name':'TRAMA_Setup.exe'}]}).encode()
     assert check_release('trusted/repo',opener=lambda *a,**k: Dummy(good))['available']==True
 
 
