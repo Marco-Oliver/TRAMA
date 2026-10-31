@@ -6,7 +6,7 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE = ROOT / "TRAMA_GitHub_Source_1_9.tar.gz"
-EXPECTED_SHA256 = "85e6de6b574bfe742fb81a5ab3e8770e01ba9960570425a19c3e671ecf194ce7"
+EXPECTED_SHA256 = "ef020d97a50193b663428504c1c0dc106111d8c633d52b281c77db45501e04f7"
 REQUIRED = {
     "requirements.txt", "TRAMA.spec", "trama_launcher.py",
     "knowledge_bridge/bridge.py", "knowledge_bridge/secure_keys.py",
