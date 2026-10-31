@@ -1,0 +1,53 @@
+# TRAMA — arquivos locais e credenciais NUNCA devem ser versionados
+.env
+.env.*
+!.env.example
+config.env
+config.env.*
+!config.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+keys.json
+secrets.json
+credentials.json
+*.log
+logs/
+.cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.buildvenv/
+build/
+dist/
+release/
+*.spec.backup
+# Cofres, notas e transcrições do usuário
+TRAMA-Vault/
+Obsidian/
+Meu-Obsidian/
+**/.obsidian/
+**/.base-conhecimento/
+**/Minhas Aulas/
+**/Meu Conhecimento/
+**/Meus Projetos/
+transcricoes/
+transcrições/
+gravacoes/
+gravações/
+uploads/
+user_data/
+local_data/
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
