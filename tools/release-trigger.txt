@@ -1,1 +1,1 @@
-Retry Windows release with frozen executable startup diagnostics, 2026-10-31.
+Retry Windows release with proper exit-code capture for GUI executables, 2026-10-31.
