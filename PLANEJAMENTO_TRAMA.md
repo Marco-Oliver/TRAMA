@@ -175,7 +175,7 @@ Isso **não equivale a testes completos no computador do estudante**. Ainda falt
 
 ### Correções incorporadas na v2.0.0 (ausentes na v1.9.0)
 
-Uma branch separada, [`fix/critical-audit-20261031`](https://github.com/Marco-Oliver/TRAMA/tree/fix/critical-audit-20261031), contém três melhorias:
+Três melhorias desenvolvidas originalmente na branch [`fix/critical-audit-20261031`](https://github.com/Marco-Oliver/TRAMA/tree/fix/critical-audit-20261031) agora integram a versão publicada:
 
 1. Evitar que conceitos diferentes como `C`, `C#` e `C++` sejam fundidos.
 2. Detectar anexos alterados mesmo quando têm o mesmo tamanho.
@@ -190,7 +190,7 @@ As três correções estão incorporadas ao instalador público 2.0.0 e passaram
 - **Privacidade:** o Obsidian, dados SQLite e chaves ficam locais; contudo, material enviado por escolha do usuário a uma IA externa segue as políticas daquele provedor. A ocultação automática de segredos não é infalível.
 - **Notas editadas:** há mecanismos para não sobrescrever silenciosamente edições humanas, mas backups e testes de conflito continuam importantes.
 - **Atualizações:** o instalador não tem assinatura digital. SHA-256 ajuda a conferir a integridade do download. O upgrade automatizado de v1.9.0 para v2.0.0 passou com cofre de teste e nota manual preservada; bibliotecas pessoais reais ainda devem ser conferidas.
-- **Escala e desempenho:** o comportamento com um conjunto grande, na ordem de 100–200 aulas e vários repositórios, ainda precisa de medição controlada.
+- **Escala e desempenho:** um cenário sintético de 150 aulas passou, mas ainda faltam medições de carga com muitas aulas reais e vários repositórios num computador de recursos limitados.
 - **Interface:** testes de backend e instalador não substituem testes visuais em diferentes computadores Windows.
 
 ## 9.1 Obsidian excelente — disponível na v2.0.0
@@ -205,9 +205,9 @@ As funcionalidades abaixo integram a **v2.0.0 publicada**, após validação aut
 - **Busca e links do cofre:** pesquisa de notas mais extensa e tratamento de nomes de notas duplicados sem resolver arbitrariamente a referência para outra aula.
 - **Edições manuais protegidas:** quando uma nota do estudante diverge da gerada, o TRAMA mantém a nota e publica uma proposta; propostas idênticas não precisam se multiplicar a cada reconstrução.
 
-**Limites:** resumos e classificação por módulo ainda dependem das fontes e da interpretação da IA. O Obsidian pessoal e o conteúdo real das aulas não foram utilizados nos testes automatizados. A nova geração de notas precisa de validação prática no computador do estudante antes de publicação.
+**Limites:** resumos e classificação por módulo ainda dependem das fontes e da interpretação da IA. O Obsidian pessoal e o conteúdo real das aulas não foram utilizados nos testes automatizados. A nova geração de notas ainda precisa de validação prática no computador do estudante, mesmo depois da publicação.
 
-As melhorias de automação confiável — incluindo investigação longitudinal de dúvidas, escala, restauração/backup e upgrade de instalador — continuam pertencendo à etapa 2. A IA Professor permanece posterior.
+A versão 2.0.0 também inclui a automação confiável e a IA Professor experimental, descritas nas seções seguintes.
 
 ## 9.2 Automação confiável — disponível na v2.0.0
 
@@ -290,19 +290,19 @@ A **v2.0.0 publicada** acrescenta uma aba de **IA Professor**, separada da autom
 
 ## 10. Próximas evoluções e validação prática do TRAMA
 
-As melhorias serão avaliadas nesta ordem. **Elas estão planejadas e não devem ser confundidas com o que já foi entregue.**
+As três prioridades **já foram implementadas na versão 2.0.0**. O foco seguinte é validar a experiência com material real e aperfeiçoar pontos que apresentarem dificuldades. Não confundir melhorias entregues com validação pedagógica ainda pendente.
 
 ### 1. Obsidian excelente
 
 **Disponível na v2.0.0.** Os pontos de revisão e navegação foram implementados, mas exigem conferência com material real.
 
-Aperfeiçoar a qualidade, a completude, a legibilidade e a navegação das notas: aulas, módulos, conceitos, códigos, links, horários e mapa de relações. O resultado deve ser útil para revisão manual sem depender de nenhuma IA conectada.
+A v2.0.0 já aprimora a qualidade, a legibilidade e a navegação das notas de aulas, módulos, conceitos e projetos. A revisão com transcrições e exemplos reais continua necessária para aferir a fidelidade e a completude.
 
 ### 2. Automação confiável
 
 **Implementação disponível na v2.0.0.** A validação com o cofre real do estudante ainda depende do Windows pessoal.
 
-Melhorar integridade, segurança, preservação de dados, desempenho e validação no Windows. Evoluir o cruzamento de fontes para guardar dúvidas, encontrar novas evidências em aulas posteriores e registrar revisões **sem modificar as fontes originais**.
+A v2.0.0 já verifica integridade das transcrições, guarda evidências e revisões de dúvidas, permite backup e recuperação e foi validada automaticamente no Windows. O fluxo completo com dados reais ainda exige teste prático e observação de desempenho.
 
 ### 3. IA Professor (experimental na v2.0.0)
 
