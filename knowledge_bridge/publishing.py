@@ -11,10 +11,11 @@ import shutil
 import tempfile
 from collections import defaultdict
 from pathlib import Path
+from urllib.parse import quote
 
 from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines
 from .store import Store
-from .memory_atlas import make_atlas, render_atlas, lesson_order
+from .memory_atlas import make_atlas, render_atlas, lesson_order, norm
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections
 
 
@@ -27,6 +28,29 @@ def _frontmatter(**kwargs) -> str:
     for k,v in kwargs.items():
         out.append(f"{k}: '{str(v).replace(chr(39), chr(39)*2)}'")
     return "\n".join(out + ["---", ""])
+
+
+def _time_id(timestamp: str) -> str:
+    """Obsidian block ID for a verified timestamp from the original TXT."""
+    return "min-" + re.sub(r"[^0-9]", "-", timestamp.strip()).strip("-")
+
+
+def _term_in_source(term: str, source: str) -> bool:
+    """Literal, punctuation-aware presence; an IA interpretation isn't proof."""
+    needle = norm(term)
+    haystack = norm(source)
+    return bool(needle and re.search(r"(?<!\w)" + re.escape(needle) + r"(?!\w)", haystack))
+
+
+def _code_ref(repo, path: str, line: int) -> str:
+    """Link to the immutable GitHub revision; local repos retain path:line."""
+    location = f"{_escape_md(path)}:{line}"
+    url = str(repo["url"]).removesuffix(".git").rstrip("/")
+    sha = str(repo["sha"])
+    if re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", url) and re.fullmatch(r"[0-9a-f]{40}", sha, re.I):
+        target = f"{url}/blob/{sha}/{quote(path, safe='/')}#L{line}"
+        return f"[\`{location}\`]({target})"
+    return f"\`{location}\`"
 
 
 class Publisher:
@@ -50,10 +74,12 @@ class Publisher:
             if current == hashlib.sha256(content.encode("utf-8")).hexdigest():
                 return "unchanged"
             if current != previous:
-                conflict = path.with_name(path.stem + ".PROPOSTA.md")
-                if conflict.exists() and conflict.read_text(encoding="utf-8") == content:
+                # Avoid duplicate proposals when earlier suggestions were
+                # edited; keep every human-edited proposal intact.
+                proposals = sorted(path.parent.glob(path.stem + ".PROPOSTA*.md"))
+                if any(p.is_file() and p.read_text(encoding="utf-8") == content for p in proposals):
                     return "manual-protected"
-                # Não sobrescrever nem a proposta se ela tiver sido editada.
+                conflict = path.with_name(path.stem + ".PROPOSTA.md")
                 n = 1
                 while conflict.exists():
                     conflict = path.with_name(f"{path.stem}.PROPOSTA-{n}.md")
@@ -451,6 +477,17 @@ class Publisher:
                 if body[-1].startswith('> Extração'):
                     body.append('*Não identificado nesta aula.*')
         self._append_context(body, lesson)
+        # Source-grounded anchors make timestamps navigable without
+        # modifying the preserved transcript in 99-Anexos.
+        indexed = {}
+        for stamp, sentence in timed_lines(text):
+            if stamp != "sem horário" and stamp not in indexed:
+                indexed[stamp] = sentence
+        if indexed:
+            body += ["", "## Trechos da transcrição com horários verificáveis", "",
+                     "> Horários da transcrição; o vídeo original não foi conferido."]
+            for stamp, sentence in indexed.items():
+                body.append(f"- **{stamp}** — {_escape_md(sentence[:420])} ^{_time_id(stamp)}")
         body += ["", "## Fontes originais", f"- Transcrição: [[{Path(src['stored_path']).stem}]]",
                  f"- Arquivo original: `{_escape_md(src['label'])}`", "", "## Conhecimentos relacionados",
                  ", ".join(concept_links) if concept_links else "*Serão vinculados após análise com IA.*",
