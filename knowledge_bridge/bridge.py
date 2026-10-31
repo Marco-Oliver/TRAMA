@@ -1003,7 +1003,7 @@ def load_local_ui():
     for href,filename in substitutions:
         css=(base/filename).read_text(encoding='utf-8')
         html=html.replace(f'<link rel="stylesheet" href="{href}">','<style>'+css+'</style>')
-    for script in ('library.js','app.js'):
+    for script in ('library.js','app.js','teacher.js'):
         js=(base/script).read_text(encoding='utf-8')
         html=html.replace(f'<script src="{script}"></script>','<script>'+js+'</script>')
     return html
