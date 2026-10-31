@@ -1,0 +1,98 @@
+/* TRAMA 0.9 — composição clássica aprovada.
+   Apenas CSS local: a biblioteca continua no cofre original do Obsidian. */
+:root{--green:#246f50;--line:#c7cdc9;--muted:#637182;--chrome:#f6f6f3;color:#142039;font-family:Arial,'Segoe UI',sans-serif;font-size:13px}
+*{box-sizing:border-box}
+body{background:#d6d9d8}
+.application{border:1px solid #8f9b99;background:#f9faf8;box-shadow:0 3px 12px #0002}
+.svg-sprite{position:absolute;width:0;height:0;overflow:hidden}
+.ui-svg{width:20px;height:20px;stroke:#192b48;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.ui-svg.check{stroke:#187c50;width:19px;height:19px}
+.titlebar{height:69px;padding:0 16px;background:linear-gradient(#fff,#f4f5f3 78%,#eef0ee);border-bottom:1px solid #cbd0ce;box-shadow:inset 0 1px #fff}
+.identity{gap:10px}.identity strong{font-size:22px;color:#0d1730;font-family:Arial,sans-serif;font-weight:800;letter-spacing:-.2px}.identity small{font-size:12px;color:#4d5a6c;line-height:1.3}
+.app-symbol{width:43px;height:43px;border:1px solid #297046;background:linear-gradient(130deg,#6db186 0%,#1b8052 50%,#0d5a3e 100%);border-radius:8px;box-shadow:0 1px 2px #0003,inset 0 1px 2px #fff8}
+.app-symbol svg{width:29px;height:29px}
+.toolbar{height:65px;gap:8px;padding:0 15px;background:linear-gradient(#fefefd,#eeefec);border-bottom:1px solid #bfc6c3;box-shadow:inset 0 1px #fff}
+.chrome-btn,.small-tool,.lib-side-button,.lib-tab-add,.lib-side-card button{box-shadow:inset 0 1px #fff,0 1px 1px #0001}
+.chrome-btn{min-height:42px;padding:9px 13px;font-family:Arial,sans-serif;font-size:13px;border:1px solid #adb5b6;border-radius:5px;background:linear-gradient(#fff,#f3f4f1 57%,#e9ece9);color:#131d34;letter-spacing:-.1px}
+.chrome-btn:hover{border-color:#8cae9d;background:linear-gradient(#fff,#e3eee6)}
+.btn-icon{font-size:20px;vertical-align:-2px;margin-right:9px}.btn-icon.green{background:linear-gradient(#34a96d,#0b6841);color:#fff;border:1px solid #257d4e;padding:0 3px;border-radius:3px;font-size:20px}.btn-icon.forest{color:#187b52}.btn-icon.violet{color:#7043ca}
+.tool-separator{height:35px;margin:0 8px;background:#b9c0bf}
+.search-wrap{max-width:none;min-width:100px;border-color:#b6c1c6;height:40px;border-radius:5px;box-shadow:inset 0 1px 3px #0001;padding:0 10px;gap:10px}
+.search-wrap input{font-size:12px;color:#334255}.search-wrap .ui-svg{width:18px;height:18px;stroke:#708098}
+.toolbar-connect{display:flex;align-items:center;gap:7px;color:#14223a;white-space:nowrap;padding:0 8px;font-size:12px}.toolbar-connect:has(+.small-tool){margin-left:2px}
+.small-tool{height:40px;width:39px;border:1px solid #abb8b6;border-radius:5px}.small-tool .ui-svg{width:19px;height:19px}
+.navigation{width:166px;padding:16px 8px;background:linear-gradient(90deg,#fbfbfa,#f4f6f4);border-right:1px solid #cbd3d0;gap:6px}
+.nav-item{color:#142139;border-radius:6px;font-size:13px;padding:12px 11px;gap:11px;min-height:47px}.nav-item:hover{background:#e8f0e9}.nav-item.active{background:linear-gradient(90deg,#b1d8c4,#d5ebdd);color:#174d39;font-weight:700}
+.nav-ic{width:23px;height:23px}.nav-item.active .ui-svg{stroke:#186846}.graph-ic{font-size:25px}.nav-split{background:#d4d8d5;margin:10px 8px 6px}
+.library-workspace{grid-template-columns:292px minmax(405px,1fr) 324px;font-family:Arial,sans-serif;font-size:12px;color:#13233a}
+.lib-tree-panel{background:linear-gradient(90deg,#fff,#f9faf8 80%);border-right:1px solid #cbd4d0}
+.lib-tree-head{padding:14px 12px 8px 12px;gap:10px;min-height:67px}.lib-tree-head strong{font-size:16px;color:#152238;letter-spacing:0}.lib-tree-head small{font-size:10.5px;color:#617189;margin-top:3px}
+.lib-obs-icon{color:#7845cf;font-size:26px;text-shadow:0 1px #e6d8f9}
+.lib-search{height:36px;margin:0 10px 12px;border:1px solid #b9c5c7;background:#fff;box-shadow:inset 0 1px 3px #0000000c}.lib-search input{font-size:12px}
+.lib-tree-scroll{padding:0 8px 18px 6px}.lib-directory{margin:0}
+.lib-folder-row,.lib-file-row{height:26px;gap:6px;font-size:12px;color:#1c2a3b;border-radius:3px;position:relative}
+.lib-folder-row strong{font-weight:600}.lib-folder-row:hover,.lib-file-row:hover{background:#eaf2ea}
+.lib-file-row{font-size:11.5px;gap:6px}.lib-file-row.selected{background:#d6eee0;color:#143b31}
+.lib-chevron{font-size:0;width:12px;height:12px;display:inline-flex;justify-content:center;align-items:center;transform:none;transition:none}
+.lib-chevron::before{content:'▸';font-size:15px;line-height:1;color:#162b44}.lib-chevron.expanded{transform:none}.lib-chevron.expanded::before{content:'▾'}
+.lib-folder-icon{position:relative;display:inline-flex;width:17px;height:14px;min-width:17px;color:transparent;filter:none!important}
+.lib-folder-icon::before{content:'';position:absolute;left:2px;top:2px;width:9px;height:5px;border-radius:2px 2px 0 0;background:#f4c554;border:1px solid #c48120}
+.lib-folder-icon::after{content:'';position:absolute;left:1px;top:5px;width:16px;height:11px;border:1px solid #d5871e;border-radius:2px;background:linear-gradient(#ffe48b 5%,#f8b52e 60%,#e99a1c);box-shadow:inset 0 1px #fff8,0 1px #0002}
+.lib-folder-icon.top::before{background:#76b9fb;border-color:#397cc0}.lib-folder-icon.top::after{background:linear-gradient(#9be2ff,#2e93f2 60%,#176ab3);border-color:#2c75b3}
+.lib-file-icon{color:#253c65;font-size:0;position:relative;width:14px;height:17px;min-width:14px;background:linear-gradient(#fff,#e7eff7);border:1.4px solid #325177;border-radius:1px;margin:0 2px 0 0}
+.lib-file-icon::before{content:'';position:absolute;right:-1px;top:-1px;border-left:5px solid #acc8e6;border-bottom:5px solid transparent;background:#fff;width:0;height:0}
+.lib-file-icon::after{content:'≡';position:absolute;left:2px;top:4px;font:bold 10px Arial;color:#4b6a8d;line-height:1}
+.lib-tab-strip{height:53px;background:linear-gradient(#fbfcfa,#f4f6f2);padding:0 12px;border-bottom:1px solid #d2d9d4;align-items:end;gap:8px}
+.lib-open-tab{height:42px;border:1px solid #c4cdd0;border-bottom-color:white;border-radius:5px 5px 0 0;padding:0 12px;font-size:11.5px;max-width:315px;background:#fff}
+.lib-tab-add{height:36px;width:39px;background:linear-gradient(#fff,#e9ebe8);border:1px solid #b9c4be;font-size:22px}
+.lib-note-scroll{padding:13px 18px 38px}.lib-breadcrumb{font-size:11.5px;color:#5d6a7e;margin:0 0 18px;gap:7px}
+.lib-title{font-size:27px;color:#101a32;font-weight:800;line-height:1.18;margin:0 0 15px}
+.lib-note-meta{font-size:11px;margin:0 0 20px;gap:7px;color:#66758a}
+.lib-note-intro{font-size:13.3px;line-height:1.65;color:#1b2b42;margin-bottom:19px}
+.lib-md h2{font-size:18px;color:#0f1c38;border-top:1px solid #cbd3d0;padding-top:10px;margin:22px 0 9px;font-weight:750}
+.lib-md h2:first-child{border-top:0;margin-top:0}
+.lib-md p{font-size:12.8px;color:#1b2a3f;line-height:1.6}
+.lib-md li{font-size:12.8px;color:#18273b;line-height:1.48;margin:2px 0}
+.lib-summary-box{padding:9px 14px;margin:9px 0 12px;border-radius:4px;background:linear-gradient(110deg,#eaf4eb,#f2f7f2)}
+.lib-section-icon{font-size:19px;color:#167050}
+.lib-related-box{background:linear-gradient(#eef5fa,#f5f9fd);border:1px solid #caddeb;border-radius:5px;padding:6px 10px}
+.lib-related-box button{padding:3px 5px;color:#0a6bc7;font-size:12px}
+.lib-right-panel{padding:9px 9px;background:linear-gradient(90deg,#f9faf8,#f6f7f4)}
+.lib-side-card{border:1px solid #cdd6d1;border-radius:7px;margin-bottom:10px;box-shadow:inset 0 1px #fff}
+.lib-side-card h3{height:39px;padding:0 11px;font-size:12px;color:#13223a;background:linear-gradient(#fff,#f3f5f2);border-bottom:1px solid #dce2dd}
+.lib-side-card h3 .card-heading-ico{font-size:17px;color:#1e3b56}
+.lib-side-card .side-body{padding:7px 10px 10px}
+.lib-stat{font-size:11.5px;padding:7px 2px;border-bottom:1px solid #e9eeeb}.lib-stat .stat-label{color:#2b3c52}.lib-stat .stat-value{color:#16744f;max-width:142px}
+.lib-side-button{min-height:31px;padding:6px 9px;background:linear-gradient(#fff,#f0f2f0);border-color:#bcc8c7;border-radius:5px;color:#152841;font-size:11.5px;margin-bottom:5px}
+.lib-side-button:hover{background:linear-gradient(#fff,#e9f1ec)}
+.lib-link{font-size:11.8px;color:#0867bb;padding:4px 2px}.lib-link span:first-child{color:#2d5071}
+.lib-meta-caption{font-size:10.5px}.lib-small-tabs{height:28px}.lib-small-tabs button.active{background:linear-gradient(#6fa98b,#3a8469)}
+.statusbar{height:34px;justify-content:space-between;padding:0 14px;font-size:10.5px;border-top:1px solid #bac4bf;background:linear-gradient(#fff,#e9ece9);color:#58687b}
+.status-center{flex:1;text-align:center;color:#1a8052}.status-version{white-space:nowrap}.status-divider{margin:0 8px;color:#a5aca7}
+.status-counts{color:#415365}
+@media(max-width:1190px){.navigation{width:140px}.library-workspace{grid-template-columns:250px minmax(350px,1fr) 275px}.lib-title{font-size:24px}.toolbar-connect{display:none}}
+@media(max-width:920px){.library-workspace{grid-template-columns:250px minmax(360px,1fr)}.lib-right-panel{display:none}.navigation{width:130px}}
+
+/* Ícones inspirados nos antigos utilitários de desktop. */
+.lib-obs-icon{width:23px;height:28px;display:inline-block;flex:none;font-size:0!important;clip-path:polygon(46% 0,80% 18%,100% 62%,54% 100%,10% 66%,8% 25%);background:linear-gradient(112deg,#986df3 0%,#612cba 38%,#7539e8 65%,#3f1d94 100%);filter:drop-shadow(0 1px 1px #0003);border-radius:1px}
+.lib-obs-icon.small{width:17px;height:22px}
+.lib-side-card h3 .heading-icon{width:19px;height:19px;stroke:#203c53;stroke-width:2}
+.lib-side-card .lib-stat .ui-svg{width:17px;height:17px;stroke:#2a4564}
+.lib-side-card .lib-stat .ui-svg.green-icon{stroke:#138455}
+.lib-side-button .ui-svg{width:17px;height:17px;stroke:#2b4b73;stroke-width:2}
+.lib-side-button .ui-svg.action-end{width:14px;height:14px;stroke:#66758b}
+.lib-link .ui-svg{width:15px;height:15px;stroke:#3c6289;stroke-width:1.8}
+.lib-side-card .card-heading-ico{line-height:0;display:inline-flex;align-items:center}
+.lib-note-meta .lib-obs-icon{vertical-align:middle;margin-right:0}
+.lib-tree-scroll .lib-children{border-left:1px dotted #d5d9d9;margin-left:14px}
+.lib-tree-scroll .lib-directory .lib-children .lib-folder-row,.lib-tree-scroll .lib-directory .lib-children .lib-file-row{position:relative}
+.lib-tree-scroll .lib-directory .lib-children .lib-folder-row:before,.lib-tree-scroll .lib-directory .lib-children .lib-file-row:before{content:'';width:8px;border-top:1px dotted #d5d9d9;position:absolute;left:1px;top:50%}
+
+.lib-section-icon{display:inline-flex;align-items:center}
+.lib-section-icon .ui-svg{width:20px;height:20px;stroke-width:2.2}
+.lib-section-icon .section-book{stroke:#16805b}.lib-section-icon .section-file{stroke:#1789b1}.lib-section-icon .section-link{stroke:#147f9b}
+.lib-related-box ul{padding-left:2px;list-style:none;margin:2px 0}
+.lib-related-box li{display:flex;align-items:baseline;gap:4px;line-height:1.45;margin:3px 0}
+.lib-related-box li:before{content:'▤';color:#0c7ac4;font-size:15px;line-height:1;padding-right:6px}
+.lib-related-box li a:before{content:'[['}.lib-related-box li a:after{content:']]'}
+

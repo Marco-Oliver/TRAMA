@@ -1,59 +1,45 @@
-# TRAMA — local-only user data and credentials
-# These files belong to the user's computer, never to GitHub.
-
-# Obsidian vaults, knowledge records and transcripts
-TRAMA-Vault/
-*-Vault/
-Meu-Obsidian/
-Obsidian/
-.base-conhecimento/
-**/.base-conhecimento/
-**/.obsidian/
-transcricoes/
-transcrições/
-aulas-importadas/
-dados-pessoais/
-user-data/
-userdata/
-backups/
-*.sqlite
-*.sqlite3
-*.sqlite3-*
-*.db
-*.db-*
-*.db-journal
-
-# Credentials, local configuration and error logs
-.env
-.env.*
-!.env.example
-config.env
-config.local.*
-*.key
-*.pem
-*.p12
-*.pfx
-secrets.*
-credentials.*
-logs/
-*.log
-*.trace
-
-# Python, build artifacts and platform cache
+# Compilacao, instalacao e caches
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.mypy_cache/
+.buildvenv/
 .venv/
 venv/
-.buildvenv/
 build/
 dist/
 release/
 *.spec.backup
-.DS_Store
+# Dados privados (nunca versionar)
+.env
+.env.*
+!.env.example
+config.env
+config.env.*
+!config.env.example
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.log
+*.pem
+*.p12
+*.pfx
+*.key
+keys.json
+secrets.json
+credentials.json
+**/.obsidian/
+**/.base-conhecimento/
+TRAMA-Vault/
+Meu-Obsidian/
+Minhas Aulas/
+Meu Conhecimento/
+Meus Projetos/
+transcricoes/
+gravacoes/
+uploads/
+user_data/
+local_data/
 Thumbs.db
-
-# Local IDE configuration
-.vscode/
-.idea/
+.DS_Store

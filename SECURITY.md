@@ -1,10 +1,12 @@
 # Privacidade e segurança do TRAMA
 
-Este repositório publica exclusivamente código e testes fictícios.
+Este repositório contém somente o aplicativo, documentação técnica e testes fictícios.
 
-- As chaves de IA são configuradas no Windows do usuário e protegidas localmente com DPAPI.
-- Obsidian, transcrições reais, arquivos pessoais, caminhos locais e bancos SQLite ficam apenas na máquina de cada pessoa.
-- O GitHub Actions compila sem acessar nenhuma chave Gemini, Groq ou OpenRouter.
-- O aplicativo deve conferir o hash SHA-256 do instalador e pedir autorização antes de executar a atualização. Um hash não substitui assinatura digital de editor.
-- Não habilitar faturamento nem selecionar serviços pagos automaticamente.
-- Se uma chave for exposta, revogue-a no provedor e gere outra.
+- Chaves de API são informadas **pelo usuário no próprio Windows**, protegidas localmente via DPAPI.
+- O cofre Obsidian, PDFs, transcrições, prints, links privados, bancos SQLite, logs e preferências **não** são publicados aqui.
+- O compilador no GitHub Actions usa dependências públicas e **não precisa de nenhuma chave Gemini**.
+- O aplicativo não ativa faturamento; o usuário deve configurar um projeto gratuito sem billing. Serviços externos têm suas próprias políticas e cotas.
+- Testes públicos usam apenas material sintético. Não adicione dados reais de aulas sem autorização.
+- Se uma credencial tiver sido exposta, revogue-a no provedor e crie outra.
+- O instalador ainda não possui assinatura de código; o Windows pode mostrar aviso SmartScreen.
+- O arquivo SHA256SUMS.txt verifica integridade do download, mas não equivale a assinatura digital de autor.

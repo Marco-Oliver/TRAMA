@@ -1,0 +1,84 @@
+/* Biblioteca: fiel à referência aprovada, mantendo o cofre original do Obsidian. */
+.library-workspace{display:grid;grid-template-columns:300px minmax(405px,1fr) 325px;flex:1;min-width:0;min-height:0;background:#fff;font-size:12px;color:#1d2c38}
+.library-workspace button{font:inherit}
+.lib-tree-panel{background:linear-gradient(90deg,#fbfcfa,#f9faf8);border-right:1px solid #d9dedb;display:flex;flex-direction:column;min-height:0}
+.lib-tree-head{padding:18px 12px 10px 17px;display:flex;align-items:center;gap:10px}
+.lib-obs-icon{color:#744ad3;font-size:24px;font-weight:800;line-height:1}
+.lib-tree-head strong{font-size:16px;letter-spacing:-.4px;display:block;color:#162432}
+.lib-tree-head small{font-size:10px;display:block;color:#6d7a84;margin-top:2px}
+.lib-search{margin:0 13px 11px 15px;display:flex;align-items:center;gap:9px;border:1px solid #c8d1d3;border-radius:5px;background:#fff;height:36px;padding:0 10px;box-shadow:inset 0 1px 2px #00000008}
+.lib-search span{font-size:18px;color:#7f8991}
+.lib-search input{background:transparent;border:0;outline:none;min-width:0;flex:1;font-size:11px;color:#243543}
+.lib-tree-scroll{flex:1;min-height:0;overflow:auto;padding:3px 10px 16px 8px;scrollbar-color:#cbd7d1 transparent;scrollbar-width:thin}
+.lib-directory{margin:1px 0}
+.lib-folder-row,.lib-file-row{display:flex;align-items:center;text-align:left;gap:6px;height:27px;border:0;width:100%;background:transparent;border-radius:5px;color:#2c3b48;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lib-folder-row{font-weight:500}
+.lib-folder-row strong{overflow:hidden;text-overflow:ellipsis;font-weight:650}
+.lib-folder-row:hover,.lib-file-row:hover{background:#eef3ee}
+.lib-file-row{font-size:11px}
+.lib-file-row.selected{background:#d9eee1;color:#164b37}
+.lib-file-row .file-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib-chevron{width:12px;flex:none;font-size:10px;color:#425968;transition:transform .1s}
+.lib-chevron.expanded{transform:rotate(90deg)}
+.lib-folder-icon{font-size:15px;color:#d6a23c;flex:none;filter:saturate(.8)}
+.lib-folder-icon.top{color:#3c85c4;filter:none}
+.lib-file-icon{color:#4d6b8a;flex:none;font-size:13px;margin-left:2px}
+.lib-note-panel{min-width:0;min-height:0;display:flex;flex-direction:column;background:#fff;border-right:1px solid #d8dedc}
+.lib-tab-strip{height:50px;flex:none;border-bottom:1px solid #e0e5e0;background:linear-gradient(#fdfefd,#f6f8f5);display:flex;align-items:end;gap:7px;padding:0 12px}
+.lib-open-tab{height:39px;max-width:315px;display:flex;align-items:center;gap:7px;padding:0 13px;border:1px solid #d4ddd7;border-bottom:1px solid #fff;background:#fff;border-radius:7px 7px 0 0;color:#1b2b3d;font-size:11px;font-weight:650}
+.lib-tab-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib-tab-close{margin-left:8px;font-size:15px;color:#526274;border:0;background:transparent}
+.lib-tab-add{width:35px;height:35px;align-self:center;border:1px solid #d7ded8;border-radius:5px;color:#50645c;background:linear-gradient(#fcfdfa,#f0f2ef);font-size:21px}
+.lib-note-scroll{min-height:0;overflow:auto;padding:18px 21px 38px;scrollbar-width:thin;scrollbar-color:#ccd9d1 transparent}
+.lib-breadcrumb{color:#657382;font-size:11px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:17px}
+.lib-breadcrumb b{color:#a2adb0;font-size:15px;font-weight:400}
+.lib-title{font-size:27px;line-height:1.19;color:#102338;font-weight:750;letter-spacing:-.6px;margin:0 0 17px;overflow-wrap:anywhere}
+.lib-note-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:#6a7986;font-size:10.5px;margin:0 0 23px}
+.lib-note-meta .origin{color:#31765b;font-weight:650}
+.lib-note-intro{font-size:13px;line-height:1.65;margin-bottom:18px;color:#283747}
+.lib-md h1{font-size:24px;letter-spacing:-.4px;line-height:1.2;margin:22px 0 12px}
+.lib-md h2{display:flex;align-items:center;gap:9px;color:#132739;font-size:17px;margin:25px 0 12px;padding-top:7px;border-top:1px solid #e0e6e2;letter-spacing:-.2px}
+.lib-md h2:first-child{border-top:0;margin-top:0;padding-top:0}
+.lib-md h3{font-size:14px;margin:22px 0 9px;color:#2a3945}
+.lib-md p{margin:7px 0 12px;font-size:12.5px;line-height:1.68;color:#283747}
+.lib-md ul,.lib-md ol{padding-left:22px;margin:9px 0 16px}
+.lib-md li{font-size:12.4px;line-height:1.55;margin:4px 0;color:#203144}
+.lib-md code{background:#f1f4f2;color:#2d6150;font:11px Consolas,monospace;padding:2px 4px;border-radius:4px}
+.lib-md pre{background:#f5f7f6;border:1px solid #dfe7e1;padding:12px;white-space:pre;overflow:auto;border-radius:5px;margin:13px 0;font:12px Consolas,monospace;color:#263746}
+.lib-md pre code{background:transparent;padding:0}
+.lib-md a{color:#1568a8;text-decoration:none;cursor:pointer}
+.lib-md a:hover{text-decoration:underline}
+.lib-md blockquote{padding:8px 13px;background:#f3f6f5;border-left:3px solid #80ad91;margin:12px 0;color:#435b4e}
+.lib-md hr{border:0;border-top:1px solid #dfe4e0;margin:19px 0}
+.lib-summary-box{background:linear-gradient(110deg,#f0f7f0,#f5f8f5);border-radius:5px;padding:11px 14px;margin:9px 0 15px}
+.lib-summary-box>*:last-child{margin-bottom:0}
+.lib-section-icon{font-size:19px;color:#267650;line-height:1}
+.lib-related-box{background:#f3f8fa;border:1px solid #dce6ef;padding:9px 11px;border-radius:5px;margin-top:9px}
+.lib-related-box button{display:block;border:0;background:transparent;color:#176cb0;text-align:left;cursor:pointer;padding:4px;font-size:11px}
+.lib-related-box button:hover{text-decoration:underline}
+.lib-empty-message{color:#89958e;font-size:12px;padding:15px 2px}
+.lib-right-panel{background:#f9faf8;overflow-y:auto;padding:13px 10px;min-height:0;scrollbar-width:thin;scrollbar-color:#cfd6d0 transparent}
+.lib-side-card{border:1px solid #d5ded7;background:#fff;border-radius:8px;margin-bottom:10px;overflow:hidden}
+.lib-side-card h3{margin:0;height:37px;display:flex;align-items:center;gap:8px;padding:0 11px;font-size:12px;color:#1a2d3d;border-bottom:1px solid #e8ece8;background:linear-gradient(#fff,#f9faf7);font-weight:700}
+.lib-side-card h3 .card-heading-ico{font-size:17px;color:#52778b}
+.lib-side-card .side-body{padding:9px 11px 11px}
+.lib-stat{display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #f0f2ee;padding:7px 3px;font-size:11px}
+.lib-stat:last-child{border:0}
+.lib-stat .stat-label{color:#405363;display:flex;gap:7px;align-items:center;min-width:0}
+.lib-stat .stat-value{max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1d7251;font-weight:650;text-align:right}
+.lib-stat .stat-value.muted{color:#71818c;font-weight:400}
+.lib-side-button{width:100%;border:1px solid #ccd8d1;border-radius:5px;min-height:31px;padding:5px 9px;margin-bottom:6px;text-align:left;background:linear-gradient(#fff,#f8faf8);color:#243d50;font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.lib-side-button:hover{background:#f0f7f2;border-color:#a3c5ae}
+.lib-side-button:last-child{margin-bottom:0}
+.lib-side-button .action-left{display:flex;gap:8px;align-items:center}
+.lib-link{background:none;border:0;color:#1266a3;font-size:11px;text-align:left;display:flex;gap:8px;align-items:start;padding:6px 1px;line-height:1.3;width:100%;cursor:pointer}
+.lib-link:hover{text-decoration:underline}
+.lib-link span:first-child{color:#456a89}
+.lib-meta-caption{color:#637789;font-size:10px;margin-bottom:4px}
+.lib-related-label{font-size:10px;color:#677b88;margin:4px 0 6px}
+.lib-small-tabs{display:flex;height:29px;border:1px solid #ced9d1;border-radius:5px;overflow:hidden;margin:1px 0 8px}
+.lib-small-tabs button{width:50%;border:0;background:#f3f5f2;color:#66756b;font-size:10px}
+.lib-small-tabs button+button{border-left:1px solid #d4dcd5}
+.lib-small-tabs button.active{background:#579377;color:#fff;font-weight:650}
+@media(max-width:1180px){.library-workspace{grid-template-columns:255px minmax(320px,1fr) 265px}.lib-title{font-size:23px}.lib-right-panel{padding:9px 7px}.lib-tree-head strong{font-size:14px}}
+@media(max-width:920px){.library-workspace{grid-template-columns:225px minmax(330px,1fr)}.lib-right-panel{display:none}}

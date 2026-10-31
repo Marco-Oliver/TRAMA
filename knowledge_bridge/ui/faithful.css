@@ -1,0 +1,157 @@
+/* TRAMA 1.0 — reprodução do visual desktop clássico aprovado.
+   Sem fontes remotas, JS de terceiros ou arquivos externos: usa fontes do sistema.
+   Hierarquia, densidade, cores e controles inspirados na referência fornecida.
+*/
+:root{
+ --old-text:#111a30; --old-line:#c8cfcc; --old-green:#1d8050;
+ font-family:'Roboto Condensed','Arial Narrow','Bahnschrift SemiCondensed','Liberation Sans Narrow',sans-serif;
+ font-size:15px; color:var(--old-text);
+}
+html,body{background:#d6dad7}
+button,input{font-family:inherit}
+.application{background:#f9faf9;border:1px solid #919d9a;box-shadow:0 2px 10px #0003}
+.titlebar{height:63px;min-height:63px;background:linear-gradient(180deg,#fdfefd 0%,#f6f7f5 45%,#e9edeb 100%);padding:0 16px 0 15px;border-bottom:1px solid #b4c0bd;box-shadow:inset 0 1px #fff}
+.identity{gap:11px}.identity strong{font-family:inherit;font-size:24px;font-weight:800;letter-spacing:-.5px;line-height:1.04;color:#0b142a}
+.identity small{font-family:inherit;font-size:14px;color:#415166;line-height:1.17}
+.app-symbol{width:44px;height:44px;border:1px solid #185f43;border-radius:8px;background:linear-gradient(127deg,#85be96 0%,#3d9b6b 32%,#087348 80%,#045338);box-shadow:inset 0 1px 2px #efffea99,0 2px 3px #0004}
+.app-symbol svg{width:35px;height:35px;stroke:#ecfff4;stroke-width:2.1;filter:drop-shadow(0 1px 1px #054529)}
+.win-controls{right:6px}.win-controls button{width:46px;height:29px;font-size:17px;border-color:#8b9aa7;background:linear-gradient(#f9fcfd,#d5dfe5);box-shadow:inset 0 1px #fff,0 1px 2px #0002}
+.win-controls .win-close{width:55px;font-size:24px;border-color:#823d35;background:linear-gradient(#f6b3a9 0%,#e66a5c 47%,#b52c23 100%)}
+.toolbar{height:57px;min-height:57px;gap:8px;padding:0 15px;background:linear-gradient(#fdfefd,#f0f1ef 78%,#e4e7e5);border-bottom:1px solid #b7c1be;box-shadow:inset 0 1px #fff}
+.chrome-btn{height:40px;min-height:40px;padding:5px 12px;border-radius:5px;border:1px solid #aab5b4;background:linear-gradient(#fff 0%,#fbfcfb 41%,#e6eae8 100%);box-shadow:inset 0 1px #fff,0 1px 1px #0002;color:#121d32;font-family:inherit;font-size:16px;font-weight:700;display:inline-flex;align-items:center;gap:10px}
+.chrome-btn:hover{border-color:#829d90;background:linear-gradient(#fff,#ebf5ed)}
+.toolbar-icon{width:27px;height:27px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.toolbar-icon svg{height:26px;width:26px}
+.toolbar-icon.plus-tool{background:linear-gradient(#39b779,#037347);border:1px solid #13734a;border-radius:4px;font-size:23px;color:white;line-height:25px;text-shadow:0 1px #005f34;box-shadow:inset 0 1px #b2f1ca}
+.tool-separator{margin:0 9px;height:34px;background:#c2cac8}
+.search-wrap{height:40px;max-width:none;box-shadow:inset 0 1px 3px #0001;border:1px solid #aebcc1;border-radius:5px;padding:0 11px}
+.search-wrap input{font-family:inherit;font-size:15px}
+.search-wrap .ui-svg{width:18px;height:18px}
+.toolbar-connect{font-family:inherit;font-size:14px;font-weight:500;gap:8px}
+.toolbar-connect .ui-svg{width:19px;height:19px}
+.small-tool{height:40px;width:41px;border-radius:5px;border:1px solid #a7b4b4;background:linear-gradient(#fff,#e9edeb)}
+/* Compact classic left navigation */
+.navigation{width:160px;flex:none;padding:11px 7px;background:linear-gradient(90deg,#fafbfa,#f7f8f6);border-right:1px solid #ced6d2;gap:7px}
+.nav-item{height:49px;min-height:49px;padding:9px 11px;border-radius:5px;font-size:16px;font-weight:500;gap:12px;color:#1b2a44}
+.nav-item.active{background:linear-gradient(95deg,#a7d7b6,#d5ead9);color:#134e35;font-weight:700}
+.nav-ic{width:25px;height:25px;stroke:#20324f;stroke-width:2.1}
+.nav-item.active .nav-ic{stroke:#126d4c}.nav-split{margin:12px 7px 5px}
+/* Library viewport proportions reproduce the image at native 1368px width */
+.library-workspace{grid-template-columns:290px minmax(0,1fr) 333px;min-width:0;font-family:inherit;font-size:15px;color:var(--old-text)}
+.lib-tree-panel{background:linear-gradient(90deg,#fbfcfa 0%,#f9fbf9 100%);border-right:1px solid #d5dbd7}
+.lib-tree-head{min-height:64px;padding:11px 8px 8px 13px;gap:12px}
+.lib-tree-head strong{font-family:inherit;font-size:18px;letter-spacing:-.25px;color:#0d182e;font-weight:800}
+.lib-tree-head small{font-family:inherit;font-size:13px;color:#69788a;margin-top:3px}
+.lib-obs-icon{position:relative!important;width:24px;height:30px;flex:none;clip-path:polygon(46% 0%,85% 20%,100% 67%,48% 100%,5% 66%,9% 25%);background:linear-gradient(118deg,#a77aff 0%,#7b41e2 45%,#4c218e 100%);filter:drop-shadow(0 1px 1px #3d1b7a);border-radius:0}
+.lib-obs-icon:before{content:'';position:absolute;inset:0;clip-path:polygon(46% 0,52% 38%,85% 20%,100% 67%,48% 100%,52% 38%,5% 66%,9% 25%);background:linear-gradient(170deg,#b695ff 0%,#7f52d4 60%,#5124a5 100%)}
+.lib-obs-icon:after{content:'';position:absolute;inset:0;clip-path:polygon(52% 38%,85% 20%,100% 67%,48% 100%);background:linear-gradient(25deg,#51279f,#6736be)}
+.lib-obs-icon.small{height:22px;width:17px}
+.lib-search{height:37px;margin:0 8px 10px 10px;padding:0 10px;border:1px solid #b9c5c7;box-shadow:inset 0 1px 3px #0001;border-radius:5px}
+.lib-search input{font-family:inherit;font-size:14px}
+.lib-search span{font-size:19px;color:#6c7b94}
+.lib-tree-scroll{padding:0 7px 14px 6px}
+.lib-directory{margin:0}
+.lib-folder-row,.lib-file-row{height:26px;border-radius:3px;gap:5px;color:#13233f;font-family:inherit;font-size:14px;line-height:24px}
+.lib-folder-row strong{font-weight:650;letter-spacing:-.1px}
+.lib-file-row{font-size:13.5px}.lib-file-row.selected{background:#cfe9d9;color:#15462c}
+.lib-chevron{width:11px;height:16px;font-size:0}.lib-chevron::before{font-size:14px;color:#152740}
+.lib-folder-icon{width:18px;min-width:18px;height:16px}
+.lib-folder-icon::before{left:2px;top:1px;width:10px;height:6px;background:#fbd35c;border:1px solid #cf8c25}
+.lib-folder-icon::after{left:0;top:5px;width:18px;height:12px;border:1px solid #da8f1d;border-radius:2px;background:linear-gradient(#ffed9c 0%,#ffcd4d 42%,#f0a326 100%);box-shadow:inset 0 1px #fff9,0 1px 1px #0002}
+.lib-folder-icon.top::before{background:#8bc6f7;border-color:#3779b9}.lib-folder-icon.top::after{background:linear-gradient(#99dfff 0%,#4faaf5 50%,#1479d1 100%);border-color:#2571a8}
+.lib-file-icon{width:13px;min-width:13px;height:18px}
+.lib-tree-scroll .lib-children{margin-left:13px;border-left:1px dotted #d4d8d5}
+/* Reader: text has reference's taller, compressed glyphs */
+.lib-tab-strip{height:50px;padding:0 12px;gap:8px;background:linear-gradient(#fbfcfa,#f3f6f3);border-bottom:1px solid #d5dcd9}
+.lib-open-tab{height:41px;max-width:290px;border-radius:5px 5px 0 0;padding:0 11px;font-size:13.5px;font-weight:700;color:#15223b;border-color:#bcc7c5;gap:9px}
+.lib-tab-close{font-size:19px;margin-left:5px}.lib-tab-add{width:40px;height:37px;border-color:#b4c1bd;border-radius:5px;font-size:22px}
+.lib-note-scroll{padding:13px 20px 31px}
+.lib-breadcrumb{margin:0 0 18px;font-size:13.5px;line-height:1.3;gap:7px;color:#6e798e}
+.lib-breadcrumb b{font-size:18px}
+.lib-title{font-family:inherit;font-size:33px;font-weight:800;letter-spacing:-.35px;color:#0b1430;line-height:1.1;margin:0 0 15px}
+.lib-note-meta{font-size:13px;color:#566880;gap:7px;margin:0 0 20px;line-height:21px}
+.lib-note-intro{font-size:15.5px;line-height:1.44;color:#1a2b48;margin:0 0 20px}
+.lib-md h2{font-family:inherit;font-size:20px;font-weight:800;color:#111b33;letter-spacing:-.05px;margin:21px 0 11px;border-top:1px solid #cdd5d1;padding-top:8px;gap:10px}
+.lib-md h2:first-child{margin-top:0;padding-top:0;border:0}
+.lib-md h3{font-size:17px}.lib-section-icon .ui-svg{width:21px;height:21px;stroke-width:2.3}
+.lib-md p{font-size:15px;line-height:1.46;color:#1f304b;margin:7px 0 11px}
+.lib-md ul,.lib-md ol{padding-left:27px;margin:9px 0 14px}
+.lib-md li{font-size:15.5px;line-height:1.4;margin:1px 0;color:#142440}
+.lib-summary-box{padding:9px 15px;margin:7px 0 16px;border-radius:4px;background:linear-gradient(115deg,#e5f1e7,#f0f7ee)}
+.lib-related-box{padding:7px 12px;background:linear-gradient(#eaf3fa,#f0f7fc);border:1px solid #d1e2f0;border-radius:4px}
+.lib-related-box li{line-height:1.1;margin:4px 0}.lib-related-box li:before{font-size:16px}
+.lib-md a,.lib-related-box a{color:#066ad0}.lib-related-box button{font-size:14px}
+/* Right sidebar replicates the compact classic property inspector */
+.lib-right-panel{padding:10px 9px 10px 9px;background:linear-gradient(90deg,#f8faf8,#f6f8f6)}
+.lib-side-card{border:1px solid #cfd7d3;background:#fdfefd;border-radius:7px;margin-bottom:10px;box-shadow:inset 0 1px #fff}
+.lib-side-card h3{height:42px;background:linear-gradient(#fff,#f2f5f2);border-bottom:1px solid #d7ddda;color:#14233a;font-family:inherit;font-size:16px;font-weight:750;padding:0 11px;gap:9px}
+.lib-side-card h3 .card-heading-ico .ui-svg{height:21px;width:21px;stroke-width:2}
+.lib-side-card .side-body{padding:7px 10px 11px}
+.lib-stat{font-size:13.5px;padding:7px 2px;border-bottom:1px solid #e6ebe8}
+.lib-stat .stat-label{gap:8px;color:#263a53}.lib-stat .stat-value{color:#117449;max-width:135px;font-weight:750}
+.lib-stat .stat-value.muted{color:#58657c;font-weight:400}
+.lib-side-button{border:1px solid #b5c0bf;border-radius:5px;min-height:31px;padding:5px 9px;font-family:inherit;font-size:13.5px;color:#1b304b;background:linear-gradient(#fff,#eef1ef);margin:0 0 5px;box-shadow:inset 0 1px #fff,0 1px 1px #0002}
+.lib-side-button:hover{border-color:#91aea0;background:linear-gradient(#fff,#e6f0e8)}
+.lib-side-button .ui-svg.action-end{width:14px;height:14px}
+.lib-link{font-family:inherit;font-size:13.5px;color:#0765bd;padding:4px 1px;gap:8px;line-height:1.22}
+.lib-meta-caption{font-size:12px;color:#667488}.lib-small-tabs{height:29px;margin-top:1px}
+.lib-small-tabs button{font-size:13px}.lib-small-tabs button.active{background:linear-gradient(#73ae92,#348063);color:#fff}
+.statusbar{height:37px;min-height:37px;padding:0 13px;border-top:1px solid #aebbb5;background:linear-gradient(#fbfcfb,#e8edeb);font-size:12.5px;color:#4f5e73}
+.status-counts{color:#32445d}.status-center{color:#16764b}.status-version{color:#42536d}
+/* Responsive fallback: retain desktop three-pane layout until 1100px */
+@media(max-width:1230px){.navigation{width:145px}.library-workspace{grid-template-columns:255px minmax(0,1fr) 295px}.lib-title{font-size:28px}.lib-note-scroll{padding:12px 15px}.lib-right-panel{padding:8px 6px}.toolbar-connect{display:none}}
+@media(max-width:1010px){.library-workspace{grid-template-columns:235px minmax(0,1fr)}.lib-right-panel{display:none}.navigation{width:135px}}
+
+/* Final font rhythm and old-school tree spacing */
+.lib-title{font-size:35px}
+.lib-note-intro{font-size:16.5px;line-height:1.38}
+.lib-md li{font-size:15.5px;line-height:1.65;margin:2px 0}
+.lib-md p{font-size:15.5px;line-height:1.5}
+.lib-tree-scroll .lib-children{margin-left:12px}
+.lib-graph-entry{margin-top:8px}
+/* Precise spacing against the approved 1448x1086 reference crop */
+.chrome-btn:nth-of-type(1){min-width:170px}
+.chrome-btn:nth-of-type(2){min-width:166px}
+.chrome-btn:nth-of-type(3){min-width:176px}
+#btn-refresh{display:none}
+.navigation{padding-top:29px}
+.nav-split{margin-top:-5px}
+.lib-tree-head{min-height:73px}
+.lib-stat{padding:5px 2px}
+.lib-note-meta{margin-bottom:16px}
+.lib-title{margin-bottom:13px}
+
+/* Exact emblem cropped from the approved visual reference. */
+.app-symbol{width:49px;height:49px;border:0;border-radius:0;box-shadow:none;background:url(data:image/png;base64,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) center / 49px 49px no-repeat}
+.app-symbol svg{display:none}
+
+/* Keep all linked notes visible inside the approved compact window. */
+.lib-related-box{padding:5px 11px;margin-top:6px}
+.lib-related-box ul{margin:3px 0 1px;padding-left:0}
+.lib-related-box li{font-size:14.5px;line-height:1.12;margin:1px 0}
+.lib-related-box li:before{font-size:14px}
+.app-symbol{border-radius:9px;overflow:hidden}
+
+/* Regular-weight nested labels, as in classic Windows Explorer. */
+.nav-item:not(.active){font-weight:400}
+.lib-folder-row strong{font-weight:470}
+.lib-tree-scroll>.lib-directory>.lib-folder-row strong{font-weight:780}
+
+/* v1.5.2 — Uma única barra de janela: controles nativos do Windows.
+   Marca compacta na barra de ferramentas. A janela continua redimensionável
+   e móvel entre monitores; F11 permanece independente da moldura. */
+.toolbar{gap:7px}
+.toolbar-brand{display:flex;align-items:center;gap:7px;flex:none;padding-right:10px;
+  margin-right:3px;border-right:1px solid #c1cac7;height:41px;white-space:nowrap}
+.toolbar-brand .app-symbol{width:33px;height:33px;flex:none;background-size:contain;border-radius:6px}
+.toolbar-brand-name{font-family:inherit;font-weight:800;font-size:19px;letter-spacing:-.3px;color:#0b142a}
+@media(max-width:1100px){.toolbar-brand-name{display:none}.toolbar-brand{padding-right:8px;margin-right:0}}
+
+/* v1.8 — readability-first navigation, keeps classic compact appearance */
+.lib-tree-tools{padding:5px 9px;display:flex;align-items:center;gap:7px;border-bottom:1px solid #dbe4dc;font:11px 'Roboto Condensed','Segoe UI',sans-serif}
+.lib-tree-tools button{padding:5px 8px;border:1px solid #b6c9b9;border-radius:3px;background:linear-gradient(#fff,#e8f0e7);color:#216443;cursor:pointer;font:inherit;font-weight:700}
+.lib-tree-tools span{font-size:10px;color:#718678;white-space:nowrap}
+.lib-file-row.is-overview{font-weight:700;color:#215b45;background:#f1f7f1}
+.lib-file-row.is-overview.selected{background:#cde7d7}
+.lib-external-link{display:inline;border:0;background:transparent;color:#116eae;text-decoration:underline;cursor:pointer;padding:0;max-width:100%;overflow-wrap:anywhere;white-space:normal;font:inherit;text-align:left}
+.lib-external-link:hover{text-decoration-thickness:2px}

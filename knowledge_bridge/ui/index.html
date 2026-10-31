@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'">
+<title>TRAMA</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="classic.css">
+<link rel="stylesheet" href="faithful.css">
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" class="svg-sprite" aria-hidden="true">
+<symbol id="ic-home" viewBox="0 0 24 24"><path d="M3 10.3 12 3l9 7.3V21h-6v-7H9v7H3z"/></symbol>
+<symbol id="ic-video" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1.4"/><path d="m10 8 6 4-6 4z"/></symbol>
+<symbol id="ic-network" viewBox="0 0 24 24"><circle cx="12" cy="4" r="2.5"/><circle cx="4.5" cy="18" r="2.5"/><circle cx="19.5" cy="18" r="2.5"/><path d="m11 6-5 9m7-9 5 9m-11 4h10"/></symbol>
+<symbol id="ic-folder" viewBox="0 0 24 24"><path d="M2 6V4.5c0-.8.7-1.5 1.5-1.5H9l2.5 2.5H21c.6 0 1 .5 1 1V20H2z"/></symbol>
+<symbol id="ic-book" viewBox="0 0 24 24"><path d="M12 20c-3-2.5-6-2.5-9-2V4c3-.5 6-.5 9 2v14zm0 0c3-2.5 6-2.5 9-2V4c-3-.5-6-.5-9 2v14"/></symbol>
+<symbol id="ic-gear" viewBox="0 0 24 24"><path d="m10 2-.5 2.3-2.2 1L5.2 4 3 6.3l1.3 2.1-1 2.1L1 11v3l2.3.5 1 2.2L3 18.8 5.2 21l2.1-1.3 2.2 1 .5 2.3h3l.5-2.3 2.2-1L17.8 21l2.2-2.2-1.3-2.1 1-2.2L22 14v-3l-2.3-.5-1-2.1L20 6.3 17.8 4l-2.1 1.3-2.2-1L13 2z"/><circle cx="11.5" cy="12.5" r="3"/></symbol>
+<symbol id="ic-file" viewBox="0 0 24 24"><path d="M5 2h9l5 5v15H5z"/><path d="M14 2v6h5M8 12h8M8 16h8"/></symbol>
+<symbol id="ic-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m14.5 14.5 6.5 6.5"/></symbol>
+<symbol id="ic-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m7 12 3.3 3.5 6.6-7.2"/></symbol>
+<symbol id="ic-link" viewBox="0 0 24 24"><path d="M10 13.5a5 5 0 0 0 7 .2l3-3a5 5 0 0 0-7-7l-2 2M14 10.5a5 5 0 0 0-7-.2l-3 3a5 5 0 0 0 7 7l2-2"/></symbol>
+<symbol id="ic-arrow" viewBox="0 0 24 24"><path d="M14 4h6v6M10 14 20 4M20 14v6H4V4h6"/></symbol>
+<symbol id="ic-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></symbol>
+<symbol id="ic-refresh" viewBox="0 0 24 24"><path d="M20 9a8 8 0 1 0 1 5M20 3v6h-6"/></symbol>
+<symbol id="ic-star" viewBox="0 0 24 24"><path d="m12 2 3.1 6.4 7 1-5 5 .9 7.1-6-3.3-6 3.3.9-7.1-5-5 7-1z"/></symbol>
+<symbol id="ic-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></symbol>
+</svg>
+<div class="application">
+  <div class="toolbar">
+    <div class="toolbar-brand" aria-label="TRAMA — Seu conhecimento, organizado.">
+      <div class="app-symbol" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10.5 15.4 27.8 5.8l11 5.6-18.2 10.7v19L10.5 35z"/><path d="M10.5 15.4v19.5l10.1 6.2 18.2-10.5V11.4M20.6 22.1l18.2-10.7"/></svg></div>
+      <span class="toolbar-brand-name">TRAMA</span>
+    </div>
+    <button type="button" id="btn-import" class="chrome-btn"><span class="toolbar-icon plus-tool">✚</span> Importar e organizar</button>
+    <button type="button" id="btn-generate" class="chrome-btn"><span class="toolbar-icon paper-tool"><svg viewBox="0 0 24 24"><path d="M5 2h10l5 5v15H5z" fill="#e4f3e7" stroke="#087747" stroke-width="2"/><path d="M15 2v6h5M9 11h7M9 14h7M9 17h7" fill="none" stroke="#087747" stroke-width="1.8"/></svg></span> Gerar Resumos</button>
+    <button type="button" id="btn-obsidian" class="chrome-btn"><span class="toolbar-icon obsidian-tool"><svg viewBox="0 0 24 28"><path d="M11 1 20 8l3 13-12 7L1 20 3 8z" fill="#6938bd"/><path d="M11 1 12 11 3 8z" fill="#c0a4ff"/><path d="M12 11 23 21 20 8z" fill="#7f49e0"/><path d="M12 11 11 28 23 21z" fill="#4f1e9f"/><path d="M3 8 12 11 11 28 1 20z" fill="#8a51e1"/></svg></span> Abrir Obsidian</button>
+    <button type="button" id="btn-fullscreen" class="small-tool" title="Tela cheia (F11); Esc sai da tela cheia" aria-label="Alternar tela cheia">⛶</button>
+    <span class="tool-separator"></span>
+    <div class="search-wrap"><svg class="ui-svg"><use href="#ic-search"/></svg><input id="search-all" placeholder="Buscar nas notas do Obsidian..." aria-label="Buscar notas"></div>
+    <div class="toolbar-connect"><svg class="ui-svg check"><use href="#ic-check"/></svg><span id="connect-state">Selecione o cofre do Obsidian</span></div><button id="btn-refresh" class="small-tool" title="Atualizar"><svg class="ui-svg"><use href="#ic-refresh"/></svg></button>
+    <button id="btn-settings" class="small-tool" title="Configurações"><svg class="ui-svg"><use href="#ic-gear"/></svg></button>
+  </div>
+  <div class="main">
+    <nav class="navigation" aria-label="Navegação">
+      <button class="nav-item" data-view="home"><svg class="ui-svg nav-ic"><use href="#ic-home"/></svg> Início</button>
+      <button class="nav-item active" data-view="lessons"><svg class="ui-svg nav-ic"><use href="#ic-video"/></svg> Aulas</button>
+      <button class="nav-item" data-view="knowledge"><svg class="ui-svg nav-ic"><use href="#ic-network"/></svg> Conhecimento</button>
+      <button class="nav-item" data-view="projects"><svg class="ui-svg nav-ic"><use href="#ic-folder"/></svg> Projetos</button>
+      <button class="nav-item" data-view="library"><svg class="ui-svg nav-ic"><use href="#ic-book"/></svg> Biblioteca</button>
+      <div class="nav-split"></div>
+      <button class="nav-item" data-view="settings"><svg class="ui-svg nav-ic"><use href="#ic-gear"/></svg> Ajustes</button>
+
+    </nav>
+    <section class="list-panel" id="list-panel">
+      <div class="list-heading"><h2 id="list-title">Minhas Aulas</h2><button type="button" id="btn-context" title="Correção manual opcional; a importação automática é pelo botão Importar e organizar" aria-label="Registrar contexto da aula">Corrigir</button><button id="btn-list-add" title="Importar arquivo ou projeto">+</button></div>
+      <div class="list-filters"><button class="active">Todas</button><button disabled>Recentes</button><button disabled>Favoritas</button></div>
+      <div class="local-search"><span>⌕</span><input id="list-search" placeholder="Buscar aulas..."></div>
+      <div class="items-scroll" id="items"></div>
+    </section>
+    <section class="note-panel" id="note-panel">
+      <div id="note-heading"></div>
+      <div class="tabs" id="note-tabs"></div>
+      <div class="note-scroll" id="note-content"></div>
+    </section>
+    <aside class="details-panel" id="details-panel"></aside>
+    <section class="library-workspace hidden" id="library-workspace" aria-label="Biblioteca do Obsidian"></section>
+    <section class="overlay-screen hidden" id="overlay-screen"></section>
+  </div>
+  <footer class="statusbar"><span class="status-counts" id="status-counts">TRAMA v1.9</span><span class="status-center" id="status-message">Pronto para organizar seus materiais</span><span class="status-version">TRAMA v1.9 <span class="status-divider">│</span> Obsidian conectado</span></footer>
+</div>
+<dialog id="auto-dialog" class="context-dialog auto-dialog" aria-labelledby="auto-title">
+  <div class="dialog-header"><h2 id="auto-title">Preparar importação em lote</h2><button type="button" id="auto-close" aria-label="Fechar">×</button></div>
+  <p>Primeiro junte transcrições, prints, documentos e links. <strong>Nada será enviado ao Gemini ou gravado no Obsidian antes de clicar em Processar tudo.</strong></p>
+  <div id="auto-paste-zone" class="auto-paste-zone" tabindex="0" aria-label="Cole seu print aqui com Control V">
+    <strong>▧ Cole seu print aqui com Ctrl + V</strong>
+    <span>Use Win + Shift + S e depois Ctrl + V nesta área. Não precisa abrir o Paint.</span>
+  </div>
+  <div class="auto-queue-toolbar"><strong>Arquivos preparados <span id="auto-queue-count">(0/100)</span></strong>
+    <button type="button" id="auto-add-files">+ Adicionar arquivos</button><button type="button" id="auto-clear">Limpar fila</button>
+  </div>
+  <ul id="auto-queue" class="auto-queue" aria-label="Arquivos na fila"><li>Adicione arquivos ou cole um print para começar.</li></ul>
+  <label for="auto-links">Links para processar com o lote (um por linha)</label>
+  <textarea id="auto-links" rows="4" maxlength="20000" spellcheck="false" placeholder="Aula 01 | V01 - Apresentação | https://drive.google.com/file/d/...
+Aula 01 | V02 - Metodologia | https://drive.google.com/file/d/...
+https://academiadoprogramador-fullstack.github.io/docs/inicio/"></textarea>
+  <small><strong>Vários vídeos da mesma aula?</strong> Use "Aula 01 | Nome do vídeo | URL". O TRAMA mantém V01, V02 e V03 sob a Aula 01 quando as fontes confirmam. Se houver conflito, marca para revisão.</small>
+  <label class="auto-consent"><input type="checkbox" id="auto-consent"/>
+  Autorizo enviar os materiais à API gratuita configurada <strong>somente ao clicar em Processar tudo.</strong></label>
+  <div id="auto-feedback" role="status" aria-live="polite">Fila vazia. Adicione seus materiais; nada será processado ainda.</div>
+  <div class="dialog-actions"><button type="button" id="auto-start" class="auto-primary">Processar tudo</button></div>
+</dialog>
+<dialog id="classroom-dialog" class="context-dialog" aria-labelledby="context-title">
+<form id="context-form" novalidate>
+  <div class="dialog-header"><h2 id="context-title">Registrar contexto da aula</h2><button type="button" id="context-cancel" aria-label="Fechar">×</button></div>
+  <p>Guarde também aulas sem código. Os dados são registrados no seu cofre, sem enviar para a IA.</p>
+  <div class="context-fields">
+    <label>Número da aula <input name="aula" type="number" min="1" max="9999" required placeholder="1"/></label>
+    <label>Data (DD/MM/AAAA) <input name="data" placeholder="02/03/2026"/></label>
+    <label class="span2">Título publicado no Classroom <input name="titulo" maxlength="220" placeholder="Apresentação dos Professores e Turma"/></label>
+    <label class="span2">Descrição / agenda / conteúdo do post <textarea name="descricao" rows="5" maxlength="20000" placeholder="Cole o conteúdo do Classroom aqui."></textarea></label>
+    <label class="span2">Pessoas mencionadas (uma por linha, com papel quando conhecido) <textarea name="pessoas" rows="3" maxlength="4500" placeholder="Tiago Santini — professor
+Alexandre Rech — professor"></textarea></label>
+    <label class="span2">Atividades, decisões e combinações (uma por linha) <textarea name="atividades" rows="3" maxlength="6000"></textarea></label>
+    <label class="span2">Gravações: título e link (um por linha, formato: Nome | https://...) <textarea name="videos" rows="3" maxlength="10000" placeholder="A01 - V01 - Apresentação Tiago Santini | https://drive.google.com/file/d/... "></textarea></label>
+    <small class="span2">O TRAMA guarda somente o link; não baixa nem duplica vídeos. O acesso continua sujeito à sua conta do Classroom.</small>
+    <label class="span2">Links dos demais materiais (um URL http/https por linha) <textarea name="links" rows="2" maxlength="4000"></textarea></label>
+  </div>
+  <div class="dialog-actions"><span id="context-feedback" role="status"></span><button type="button" id="context-attach">Vincular prints / PDFs</button><button type="button" id="context-dismiss">Cancelar</button><button type="submit" id="context-save">Salvar no Obsidian</button></div>
+</form>
+</dialog>
+<div class="toast hidden" id="toast" role="status"></div>
+<script src="library.js"></script>
+<script src="app.js"></script>
+</body></html>
