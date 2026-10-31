@@ -39,6 +39,10 @@ class Bridge:
         self._is_maximized=False
         self._is_fullscreen=False
         self._verified_installer=None  # path + sha256 only after verified download
+        self._teacher_lock=threading.Lock()
+        self._teacher_history=[]
+        self._teacher_vault=None
+        self._teacher_requests=0
         # Fila em memória: nada é enviado nem escrito no Obsidian até Processar tudo.
         self._stage_guard=threading.RLock()
         self._queued={}
@@ -578,6 +582,61 @@ class Bridge:
         webbrowser.open(address)
         return {'ok':True}
 
+    def teacher_ask(self, question, mode="explicar", code="", confirmed=False):
+        """One consented request, read-only vault retrieval and short session memory."""
+        if confirmed is not True:
+            return {'ok': False, 'message': 'Autorize o envio dos trechos selecionados à API externa.'}
+        if not isinstance(question, str) or not isinstance(code, str) or not isinstance(mode, str):
+            return {'ok': False, 'message': 'Pergunta, modo ou código inválido.'}
+        if not self._teacher_lock.acquire(blocking=False):
+            return {'ok': False, 'message': 'O Professor já está respondendo outra pergunta.'}
+        try:
+            vault = self._vault()
+            if vault is None:
+                return {'ok': False, 'message': 'Selecione o cofre do Obsidian em Ajustes.'}
+            if self._teacher_vault != str(vault):
+                self._teacher_history = []
+                self._teacher_requests = 0
+                self._teacher_vault = str(vault)
+            if self._teacher_requests >= 24:
+                return {'ok': False, 'message':
+                        'Limite de 24 perguntas nesta sessão. Reabra o aplicativo para iniciar outra sessão.'}
+            if not self.settings.get('confirmed_free'):
+                return {'ok': False, 'message': 'Configure um provedor gratuito em Ajustes primeiro.'}
+            env = self._key_vault.get_env()
+            if not env:
+                return {'ok': False, 'message': 'Nenhuma chave Free configurada. Abra Ajustes.'}
+            env['FREE_TIER_CONFIRMED'] = 'YES'
+            env['MAX_REQUESTS_PER_RUN'] = '3'
+            router = FreeAIRouter(env)
+            from .teacher import teacher_answer
+            self._teacher_requests += 1   # Count attempted sends, including API failures.
+            result = teacher_answer(vault, question, mode, code,
+                                    self._teacher_history, router)
+            if result.get('ok'):
+                self._teacher_history.append(
+                    {'question': question[:600], 'answer': result['answer'][:1000]})
+                self._teacher_history = self._teacher_history[-5:]
+            return result
+        except (OSError, ValueError, TypeError, NoFreeProvider, BudgetStopped,
+                ProviderError, RuntimeError) as exc:
+            return {'ok': False, 'message': str(exc)[:200]}
+        except Exception:
+            # No raw model output or user content in error messages.
+            return {'ok': False, 'message': 'O Professor não conseguiu consultar as notas; tente novamente.'}
+        finally:
+            self._teacher_lock.release()
+
+    def teacher_reset(self):
+        """Clear only volatile conversation context; never touch the Obsidian."""
+        if not self._teacher_lock.acquire(blocking=False):
+            return {'ok': False, 'message': 'Aguarde a resposta em andamento.'}
+        try:
+            self._teacher_history = []
+            return {'ok': True}
+        finally:
+            self._teacher_lock.release()
+
     def ai_status(self):
         return {"configured":self._key_vault.configured(),
                 "confirmed_free":self.settings.get('confirmed_free',False),
@@ -911,6 +970,12 @@ class PublicApi:
 
     def open_update_page(self, address):
         return self._bridge.open_update_page(address)
+
+    def teacher_ask(self, question, mode="explicar", code="", confirmed=False):
+        return self._bridge.teacher_ask(question, mode, code, confirmed)
+
+    def teacher_reset(self):
+        return self._bridge.teacher_reset()
 
     def ai_status(self):
         return self._bridge.ai_status()
