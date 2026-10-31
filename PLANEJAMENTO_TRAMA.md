@@ -187,11 +187,29 @@ Essas alterações passaram em **97 testes de regressão e 10 cenários adversar
 - **Escala e desempenho:** o comportamento com um conjunto grande, na ordem de 100–200 aulas e vários repositórios, ainda precisa de medição controlada.
 - **Interface:** testes de backend e instalador não substituem testes visuais em diferentes computadores Windows.
 
+## 9.1 Melhorias do Obsidian desenvolvidas após a v1.9.0
+
+As funcionalidades abaixo estão no código da branch [`feat/obsidian-excelente-20261031`](https://github.com/Marco-Oliver/TRAMA/tree/feat/obsidian-excelente-20261031), **não no instalador público v1.9.0**:
+
+- **Guias de revisão por módulo:** páginas organizadas por aula e gravação, com resumos completos guardados na análise, exemplos relatados, dúvidas e conceitos explicados com links para as fontes. Antes, a página do módulo era predominantemente um índice com recortes curtos.
+- **Fidelidade e incerteza:** notas de conceitos e o contexto da biblioteca distinguem extrações da IA de termos literalmente encontrados na transcrição. A presença literal de um termo não é tratada como prova de ensino, atividade prática ou domínio do aluno.
+- **Explicações preservadas:** diferentes usos ou explicações do mesmo conceito em trechos distintos da gravação são mantidos durante a consolidação, em vez de apenas reter a primeira aparição.
+- **Navegação para evidências:** notas de conceitos e guias de revisão direcionam a trechos da própria nota de aula por âncoras temporais extraídas da transcrição; não afirmam que o minuto foi verificado diretamente no vídeo.
+- **Código consultável:** correspondências com repositórios GitHub públicos incluem links para a linha no commit analisado e pequenos exemplos de código nas notas de aula; repositórios locais conservam caminho e linha.
+- **Busca e links do cofre:** pesquisa de notas mais extensa e tratamento de nomes de notas duplicados sem resolver arbitrariamente a referência para outra aula.
+- **Edições manuais protegidas:** quando uma nota do estudante diverge da gerada, o TRAMA mantém a nota e publica uma proposta; propostas idênticas não precisam se multiplicar a cada reconstrução.
+
+**Limites:** resumos e classificação por módulo ainda dependem das fontes e da interpretação da IA. O Obsidian pessoal e o conteúdo real das aulas não foram utilizados nos testes automatizados. A nova geração de notas precisa de validação prática no computador do estudante antes de publicação.
+
+As melhorias de automação confiável — incluindo investigação longitudinal de dúvidas, escala, restauração/backup e upgrade de instalador — continuam pertencendo à etapa 2. A IA Professor permanece posterior.
+
 ## 10. Próximas evoluções do TRAMA
 
 As melhorias serão avaliadas nesta ordem. **Elas estão planejadas e não devem ser confundidas com o que já foi entregue.**
 
 ### 1. Obsidian excelente
+
+**Em desenvolvimento na branch indicada acima; não publicado.** Os pontos de revisão e navegação já foram implementados no código, mas exigem conferência com material real.
 
 Aperfeiçoar a qualidade, a completude, a legibilidade e a navegação das notas: aulas, módulos, conceitos, códigos, links, horários e mapa de relações. O resultado deve ser útil para revisão manual sem depender de nenhuma IA conectada.
 
