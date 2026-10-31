@@ -118,6 +118,43 @@ def _completion(provider: str, model: str, key: str, prompt: str, media: tuple[s
         raise ProviderError(provider, "resposta estruturada inválida; nada será publicado") from exc
 
 
+def _teacher_completion(provider: str, model: str, key: str, prompt: str) -> dict:
+    """Structured chat response; separate from the lesson-summary JSON contract."""
+    if provider == "gemini":
+        response = _send(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            {"contents": [{"parts": [{"text": prompt}]}],
+             "generationConfig": {"temperature": 0.3,
+                                  "responseMimeType": "application/json",
+                                  "maxOutputTokens": 3600}},
+            {"x-goog-api-key": key}, provider)
+        try:
+            body = "".join(part.get("text", "")
+                           for part in response["candidates"][0]["content"]["parts"])
+        except (KeyError, TypeError, IndexError) as exc:
+            raise ProviderError(provider, "resposta do professor vazia ou inválida") from exc
+    else:
+        url = ("https://api.groq.com/openai/v1/chat/completions" if provider == "groq"
+               else "https://openrouter.ai/api/v1/chat/completions")
+        response = _send(url,
+                         {"model": model, "messages": [{"role": "user", "content": prompt}],
+                          "temperature": 0.3, "max_tokens": 3600},
+                         {"Authorization": f"Bearer {key}"}, provider)
+        try:
+            body = response["choices"][0]["message"]["content"]
+        except (KeyError, TypeError, IndexError) as exc:
+            raise ProviderError(provider, "resposta do professor vazia ou inválida") from exc
+    if not isinstance(body, str) or len(body) > 28_000:
+        raise ProviderError(provider, "tamanho de resposta inesperado")
+    try:
+        parsed = json.loads(body.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip())
+    except (ValueError, TypeError) as exc:
+        raise ProviderError(provider, "resposta de professor fora do JSON solicitado") from exc
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("resposta"), str):
+        raise ProviderError(provider, "resposta de professor sem texto")
+    return parsed
+
+
 SYSTEM_INSTRUCTIONS = """Você documenta TODO o contexto de uma aula ou encontro, em português do Brasil.
 A aula pode ser uma apresentação, atividade, encontro organizacional ou programação; NÃO invente
 conceitos técnicos onde não foram ensinados. Seu trabalho é memória fiel com referências de fonte.
@@ -220,6 +257,25 @@ No máximo 8 relações, 5 correções e 5 novidades. Campos ausentes devem ser 
                 f"TRANSCRIÇÃO: {transcript[:10000]}\n"
                 "EVIDÊNCIAS DE CÓDIGO (JSON): " + json.dumps(evidence,ensure_ascii=False))
         return self._request(prompt)
+
+    def teach(self, prompt: str) -> AIResult:
+        """Use only consented Free-tier providers, respecting the existing cap."""
+        if not self.active():
+            raise NoFreeProvider("Configure uma chave Free sem faturamento em Ajustes.")
+        errors = []
+        for provider in self.active():
+            if self.attempts >= self.max_requests:
+                raise BudgetStopped("Limite local de chamadas atingido; não foram feitas novas requisições.")
+            model, key_var = ALLOWED[provider]
+            self.attempts += 1
+            try:
+                payload = _teacher_completion(provider, model, self.env[key_var], prompt)
+                return AIResult(payload, provider, model)
+            except ProviderError as exc:
+                self.blocked.add(provider)
+                errors.append(str(exc))
+        raise NoFreeProvider("Nenhum provedor Free respondeu: " + "; ".join(errors))
+
 
     def _request(self, prompt: str) -> AIResult:
         if not self.active():
