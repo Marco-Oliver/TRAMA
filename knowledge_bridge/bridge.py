@@ -153,7 +153,8 @@ class Bridge:
         summary=(self._section(selected.content,'Resumo da aula') or
                  self._section(selected.content,'Em poucas palavras') or
                  self._section(selected.content,'Resumo') or '')
-        concepts=(self._section(selected.content,'Conceitos ensinados (extraídos pela IA)') or
+        concepts=(self._section(selected.content,'Conceitos identificados pela IA (conferir na fonte)') or
+                  self._section(selected.content,'Conceitos ensinados (extraídos pela IA)') or
                   self._section(selected.content,'Pessoas e assuntos mencionados') or
                   self._section(selected.content,'Conceitos principais') or '')
         examples=self._section(selected.content,'Exemplos mencionados')
