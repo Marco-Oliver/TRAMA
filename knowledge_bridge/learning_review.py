@@ -49,7 +49,8 @@ def _later_evidence(question, candidate, original, later, repositories):
     if candidate:
         terms = [candidate, *CONCEPTS.get(candidate, (None, []))[1]]
         # Do not use only a doubtful phonetic spelling as independent evidence.
-        candidates = [t for t in terms if norm(t) != norm(original)]
+        candidates = [t for t in terms if norm(t) == norm(candidate) or
+                      not _contains_term(original, t)]
         for source, raw in later:
             if not any(_contains_term(raw, term) for term in candidates):
                 continue
