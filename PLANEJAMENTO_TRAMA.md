@@ -1,7 +1,7 @@
 # TRAMA — Como o sistema funciona
 
 **Estado documentado:** 31 de outubro de 2026  
-**Versão pública:** 1.9.0 (Windows)  
+**Versão pública anterior:** 1.9.0 (Windows) — **candidata consolidada:** 2.0.0, aguardando publicação  
 **Projeto:** [GitHub — TRAMA](https://github.com/Marco-Oliver/TRAMA)
 
 Este documento descreve a finalidade do TRAMA, as funcionalidades existentes, o caminho dos materiais até o Obsidian e as melhorias previstas. **Recursos disponíveis hoje e ideias futuras estão separados.**
@@ -152,13 +152,13 @@ O Obsidian precisa ser bom para **leitura humana**. A eventual consulta por Chat
 | Gerar resumos estruturados com IA opcional | **Disponível na v1.9.0**, sujeito ao provedor e à qualidade da fonte |
 | Gerar Markdown, índices, links e mapa temporal | **Disponível na v1.9.0** |
 | Consultar biblioteca e grafo na janela do TRAMA | **Disponível na v1.9.0** |
-| Comparar transcrições e evidências de código | **Disponível parcialmente**, com relações e hipóteses a conferir |
-| Guardar dúvidas apontadas na análise | **Disponível de forma simples** |
-| Reabrir automaticamente uma dúvida antiga com evidências da Aula 37 ou 50 | **Ainda não implementado como ciclo completo** |
+| Comparar transcrições e evidências de código | **Disponível**, como pistas e hipóteses que precisam de conferência |
+| Guardar dúvidas apontadas na análise | **Disponível na candidata 2.0.0**, com histórico de revisões |
+| Reabrir automaticamente uma dúvida antiga com evidências da Aula 37 ou 50 | **Implementado parcialmente na candidata 2.0.0**: detecta termos técnicos relacionados e registra pistas, sem confirmar a resolução |
 | Corrigir transcrição automaticamente por áudio/vídeo original | **Não implementado** |
 | Entrar no Classroom e baixar todas as aulas automaticamente | **Não implementado** |
 | Navegar numa árvore completa de arquivos Git como numa IDE | **Não implementado** |
-| Conversar com uma IA Professor dentro do TRAMA | **Não implementado** |
+| Conversar com uma IA Professor dentro do TRAMA | **Implementado na candidata 2.0.0** (experimental; qualidade dependente das fontes/modelo) |
 | Virar uma plataforma genérica de estudos de qualquer área | **Possibilidade distante, não é foco atual** |
 
 ## 8. O que já foi validado?
@@ -175,7 +175,7 @@ Uma branch separada, [`fix/critical-audit-20261031`](https://github.com/Marco-Ol
 2. Detectar anexos alterados mesmo quando têm o mesmo tamanho.
 3. Ampliar a ocultação de formatos comuns de credenciais em trechos de código.
 
-Essas alterações passaram em **97 testes de regressão e 10 cenários adversariais em Linux**, e os mesmos resultados em **Windows**. **Não estão incorporadas à versão pública 1.9.0.**
+As três correções estão incorporadas à candidata 2.0.0 e passaram por testes posteriores em Windows e Linux. **Permanecem fora da versão pública anterior, 1.9.0.**
 
 ## 9. Limitações conhecidas
 
@@ -187,9 +187,9 @@ Essas alterações passaram em **97 testes de regressão e 10 cenários adversar
 - **Escala e desempenho:** o comportamento com um conjunto grande, na ordem de 100–200 aulas e vários repositórios, ainda precisa de medição controlada.
 - **Interface:** testes de backend e instalador não substituem testes visuais em diferentes computadores Windows.
 
-## 9.1 Melhorias do Obsidian desenvolvidas após a v1.9.0
+## 9.1 Obsidian excelente — candidata 2.0.0
 
-As funcionalidades abaixo estão no código da branch [`feat/obsidian-excelente-20261031`](https://github.com/Marco-Oliver/TRAMA/tree/feat/obsidian-excelente-20261031), **não no instalador público v1.9.0**:
+As funcionalidades abaixo foram integradas ao código da **candidata 2.0.0**, a partir da branch de desenvolvimento anterior:
 
 - **Guias de revisão por módulo:** páginas organizadas por aula e gravação, com resumos completos guardados na análise, exemplos relatados, dúvidas e conceitos explicados com links para as fontes. Antes, a página do módulo era predominantemente um índice com recortes curtos.
 - **Fidelidade e incerteza:** notas de conceitos e o contexto da biblioteca distinguem extrações da IA de termos literalmente encontrados na transcrição. A presença literal de um termo não é tratada como prova de ensino, atividade prática ou domínio do aluno.
@@ -203,9 +203,9 @@ As funcionalidades abaixo estão no código da branch [`feat/obsidian-excelente-
 
 As melhorias de automação confiável — incluindo investigação longitudinal de dúvidas, escala, restauração/backup e upgrade de instalador — continuam pertencendo à etapa 2. A IA Professor permanece posterior.
 
-## 9.2 Automação confiável: funcionamento acrescentado após a v1.9.0
+## 9.2 Automação confiável — candidata 2.0.0
 
-As funcionalidades abaixo pertencem à branch [`feat/automacao-confiavel-20261031`](https://github.com/Marco-Oliver/TRAMA/tree/feat/automacao-confiavel-20261031), construída sobre as melhorias anteriores. **Não estão no instalador público 1.9.0.**
+As funcionalidades abaixo integram a **candidata 2.0.0**, construída sobre as melhorias anteriores. A versão 1.9.0 ainda não as inclui:
 
 ### Dúvidas antigas e novas evidências
 
@@ -249,9 +249,9 @@ python main.py restore --backup "C:\\Backups\\TRAMA_Backup.zip" --restore-to "C:
 - A restauração sempre cria uma nova pasta; **não é migração automática ou atualização do instalador**.
 - A integração e publicação de uma nova versão Windows ainda dependem da validação e do release específico.
 
-## 9.3 IA Professor — recurso experimental desenvolvido após a v1.9.0
+## 9.3 IA Professor — candidata 2.0.0 (experimental)
 
-A versão em desenvolvimento [`feat/ia-professor-20261031`](https://github.com/Marco-Oliver/TRAMA/tree/feat/ia-professor-20261031) acrescenta uma aba de **IA Professor**, separada da automação que produz notas. **Ainda não está no instalador público 1.9.0.**
+A **candidata 2.0.0** acrescenta uma aba de **IA Professor**, separada da automação que produz notas. Não está presente no instalador anterior, 1.9.0.
 
 ### O que faz
 
@@ -282,25 +282,25 @@ A versão em desenvolvimento [`feat/ia-professor-20261031`](https://github.com/M
 
 **Objetivo de aceitação:** explicar Hello World com as aulas reais, gerar desafios compatíveis com o conteúdo registrado, comentar um exercício de C# sem utilizar recursos não estudados e citar notas realmente presentes. Esses testes de qualidade pedagógica com material pessoal ainda precisam de avaliação humana.
 
-## 10. Próximas evoluções do TRAMA
+## 10. Próximas evoluções e validação prática do TRAMA
 
 As melhorias serão avaliadas nesta ordem. **Elas estão planejadas e não devem ser confundidas com o que já foi entregue.**
 
 ### 1. Obsidian excelente
 
-**Em desenvolvimento na branch indicada acima; não publicado.** Os pontos de revisão e navegação já foram implementados no código, mas exigem conferência com material real.
+**Incluída na candidata 2.0.0.** Os pontos de revisão e navegação foram implementados, mas exigem conferência com material real.
 
 Aperfeiçoar a qualidade, a completude, a legibilidade e a navegação das notas: aulas, módulos, conceitos, códigos, links, horários e mapa de relações. O resultado deve ser útil para revisão manual sem depender de nenhuma IA conectada.
 
 ### 2. Automação confiável
 
-**Implementação desenvolvida na branch acima, ainda não publicada.** Os cenários de uso real e o upgrade entre instaladores continuam pendentes.
+**Implementação incluída na candidata 2.0.0.** A validação com o cofre real do estudante ainda depende do Windows pessoal.
 
 Melhorar integridade, segurança, preservação de dados, desempenho e validação no Windows. Evoluir o cruzamento de fontes para guardar dúvidas, encontrar novas evidências em aulas posteriores e registrar revisões **sem modificar as fontes originais**.
 
-### 3. IA Professor (experimental, ainda não publicado)
+### 3. IA Professor (experimental na candidata 2.0.0)
 
-O recurso experimental de conversa, explicações, desafios e revisão de código foi implementado na branch de desenvolvimento descrita acima. Sua aceitação depende da qualidade das respostas com o cofre real e da validação da interface no Windows. A IA Professor não escreve no cofre e não substitui o processo de organização do Obsidian.
+O recurso experimental de conversa, explicações, desafios e revisão de código integra a candidata 2.0.0. Sua qualidade ainda depende de respostas com o cofre real e da avaliação visual no Windows. A IA Professor não escreve no cofre e não substitui o processo de organização do Obsidian.
 
 ### Ideias comentadas, sem desenvolvimento previsto agora
 
