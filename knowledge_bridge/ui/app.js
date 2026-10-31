@@ -136,6 +136,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     <button id="choose-vault">Selecionar pasta do Obsidian</button>
     <p>Crie uma cópia do cofre antes de migrar ou atualizar. O ZIP não é criptografado e não é enviado a um servidor.</p>
     <button id="backup-vault">Criar backup local (.zip)</button>
+    <button id="restore-vault">Restaurar backup em nova pasta</button>
     <p id="backup-message" class="setting-status" aria-live="polite">Nenhum backup iniciado.</p></div>
   <div class="setting-block"><h3>IA gratuita · chaves protegidas</h3>
     <p>Escolha uma conta Free <strong>sem faturamento</strong>. Chaves são protegidas pelo Windows (DPAPI). Modelos pagos não são selecionados.</p>
@@ -186,6 +187,14 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     button.disabled=true;status.textContent='Preparando backup verificado…';
     try{const r=await call('backup_vault',true);
       status.textContent=r?.message||'Backup não concluído.';}
+    finally{button.disabled=false;}
+  });
+  el.querySelector('#restore-vault').addEventListener('click', async()=>{
+    if(!confirm('Restaurar um backup ZIP em uma pasta NOVA? O cofre atual não será substituído.'))return;
+    const button=el.querySelector('#restore-vault'),status=el.querySelector('#backup-message');
+    button.disabled=true;status.textContent='Selecione o ZIP e a pasta onde criar o cofre restaurado…';
+    try{const r=await call('restore_vault',true);
+      status.textContent=r?.message||'Backup não restaurado.';}
     finally{button.disabled=false;}
   });
   const renderStatus=async()=>{const r=await call('ai_status');const p=el.querySelector('#ai-status');if(!p)return;
