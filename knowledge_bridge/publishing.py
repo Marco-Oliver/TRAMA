@@ -582,6 +582,17 @@ class Publisher:
 
     def rebuild(self):
         """Deriva notas e revisão incremental das fontes originais cadastradas."""
+        # Fail closed before *any* Markdown write if a cached transcript no
+        # longer agrees with the SQLite catalog. User notes stay untouched.
+        from .content import file_hash
+        for source in self.db.sources("transcript"):
+            stored = self.vault / (source["stored_path"] or "")
+            path = stored.resolve()
+            if (stored.is_symlink() or not path.is_relative_to(self.vault) or
+                    not path.is_file() or file_hash(path) != source["digest"]):
+                self.db.update_status(source["id"], "NEEDS_REVIEW")
+                raise ValueError("Fonte do cofre alterada ou ausente: " +
+                                 source["label"] + ". Reimporte o original.")
         refresh_uncertainties(self.db)
         self._atlas = make_atlas(self.db)
         concept_map = defaultdict(list)
