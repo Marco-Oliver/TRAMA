@@ -51,7 +51,7 @@ try {
     if (-not (Test-Path (Join-Path $vault '01-Meu-Conhecimento\Indice-de-Duvidas.md'))) {
         throw 'Índice de dúvidas não criado após migração de catálogo'
     }
-    python -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); assert c.execute('select count(*) from sources').fetchone()[0]>=1; assert c.execute(\"select count(*) from sqlite_master where name='uncertainties'\").fetchone()[0]==1" $catalog
+    python tools/check_upgrade_catalog.py $catalog
     if ($LASTEXITCODE -ne 0) { throw 'Banco SQLite perdeu fontes ou nova tabela' }
 
     $uninstall = Join-Path $installDir 'unins000.exe'
