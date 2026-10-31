@@ -1,0 +1,72 @@
+name: Compilar e publicar TRAMA para Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-windows
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Auditar e conferir versão
+        shell: pwsh
+        run: |
+          python tools/audit_release.py
+          $ver = python -c 'from knowledge_bridge.update_service import VERSION; print(VERSION)'
+          if ($ver -notmatch '^\d+\.\d+\.\d+$') { throw 'Versão inválida' }
+          $iss = Get-Content TRAMA_Instalador.iss -Raw
+          if (-not $iss.Contains("MyAppVersion "+[char]34+$ver+[char]34)) { throw 'Versão do instalador diverge do código' }
+          "TRAMA_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Dependências
+        run: python -m pip install --disable-pip-version-check -r requirements.txt "pyinstaller>=6.10,<7"
+      - name: Testes de regressão
+        run: python -m unittest discover -s tests -v
+      - name: Testes adversariais independentes
+        run: python qa_adversarial.py
+      - name: Identificar canal do aplicativo
+        shell: pwsh
+        run: |
+          @{github_repo='${{ github.repository }}'} | ConvertTo-Json -Compress | Set-Content -Encoding UTF8 release_channel.json
+      - name: Compilar aplicativo
+        run: python -m PyInstaller --clean --noconfirm TRAMA.spec
+      - name: Testar executável Windows
+        shell: pwsh
+        run: |
+          & .\dist\TRAMA\TRAMA.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Executável não iniciou' }
+      - name: Compilar instalador
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $compiler='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) { throw 'Inno Setup indisponível' }
+          & $compiler 'TRAMA_Instalador.iss'
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path release\TRAMA_Setup.exe)) { throw 'Instalador não gerado' }
+      - name: Hash SHA-256 do instalador
+        shell: pwsh
+        run: |
+          $hash=(Get-FileHash release\TRAMA_Setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  TRAMA_Setup.exe" | Set-Content -Encoding Ascii release\SHA256SUMS.txt
+      - name: Publicar release sem sobrescrever versão
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag="v$env:TRAMA_VERSION"
+          gh release view $tag --repo '${{ github.repository }}' *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag já existe. Atualize a versão primeiro." }
+          gh release create $tag release/TRAMA_Setup.exe release/SHA256SUMS.txt --repo '${{ github.repository }}' --target '${{ github.sha }}' --title "TRAMA $tag" --generate-notes --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Falha ao publicar release' }

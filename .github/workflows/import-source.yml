@@ -1,0 +1,43 @@
+name: Importar código-fonte auditado do TRAMA
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'TRAMA_GitHub_Source_1_9.tar.gz'
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: import-trama-source
+  cancel-in-progress: false
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validar e extrair pacote auditado
+        run: python tools/bootstrap_source.py
+      - name: Auditoria, regressão e testes adversariais
+        run: |
+          python tools/audit_release.py
+          python -m unittest discover -s tests -q
+          python qa_adversarial.py
+      - name: Publicar código no repositório
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "Sem mudanças"; exit 0; }
+          git commit -m "feat: import audited TRAMA v1.9 source"
+          git push origin HEAD:main
+      - name: Iniciar compilação Windows
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --repo "${{ github.repository }}" --ref main
