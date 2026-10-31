@@ -161,6 +161,8 @@ class QualityTests(unittest.TestCase):
         lecture = self.lesson_note().read_text(encoding="utf-8")
         project = next((self.vault / "03-Meus-Projetos").glob("*.md")).read_text(encoding="utf-8")
         self.assertIn("/blob/" + "a"*40 + "/src/app.ts#L19", lecture)
+        self.assertIn("obs.subscribe()", lecture)
+        self.assertIn("```typescript", lecture)
         self.assertIn("/blob/" + "a"*40 + "/src/app.ts#L19", project)
 
     def test_duplicate_proposal_is_not_recreated_if_earlier_one_was_edited(self):
