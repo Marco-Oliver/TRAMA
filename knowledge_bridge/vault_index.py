@@ -87,13 +87,17 @@ class VaultIndex:
         if '/' in raw:
             wanted = raw.casefold().rstrip('/') + '.md'
             matches = [x for x in choices if x.relative.casefold().endswith(wanted)]
-            if matches:
+            if len(matches) == 1:
                 return matches[0]
+            # An explicit path must never silently resolve to another note.
+            return None
         if source and choices:
             same_folder = [x for x in choices if x.path.parent == source.path.parent]
-            if same_folder:
+            if len(same_folder) == 1:
                 return same_folder[0]
-        return choices[0] if choices else None
+        # Duplicate stems can occur across lessons. Avoid pointing to an
+        # unrelated recording or overview just because it sorts first.
+        return choices[0] if len(choices) == 1 else None
 
     def related(self, source: VaultNote, max_items: int = 20) -> list[VaultNote]:
         out = []
@@ -124,7 +128,7 @@ class VaultIndex:
         prefix = prefixes.get(category, '')
         q = query.strip().casefold()
         return [n for n in self.notes if (not prefix or n.section == prefix) and
-                (not q or q in (n.title + ' ' + n.relative + ' ' + n.content[:800]).casefold())]
+                (not q or q in (n.title + ' ' + n.relative + ' ' + n.content[:40_000]).casefold())]
 
     def graph(self, cap: int = 180) -> tuple[list[VaultNote], list[tuple[int, int]]]:
         """Nós e arestas dos links reais, sem fabricar relações semânticas."""

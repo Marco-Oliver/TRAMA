@@ -11,7 +11,9 @@ errors = []
 for file in root.rglob('*'):
     if not file.is_file(): continue
     rel = file.relative_to(root)
-    if '__pycache__' in rel.parts or '.pytest_cache' in rel.parts:
+    # Git internal refs/logs are metadata, not source or release inputs.
+    # A branch named release/* must not be mistaken for a packaged folder.
+    if '.git' in rel.parts or '__pycache__' in rel.parts or '.pytest_cache' in rel.parts:
         continue
     if set(rel.parts) & forbidden_parts or file.name in invalid_names or file.suffix.lower() in forbidden_ext:
         errors.append('Arquivo local proibido: '+str(rel))

@@ -11,11 +11,13 @@ import shutil
 import tempfile
 from collections import defaultdict
 from pathlib import Path
+from urllib.parse import quote
 
 from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines
 from .store import Store
-from .memory_atlas import make_atlas, render_atlas, lesson_order
+from .memory_atlas import make_atlas, render_atlas, lesson_order, norm
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections
+from .learning_review import refresh_uncertainties, render_uncertainties
 
 
 def _escape_md(s: object) -> str:
@@ -27,6 +29,29 @@ def _frontmatter(**kwargs) -> str:
     for k,v in kwargs.items():
         out.append(f"{k}: '{str(v).replace(chr(39), chr(39)*2)}'")
     return "\n".join(out + ["---", ""])
+
+
+def _time_id(timestamp: str) -> str:
+    """Obsidian block ID for a verified timestamp from the original TXT."""
+    return "min-" + re.sub(r"[^0-9]", "-", timestamp.strip()).strip("-")
+
+
+def _term_in_source(term: str, source: str) -> bool:
+    """Literal, punctuation-aware presence; an IA interpretation isn't proof."""
+    needle = norm(term)
+    haystack = norm(source)
+    return bool(needle and re.search(r"(?<!\w)" + re.escape(needle) + r"(?!\w)", haystack))
+
+
+def _code_ref(repo, path: str, line: int) -> str:
+    """Link to the immutable GitHub revision; local repos retain path:line."""
+    location = f"{_escape_md(path)}:{line}"
+    url = str(repo["url"]).removesuffix(".git").rstrip("/")
+    sha = str(repo["sha"])
+    if re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", url) and re.fullmatch(r"[0-9a-f]{40}", sha, re.I):
+        target = f"{url}/blob/{sha}/{quote(path, safe='/')}#L{line}"
+        return f"[`{location}`]({target})"
+    return f"`{location}`"
 
 
 class Publisher:
@@ -50,10 +75,12 @@ class Publisher:
             if current == hashlib.sha256(content.encode("utf-8")).hexdigest():
                 return "unchanged"
             if current != previous:
-                conflict = path.with_name(path.stem + ".PROPOSTA.md")
-                if conflict.exists() and conflict.read_text(encoding="utf-8") == content:
+                # Avoid duplicate proposals when earlier suggestions were
+                # edited; keep every human-edited proposal intact.
+                proposals = sorted(path.parent.glob(path.stem + ".PROPOSTA*.md"))
+                if any(p.is_file() and p.read_text(encoding="utf-8") == content for p in proposals):
                     return "manual-protected"
-                # Não sobrescrever nem a proposta se ela tiver sido editada.
+                conflict = path.with_name(path.stem + ".PROPOSTA.md")
                 n = 1
                 while conflict.exists():
                     conflict = path.with_name(f"{path.stem}.PROPOSTA-{n}.md")
@@ -91,7 +118,7 @@ class Publisher:
         output = self.vault / rel
         if output.exists():
             # Uma cópia incompleta nunca pode ser tratada como importação concluída.
-            if output.stat().st_size != original.stat().st_size:
+            if output.stat().st_size != original.stat().st_size or file_hash(output) != digest:
                 raise ValueError("Cópia parcial/inconsistente detectada em anexos. Revise o arquivo antes de continuar.")
             return rel
         # Copia para arquivo temporário primeiro: se o programa fechar ou faltar
@@ -100,6 +127,10 @@ class Publisher:
         try:
             os.close(fd)
             shutil.copy2(original,tmp)
+            # The input might change while being copied. Never publish a copy
+            # that differs from the digest stored in the source catalog.
+            if file_hash(Path(tmp)) != digest:
+                raise ValueError("O arquivo de origem mudou durante a cópia. Importe novamente.")
             os.replace(tmp,output)
         finally:
             if os.path.exists(tmp):
@@ -284,7 +315,7 @@ class Publisher:
         if variant_warnings:
             rows.extend(['', '**Grafias de nomes a conferir:**', ''])
             rows.extend('- '+_escape_md(w) for w in variant_warnings)
-        rows.extend(['', '**Conceitos ensinados ou mencionados:**', ''] +
+        rows.extend(['', '**Conceitos identificados pela IA (conferir na fonte):**', ''] +
                     ([f'- {link}' for link in concept_links] if concept_links else ['*Nenhum conceito técnico comprovado nesta aula.*']))
         rows += ['', '## Evolução e relações com aulas anteriores', '',
                  '> As conexões abaixo vêm de conceitos identificados pela IA em fontes cadastradas. '
@@ -331,7 +362,7 @@ class Publisher:
                     found_code=True
                     ref=f"{slug(repo['name'])}-{repo['sha'][:7]}"
                     rows.append(f"- [[{ref}|{_escape_md(repo['name'])}]] — código relacionado por conceito; "
-                                f"ex.: `{_escape_md(matches[0]['path'])}:{matches[0]['line']}`. "
+                                f"ex.: {_code_ref(repo, matches[0]['path'], matches[0]['line'])}. "
                                 '**Possível relação; não comprova autoria nem momento da implementação.**')
             except (ValueError, KeyError, TypeError):
                 continue
@@ -413,7 +444,10 @@ class Publisher:
                             gravacao=video, estado="resumida_com_ia" if analysis else "aguardando_ia")
         body = [head, f"# {Path(src['label']).stem}", "", "## Resumo da aula"]
         if analysis:
-            body += [analysis.get("resumo", "Sem resumo."), "", "## Conceitos ensinados (extraídos pela IA)"]
+            body += [analysis.get("resumo", "Sem resumo."), "",
+                     "## Conceitos identificados pela IA (conferir na fonte)", "",
+                     "> Os nomes e explicações abaixo são interpretações da transcrição. "
+                     "Um termo mencionado não significa que foi ensinado ou dominado."]
             for c in concepts:
                 name = c.get("nome","")
                 if not name:
@@ -447,6 +481,28 @@ class Publisher:
                 if body[-1].startswith('> Extração'):
                     body.append('*Não identificado nesta aula.*')
         self._append_context(body, lesson)
+        # Source-grounded anchors make timestamps navigable without
+        # modifying the preserved transcript in 99-Anexos.
+        # Only publish anchored excerpts that help review the notes.
+        # The complete, unmodified transcript remains in 99-Anexos;
+        # copying every timed line here makes large vaults unwieldy.
+        referenced_times = {str(c.get("tempo", "")).strip()
+                            for c in concepts if isinstance(c, dict)}
+        if analysis:
+            for category in ("pessoas", "atividades", "ferramentas", "marcos"):
+                referenced_times.update(str(item.get("tempo", "")).strip()
+                    for item in analysis.get(category, [])
+                    if isinstance(item, dict))
+        referenced_times.update(t for t, _sentence in evidence_excerpt(text))
+        indexed = {}
+        for stamp, sentence in timed_lines(text):
+            if stamp in referenced_times and stamp != "sem horário" and stamp not in indexed:
+                indexed[stamp] = sentence
+        if indexed:
+            body += ["", "## Trechos da transcrição com horários verificáveis", "",
+                     "> Trechos selecionados da transcrição; os horários não foram confirmados no vídeo."]
+            for stamp, sentence in indexed.items():
+                body.append(f"- **{stamp}** — {_escape_md(sentence[:420])} ^{_time_id(stamp)}")
         body += ["", "## Fontes originais", f"- Transcrição: [[{Path(src['stored_path']).stem}]]",
                  f"- Arquivo original: `{_escape_md(src['label'])}`", "", "## Conhecimentos relacionados",
                  ", ".join(concept_links) if concept_links else "*Serão vinculados após análise com IA.*",
@@ -476,7 +532,14 @@ class Publisher:
             body.append(f"### [[{project_ref}|{_escape_md(repo['name'])}]]")
             body.append("*Conexão sugerida por conceito mencionado + código encontrado; não prova autoria nem que foi programado nesta aula.*")
             for e in matched:
-                body.append(f"- `{e['concept']}` — `{_escape_md(e['path'])}:{e['line']}` no commit `{repo['sha'][:10]}`")
+                body.append(f"- `{e['concept']}` — {_code_ref(repo, e['path'], e['line'])} no commit `{repo['sha'][:10]}`")
+                snippet = str(e.get("snippet", "")).strip()
+                if snippet:
+                    ext = Path(e["path"]).suffix.lower()
+                    language = {".cs": "csharp", ".ts": "typescript", ".tsx": "tsx",
+                                ".js": "javascript", ".jsx": "jsx", ".py": "python",
+                                ".sql": "sql"}.get(ext, "text")
+                    body.extend(["", f"```{language}", snippet.replace("```", "` ` `"), "```", ""])
             project_matches.append((repo, payload))
         if not project_matches:
             body.append("*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
@@ -490,14 +553,14 @@ class Publisher:
                      "> Interpretação assistida por IA, não confirmação de autoria, domínio nem data exata da implementação."]
             for item in result.get('relacoes',[]):
                 body.append(f"- **{_escape_md(item['conceito'])}** ({item['tempo'] or 'sem minuto'}): "
-                            f"{_escape_md(item['evolucao'])} — `{_escape_md(item['path'])}:{item['line']}` "
+                            f"{_escape_md(item['evolucao'])} — {_code_ref(repo, item['path'], item['line'])} "
                             f"**[{item['status']}]**")
             for item in result.get('novidades',[]):
                 body.append(f"- **Possível novidade — {_escape_md(item['conceito'])}:** "
                             f"{_escape_md(item['explicacao'])} ({item['tempo'] or 'sem minuto'})")
             for item in result.get('correcoes',[]):
                 body.append(f"- **Possível erro de transcrição:** `{_escape_md(item['ouvido'])}` → "
-                            f"`{_escape_md(item['sugestao'])}` — `{_escape_md(item['path'])}:{item['line']}` "
+                            f"`{_escape_md(item['sugestao'])}` — {_code_ref(repo, item['path'], item['line'])} "
                             f"**[{item['status']}]**")
         if not validated_any:
             body.append('*Ainda sem comparação pela IA; relações acima são pistas verificadas de texto e código.*')
@@ -510,7 +573,7 @@ class Publisher:
                     continue
                 suggested.append(key)
                 body.append(f"- **HIPÓTESE, não correção automática:** `{_escape_md(hint['heard'])}` pode corresponder a "
-                            f"`{hint['candidate']}`, encontrado em `{_escape_md(hint['path'])}:{hint['line']}` "
+                            f"`{hint['candidate']}`, encontrado em {_code_ref(repo, hint['path'], hint['line'])} "
                             f"({repo['name']}); confira o vídeo antes de confirmar.")
         if not suggested:
             body.append("*Nenhuma correção fundamentada encontrada.*")
@@ -518,7 +581,19 @@ class Publisher:
         return rel, concepts, modules
 
     def rebuild(self):
-        """Deriva índices/notas consolidadas apenas de análises de fontes guardadas."""
+        """Deriva notas e revisão incremental das fontes originais cadastradas."""
+        # Fail closed before *any* Markdown write if a cached transcript no
+        # longer agrees with the SQLite catalog. User notes stay untouched.
+        from .content import file_hash
+        for source in self.db.sources("transcript"):
+            stored = self.vault / (source["stored_path"] or "")
+            path = stored.resolve()
+            if (stored.is_symlink() or not path.is_relative_to(self.vault) or
+                    not path.is_file() or file_hash(path) != source["digest"]):
+                self.db.update_status(source["id"], "NEEDS_REVIEW")
+                raise ValueError("Fonte do cofre alterada ou ausente: " +
+                                 source["label"] + ". Reimporte o original.")
+        refresh_uncertainties(self.db)
         self._atlas = make_atlas(self.db)
         concept_map = defaultdict(list)
         module_map = defaultdict(list)
@@ -626,7 +701,7 @@ class Publisher:
                 ext = Path(e["path"]).suffix.lower()
                 lang = {".cs":"csharp", ".ts":"typescript", ".tsx":"tsx", ".js":"javascript",
                         ".jsx":"jsx", ".py":"python", ".sql":"sql"}.get(ext,"text")
-                body += [f"### `{e['concept']}` — `{_escape_md(e['path'])}:{e['line']}`", "",
+                body += [f"### `{e['concept']}` — {_code_ref(repo, e['path'], e['line'])}", "",
                          f"```{lang}", e["snippet"].replace("```","` ` `"), "```", ""]
             if not payload.get("evidence"):
                 body.append("*Nenhum símbolo da lista rastreada encontrado.*")
@@ -646,59 +721,159 @@ class Publisher:
                      "- Compare o código com as aulas vinculadas. Se houver divergência, consulte a transcrição e o vídeo.",
                      "- Para atribuir prática pessoal ou domínio, adicione confirmação ou evidência de atividade individual."]
             self.write(rel,"\n".join(body)+"\n")
+        # Concept pages never certify that an AI interpretation was taught.
+        # They retain all distinct explanations across chunks and show
+        # whether the literal technical term appears in the preserved source.
         for cslug, entries in concept_map.items():
             name = entries[0][0]
-            body = [_frontmatter(tipo="conceito", fontes=len(entries), estado="ensinado_na_transcricao"),
-                    f"# {name}", "", "## Síntese do que aparece nas aulas"]
-            for _,src,note,c in entries:
-                body.append(f"- {_escape_md(c.get('explicacao',''))} — [[{Path(note).stem}|{src['label']}]]" +
-                            (f" ({c['tempo']})" if c.get("tempo") else ""))
-            body += ["", "## Evidências e prática", "- **Ensinado:** encontrado nas aulas citadas acima.",
-                     "- **Praticado:** requer evidência de autoria/atividade; código isolado não basta.",
-                     "- **Domínio:** não confirmado automaticamente.", "", "## Projetos relacionados"]
-            for repo,payload in repo_info:
-                matches = [e for e in payload.get("evidence",[]) if e["concept"].casefold() == name.strip().casefold()]
+            observed = []
+            for _, src, note, concept in entries:
+                original = (self.vault / src["stored_path"]).read_text(
+                    encoding="utf-8-sig", errors="replace")
+                observed.append(_term_in_source(name, original))
+            state = "termo_encontrado_na_fonte" if any(observed) else "interpretacao_ia_sem_termo_literal"
+            body = [_frontmatter(tipo="conceito", fontes=len(entries), estado=state),
+                    f"# {_escape_md(name)}", "",
+                    "> Conceito identificado por IA. Um termo literal na transcrição "
+                    "não confirma sozinho que houve explicação, prática ou domínio.",
+                    "", "## Explicações e referências das aulas", ""]
+            for (_, src, note, concept), literal in zip(entries, observed):
+                raw = (self.vault / src["stored_path"]).read_text(
+                    encoding="utf-8-sig", errors="replace")
+                valid_times = {t for t, _ in timed_lines(raw) if t != "sem horário"}
+                stamp = str(concept.get("tempo", "")).strip()
+                where = f"[[{Path(note).with_suffix('').as_posix()}|{_escape_md(src['label'])}]]"
+                timestamp_link = (f" · [[{Path(note).with_suffix('').as_posix()}#^{_time_id(stamp)}|{stamp}]]"
+                                  if stamp in valid_times else " · horário não localizado")
+                evidence_status = ("termo encontrado literalmente na transcrição"
+                                   if literal else "interpretação da IA; termo não encontrado literalmente")
+                body.append(f"- **{_escape_md(concept.get('explicacao', ''))}** — {where}"
+                            f"{timestamp_link} · *{evidence_status}*.")
+            body += ["", "## Evidências e aprendizagem", "",
+                     "- **Mencionado:** confira a fala original antes de considerar o conceito confirmado.",
+                     "- **Ensinado:** requer explicação verificável na fonte; termo citado não basta.",
+                     "- **Praticado:** requer exercício/atividade com evidência.",
+                     "- **Domínio do aluno:** não é deduzido automaticamente.",
+                     "", "## Projetos relacionados", ""]
+            for repo, payload in repo_info:
+                matches = [e for e in payload.get("evidence",[])
+                           if norm(e["concept"]) == norm(name)]
                 if matches:
                     first = matches[0]
-                    body.append(f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{repo['name']}]]: "
-                                f"`{first['path']}:{first['line']}` — código presente; autoria individual e contexto histórico não confirmados")
+                    body.append(f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{_escape_md(repo['name'])}]]: "
+                                f"{_code_ref(repo, first['path'], first['line'])} — "
+                                "código existente, sem atribuição automática de autoria.")
             if body[-1] == "## Projetos relacionados":
-                body.append("*Nenhum vínculo verificado.*")
-            self.write(f"01-Meu-Conhecimento/Conceitos/{cslug}.md", "\n".join(body)+"\n")
+                body.append("*Nenhum vínculo de código encontrado no índice.*")
+            self.write(f"01-Meu-Conhecimento/Conceitos/{cslug}.md",
+                       "\n".join(body) + "\n")
+
+        # A module page is a readable review guide, not a 260-character index.
+        # All source summaries are retained; interpretation remains attributed.
         for module, entries in module_map.items():
-            body = [_frontmatter(tipo="modulo", fontes=len(entries)), f"# {module.replace('-', ' ')}", "",
-                    "## Aulas e evidências"]
-            for src,note,analysis in entries:
-                body.append(f"- [[{Path(note).stem}|{src['label']}]] — " +
-                            (_escape_md(analysis.get('resumo',''))[:260] if analysis else "aguardando análise por IA"))
-            body += ["", "## Conceitos associados"]
-            for cslug, concepts in concept_map.items():
-                if any(src["id"] in [e[1]["id"] for e in concepts] for src,_,_ in entries):
-                    body.append(f"- [[{cslug}|{_escape_md(concepts[0][0])}]]")
-            body += ["", "## Projetos e documentação relacionados"]
-            project_found=False
-            for repo,payload in repo_info:
-                # Supporting docs in the repository can be imported before lecture material.
-                docs=[d for d in payload.get('documentation',[]) if module in guess_modules(d['path']+' '+d['excerpt'])]
-                if not docs:continue
-                project_found=True
-                body.append(f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{repo['name']}]] — "
-                            + ", ".join('`'+_escape_md(d['path'])+'`' for d in docs[:4])
-                            + "; documentação do projeto, não necessariamente conteúdo ensinado em aula")
+            by_lesson = defaultdict(list)
+            for src, note, analysis in entries:
+                by_lesson[src["lesson"] or "Aulas-Sem-Numero"].append((src, note, analysis))
+            body = [_frontmatter(tipo="modulo", fontes=len(entries),
+                                 estado="sintese_de_fontes_nao_revisada"),
+                    f"# {module.replace('-', ' ')}", "",
+                    "> Guia de revisão gerado a partir das fontes analisadas. "
+                    "A classificação do módulo é automática por palavras-chave; "
+                    "confira se cada aula realmente pertence a ele. "
+                    "As explicações abaixo vêm de análises por IA e precisam de conferência com o professor.",
+                    "", "## Percurso das aulas", ""]
+            for lesson in sorted(by_lesson, key=lesson_order):
+                recordings = sorted(by_lesson[lesson],
+                                    key=lambda item: (item[0]["video"] or "", item[0]["label"]))
+                if lesson != "Aulas-Sem-Numero":
+                    body.append(f"### [[02-Minhas-Aulas/{lesson}/00-Visao-geral|{lesson}]]")
+                else:
+                    body.append("### Aulas ainda sem número identificado")
+                body.append("")
+                for src, note, analysis in recordings:
+                    link = Path(note).with_suffix("").as_posix()
+                    body.append(f"#### [[{link}|{_escape_md(src['label'])}]]")
+                    if not analysis:
+                        body.extend(["", "*Transcrição importada; resumo pendente de IA.*", ""])
+                        continue
+                    summary = str(analysis.get("resumo", "")).strip()
+                    body.extend(["", summary if summary else "*Resumo pendente.*", ""])
+                    examples = analysis.get("exemplos", [])
+                    if examples:
+                        body.extend(["**Exemplos relatados na aula:**", ""])
+                        for example in examples:
+                            body.append(f"- {_escape_md(example)}")
+                    doubts = analysis.get("duvidas", [])
+                    if doubts:
+                        body.extend(["", "**Passagens a conferir:**", ""])
+                        for doubt in doubts:
+                            body.append(f"- {_escape_md(doubt)}")
+                    body.append("")
+            body += ["", "## Conceitos e explicações encontrados nas fontes", "",
+                     "> Termos e explicações extraídos pela IA, não certificação de que foram ensinados.", ""]
+            seen = set()
+            for src, note, analysis in entries:
+                if not analysis:
+                    continue
+                raw = (self.vault / src["stored_path"]).read_text(
+                    encoding="utf-8-sig", errors="replace")
+                valid_times = {t for t, _ in timed_lines(raw) if t != "sem horário"}
+                for concept in analysis.get("conceitos", []):
+                    name = str(concept.get("nome", "")).strip()
+                    if not name:
+                        continue
+                    explanation = str(concept.get("explicacao", "")).strip()
+                    stamp = str(concept.get("tempo", "")).strip()
+                    key = (src["id"], concept_slug(name), stamp, explanation.casefold())
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    note_path = Path(note).with_suffix("").as_posix()
+                    where = (f"[[{note_path}#^{_time_id(stamp)}|{src['lesson']} · {stamp}]]"
+                             if stamp in valid_times else
+                             f"[[{note_path}|{src['lesson'] or src['label']}]]")
+                    literal = "termo literal presente" if _term_in_source(name, raw) else "termo inferido pela IA"
+                    body.append(f"- **[[{concept_slug(name)}|{_escape_md(name)}]]**: "
+                                f"{_escape_md(explanation)} — {where} ({literal}).")
+            if not seen:
+                body.append("*Nenhum conceito extraído ainda; o resumo por gravação permanece disponível.*")
+            body += ["", "## Projetos e documentação relacionados", ""]
+            project_found = False
+            for repo, payload in repo_info:
+                docs = [d for d in payload.get("documentation", [])
+                        if module in guess_modules(d["path"] + " " + d["excerpt"])]
+                if not docs:
+                    continue
+                project_found = True
+                body.append(f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{_escape_md(repo['name'])}]] — "
+                            + ", ".join(f"`{_escape_md(d['path'])}`" for d in docs[:4])
+                            + "; documentação existente no repositório, não necessariamente conteúdo da aula")
             if not project_found:
-                body.append('*Nenhuma documentação de repositório classificada neste módulo.*')
-            self.write(f"01-Meu-Conhecimento/Modulos/{module}.md", "\n".join(body)+"\n")
+                body.append("*Nenhuma documentação de repositório associada a este módulo.*")
+            body += ["", "## Como revisar", "",
+                     "1. Leia o resumo de cada gravação e abra a nota para ver as fontes.",
+                     "2. Compare conceitos e exemplos com os trechos de transcrição e o código.",
+                     "3. Registre dúvidas em suas notas pessoais; este índice não altera fontes originais."]
+            self.write(f"01-Meu-Conhecimento/Modulos/{module}.md",
+                       "\n".join(body) + "\n")
         # Uma linha do tempo única e auditável, produzida a partir das mesmas
         # fontes do Obsidian; não consome requisições nem deduz domínio.
         atlas = self._atlas
         self.write("01-Meu-Conhecimento/Mapa-da-Evolucao.md", render_atlas(atlas))
+        doubts_index, doubts_notes = render_uncertainties(self.db)
+        for relative, note_text in doubts_notes:
+            self.write(relative, note_text)
+        self.write("01-Meu-Conhecimento/Indice-de-Duvidas.md", doubts_index)
         context = ["# MEU_CONTEXTO — Guia para IA", "",
                    "> Este documento resume **o que foi abordado nos materiais**, não comprova domínio pessoal.",
                    "> Use as notas vinculadas como evidência antes de recomendar recursos de programação.", "",
                    "## Módulos vistos nos materiais", "", "- [[Mapa-da-Evolucao|Mapa de evolução com horários e código]]"]
         context += [f"- [[{m}|{m.replace('-', ' ')}]]: {len(entries)} fonte(s)" for m,entries in module_map.items()]
-        context += ["", "## Conceitos encontrados"]
-        context += [f"- [[{k}|{_escape_md(v[0][0])}]] — ensinado; domínio a verificar" for k,v in sorted(concept_map.items())]
+        context += ["", "## Dúvidas e interpretações pendentes",
+                    "- [[Indice-de-Duvidas|Índice rastreável de dúvidas e evidências posteriores]]",
+                    "> Evidências posteriores são pistas, nunca correções confirmadas automaticamente.",
+                    "", "## Conceitos encontrados"]
+        context += [f"- [[{k}|{_escape_md(v[0][0])}]] — identificado pela IA; confirmar na fonte" for k,v in sorted(concept_map.items())]
         context += ["", "## Evolução: antes na aula, agora no código"]
         for repo,payload in repo_info:
             matches=[]
@@ -727,7 +902,8 @@ class Publisher:
                     "- Para quebra-cucas, oriente em pequenas etapas e evite solução completa sem pedido."]
         self.write("00-Inicio/MEU_CONTEXTO.md", "\n".join(context)+"\n")
         index = ["# Minha Biblioteca", "", "## Comece aqui", "- [[MEU_CONTEXTO]] — contexto para IAs", "",
-                 "## Conhecimentos", "- [[Mapa-da-Evolucao|Mapa de evolução do aprendizado]]"]
+                 "## Conhecimentos", "- [[Mapa-da-Evolucao|Mapa de evolução do aprendizado]]",
+                 "- [[Indice-de-Duvidas|Dúvidas e referências para revisão]]"]
         index += [f"- [[{module}|{module.replace('-', ' ')}]]" for module in module_map]
         index += ["", "## Aulas — abra a visão geral para reunir V01, V02 e demais materiais"]
         index += [f"- [[02-Minhas-Aulas/{lesson}/00-Visao-geral|{lesson} — visão geral]]" for lesson in all_lessons]

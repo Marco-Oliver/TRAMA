@@ -28,11 +28,13 @@ class DistributionContractTests(unittest.TestCase):
         for marker in ('--self-test', 'unins000.exe', 'ci-retention-sentinel.txt', 'Start-Process'):
             self.assertIn(marker, smoke)
 
-    def test_readme_has_real_screenshots_and_no_published_release_claim(self):
+    def test_readme_has_real_screenshots_and_official_download_link(self):
         readme = (ROOT / 'README.md').read_text(encoding='utf-8')
         for name in ('mapa-evolucao.png','biblioteca.png'):
             self.assertIn('docs/screenshots/' + name, readme)
             self.assertGreater((ROOT / 'docs/screenshots' / name).stat().st_size, 10000)
-        self.assertIn('só estará disponível', readme)
+        self.assertIn('releases/latest/download/TRAMA_Setup.exe', readme)
+        self.assertIn('a versão 1.9.0 já foi publicada', readme)
+        self.assertNotIn('primeira publicação do GitHub Actions', readme)
 
 if __name__ == '__main__': unittest.main()

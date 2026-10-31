@@ -1,7 +1,7 @@
 # TRAMA — Como o sistema funciona
 
 **Estado documentado:** 31 de outubro de 2026  
-**Versão pública:** 1.9.0 (Windows)  
+**Versão pública anterior:** 1.9.0 (Windows) — **candidata consolidada:** 2.0.0, aguardando publicação  
 **Projeto:** [GitHub — TRAMA](https://github.com/Marco-Oliver/TRAMA)
 
 Este documento descreve a finalidade do TRAMA, as funcionalidades existentes, o caminho dos materiais até o Obsidian e as melhorias previstas. **Recursos disponíveis hoje e ideias futuras estão separados.**
@@ -152,13 +152,13 @@ O Obsidian precisa ser bom para **leitura humana**. A eventual consulta por Chat
 | Gerar resumos estruturados com IA opcional | **Disponível na v1.9.0**, sujeito ao provedor e à qualidade da fonte |
 | Gerar Markdown, índices, links e mapa temporal | **Disponível na v1.9.0** |
 | Consultar biblioteca e grafo na janela do TRAMA | **Disponível na v1.9.0** |
-| Comparar transcrições e evidências de código | **Disponível parcialmente**, com relações e hipóteses a conferir |
-| Guardar dúvidas apontadas na análise | **Disponível de forma simples** |
-| Reabrir automaticamente uma dúvida antiga com evidências da Aula 37 ou 50 | **Ainda não implementado como ciclo completo** |
+| Comparar transcrições e evidências de código | **Disponível**, como pistas e hipóteses que precisam de conferência |
+| Guardar dúvidas apontadas na análise | **Disponível na candidata 2.0.0**, com histórico de revisões |
+| Reabrir automaticamente uma dúvida antiga com evidências da Aula 37 ou 50 | **Implementado parcialmente na candidata 2.0.0**: detecta termos técnicos relacionados e registra pistas, sem confirmar a resolução |
 | Corrigir transcrição automaticamente por áudio/vídeo original | **Não implementado** |
 | Entrar no Classroom e baixar todas as aulas automaticamente | **Não implementado** |
 | Navegar numa árvore completa de arquivos Git como numa IDE | **Não implementado** |
-| Conversar com uma IA Professor dentro do TRAMA | **Não implementado** |
+| Conversar com uma IA Professor dentro do TRAMA | **Implementado na candidata 2.0.0** (experimental; qualidade dependente das fontes/modelo) |
 | Virar uma plataforma genérica de estudos de qualquer área | **Possibilidade distante, não é foco atual** |
 
 ## 8. O que já foi validado?
@@ -175,7 +175,7 @@ Uma branch separada, [`fix/critical-audit-20261031`](https://github.com/Marco-Ol
 2. Detectar anexos alterados mesmo quando têm o mesmo tamanho.
 3. Ampliar a ocultação de formatos comuns de credenciais em trechos de código.
 
-Essas alterações passaram em **97 testes de regressão e 10 cenários adversariais em Linux**, e os mesmos resultados em **Windows**. **Não estão incorporadas à versão pública 1.9.0.**
+As três correções estão incorporadas à candidata 2.0.0 e passaram por testes posteriores em Windows e Linux. **Permanecem fora da versão pública anterior, 1.9.0.**
 
 ## 9. Limitações conhecidas
 
@@ -187,21 +187,120 @@ Essas alterações passaram em **97 testes de regressão e 10 cenários adversar
 - **Escala e desempenho:** o comportamento com um conjunto grande, na ordem de 100–200 aulas e vários repositórios, ainda precisa de medição controlada.
 - **Interface:** testes de backend e instalador não substituem testes visuais em diferentes computadores Windows.
 
-## 10. Próximas evoluções do TRAMA
+## 9.1 Obsidian excelente — candidata 2.0.0
+
+As funcionalidades abaixo foram integradas ao código da **candidata 2.0.0**, a partir da branch de desenvolvimento anterior:
+
+- **Guias de revisão por módulo:** páginas organizadas por aula e gravação, com resumos completos guardados na análise, exemplos relatados, dúvidas e conceitos explicados com links para as fontes. Antes, a página do módulo era predominantemente um índice com recortes curtos.
+- **Fidelidade e incerteza:** notas de conceitos e o contexto da biblioteca distinguem extrações da IA de termos literalmente encontrados na transcrição. A presença literal de um termo não é tratada como prova de ensino, atividade prática ou domínio do aluno.
+- **Explicações preservadas:** diferentes usos ou explicações do mesmo conceito em trechos distintos da gravação são mantidos durante a consolidação, em vez de apenas reter a primeira aparição.
+- **Navegação para evidências:** notas de conceitos e guias de revisão direcionam a trechos da própria nota de aula por âncoras temporais extraídas da transcrição; não afirmam que o minuto foi verificado diretamente no vídeo.
+- **Código consultável:** correspondências com repositórios GitHub públicos incluem links para a linha no commit analisado e pequenos exemplos de código nas notas de aula; repositórios locais conservam caminho e linha.
+- **Busca e links do cofre:** pesquisa de notas mais extensa e tratamento de nomes de notas duplicados sem resolver arbitrariamente a referência para outra aula.
+- **Edições manuais protegidas:** quando uma nota do estudante diverge da gerada, o TRAMA mantém a nota e publica uma proposta; propostas idênticas não precisam se multiplicar a cada reconstrução.
+
+**Limites:** resumos e classificação por módulo ainda dependem das fontes e da interpretação da IA. O Obsidian pessoal e o conteúdo real das aulas não foram utilizados nos testes automatizados. A nova geração de notas precisa de validação prática no computador do estudante antes de publicação.
+
+As melhorias de automação confiável — incluindo investigação longitudinal de dúvidas, escala, restauração/backup e upgrade de instalador — continuam pertencendo à etapa 2. A IA Professor permanece posterior.
+
+## 9.2 Automação confiável — candidata 2.0.0
+
+As funcionalidades abaixo integram a **candidata 2.0.0**, construída sobre as melhorias anteriores. A versão 1.9.0 ainda não as inclui:
+
+### Dúvidas antigas e novas evidências
+
+- Dúvidas apontadas na análise são guardadas separadamente no banco SQLite, com status, origem, hash da transcrição e histórico de revisões.
+- Quando uma gravação posterior cita um termo técnico reconhecido ou o índice do repositório contém código relacionado, o sistema adiciona a **evidência identificada** à dúvida anterior.
+- A dúvida muda para **nova evidência para revisar**, e não para resolvida. Repetir o mesmo termo mal transcrito não é considerado nova comprovação; o objetivo é facilitar a investigação.
+- Cada atualização significativa conserva um registro próprio, com o estado anterior e as fontes presentes naquela revisão. Reconstruir o cofre repetidamente sem novas evidências não deve gerar histórico duplicado.
+- O Obsidian recebe um **Índice de Dúvidas** e páginas individuais com fonte original, termo candidato quando identificável, evidências posteriores e histórico. São notas auxiliares, sem alteração das transcrições.
+- Quando uma dúvida desaparece após nova análise, o registro antigo é arquivado, não apagado.
+
+**Limitação importante:** a identificação automática de termos depende de um vocabulário técnico limitado e de menções verificáveis. Questões sem correspondência suficiente continuam pendentes; não existe garantia de resolução semântica e não há verificação automática do áudio original.
+
+### Integridade, processamento e recuperação
+
+- A integridade das transcrições guardadas no cofre é verificada por SHA-256 antes do processamento, inclusive quando existe análise em cache. Se um arquivo estiver corrompido ou alterado, o TRAMA interrompe a operação e pede revisão, sem enviar a fonte modificada à IA.
+- A reconstrução automática de Markdown também verifica as transcrições antes de modificar notas.
+- Trechos já analisados permanecem salvos no SQLite; uma interrupção por cota permite continuar sem repetir os trechos concluídos, quando o contexto das fontes não mudou.
+- A geração global do Markdown é realizada após a análise do lote, evitando reconstruções repetitivas para cada gravação. As análises e estados continuam persistidos progressivamente.
+- As três correções críticas de integridade, distinção entre linguagens e ocultação de credenciais permanecem incluídas por herança da branch anterior.
+
+### Backup e restauração
+
+- Em **Ajustes**, o usuário pode autorizar a criação de um **ZIP local verificado**, contendo as notas Markdown, anexos e uma cópia consistente do banco SQLite, inclusive configurações locais do Obsidian quando presentes no cofre.
+- O sistema gera um manifesto com tamanhos e hashes SHA-256 dos arquivos; verifica que não houve alteração durante a cópia. Um backup pré-existente não deve ser sobrescrito.
+- Em **Ajustes**, também é possível **Restaurar backup em uma pasta nova**, selecionando o ZIP e a pasta que receberá o cofre restaurado. O arquivo é verificado e restaurado primeiro em área temporária; o cofre ativo não é substituído.
+- Backup e restauração também têm comandos de linha de comando, úteis para manutenção. A restauração exige uma pasta nova, nunca um cofre existente.
+- **Os backups não são criptografados e não são enviados ao GitHub**; a pessoa precisa guardá-los em local privado.
+
+Comandos disponíveis para uso técnico:
+
+```powershell
+python main.py backup --vault "C:\\Meu-Obsidian" --backup "C:\\Backups\\TRAMA_Backup.zip"
+python main.py restore --backup "C:\\Backups\\TRAMA_Backup.zip" --restore-to "C:\\Meu-Obsidian-Restaurado"
+```
+
+### O que estes avanços não significam
+
+- A IA não confirma sozinha que o professor realmente falou um termo.
+- A biblioteca pode continuar contendo classificações por módulo baseadas em palavras-chave, sujeitas a revisão.
+- Testes com acervos fictícios não provam desempenho nem fidelidade do conteúdo real no computador pessoal.
+- A restauração sempre cria uma nova pasta; **não é migração automática ou atualização do instalador**.
+- A integração e publicação de uma nova versão Windows ainda dependem da validação e do release específico.
+
+## 9.3 IA Professor — candidata 2.0.0 (experimental)
+
+A **candidata 2.0.0** acrescenta uma aba de **IA Professor**, separada da automação que produz notas. Não está presente no instalador anterior, 1.9.0.
+
+### O que faz
+
+- **Explicar e revisar:** o aluno pergunta sobre um conteúdo que aparece nas notas do Obsidian. O TRAMA procura trechos relevantes e um modelo de IA produz uma explicação em português.
+- **Criar desafios:** o modelo propõe atividades progressivas ligadas ao material encontrado, sem entregar a solução completa imediatamente.
+- **Corrigir código:** o aluno cola um trecho e recebe observações, pistas e explicações, sem que o aplicativo execute esse código.
+- **Continuar a conversa:** perguntas e respostas recentes são utilizadas apenas enquanto a janela permanece aberta. O aluno pode iniciar uma nova conversa; o histórico não vira arquivo no Obsidian.
+- **Consultar as fontes:** cada resposta traz referências às notas realmente selecionadas para aquela consulta, com botão para abri-las na biblioteca. O sistema rejeita respostas sem uma referência válida ao conjunto fornecido.
+
+### Como funciona
+
+1. O aluno seleciona um modo, escreve uma pergunta e, se necessário, cola um trecho de código.
+2. O Python **consulta somente arquivos Markdown do cofre selecionado**, sem utilizar serviços externos para realizar a busca. A seleção usa termos do assunto, título, caminho e conteúdo das notas, com contexto limitado.
+3. O aplicativo solicita **autorização explícita a cada envio**. Apenas então envia a pergunta e os trechos selecionados a um provedor gratuito configurado.
+4. Gemini, Groq ou OpenRouter, conforme as chaves e cotas configuradas pelo estudante, gera a resposta. O modelo deve tratar as fontes como dados não confiáveis, respeitar o conteúdo documentado e declarar limitações.
+5. O aplicativo verifica se as referências devolvidas pelo modelo pertencem às notas efetivamente recuperadas. Se não houver fonte apropriada, não solicita resposta à IA e informa que falta material.
+6. A resposta aparece em uma conversa dentro do TRAMA. **Nenhuma nota, transcrição, repositório ou banco de dados é alterado pela IA Professor.**
+
+### Segurança, privacidade e limites
+
+- Chaves continuam protegidas pelo Windows DPAPI; o recurso não depende de ChatGPT Plus ou Claude Pro e não usa uma assinatura dessas ferramentas como API.
+- O envio de dados à IA depende de consentimento explícito; os provedores externos têm suas próprias políticas, cotas e condições de cobrança.
+- A conversa existe apenas na memória da sessão do aplicativo. Não há armazenamento automático de histórico no Obsidian.
+- Código colado **não é executado**. O TRAMA oculta formatos comuns de credenciais do contexto enviado, mas isso não detecta todos os segredos: o usuário deve remover tokens e senhas antes de enviar.
+- O sistema confirma que uma referência de nota existe entre as fontes consultadas; **isso não comprova que cada afirmação produzida pelo modelo esteja correta**. O aluno deve conferir as evidências em casos importantes.
+- A qualidade pedagógica depende do material presente no cofre e do modelo gratuito disponível. A IA Professor não garante equivalência ao ChatGPT ou Claude.
+- Não há treinamento de um modelo próprio; o Python faz busca, seleção e validações, e o provedor de IA redige a resposta.
+
+**Objetivo de aceitação:** explicar Hello World com as aulas reais, gerar desafios compatíveis com o conteúdo registrado, comentar um exercício de C# sem utilizar recursos não estudados e citar notas realmente presentes. Esses testes de qualidade pedagógica com material pessoal ainda precisam de avaliação humana.
+
+## 10. Próximas evoluções e validação prática do TRAMA
 
 As melhorias serão avaliadas nesta ordem. **Elas estão planejadas e não devem ser confundidas com o que já foi entregue.**
 
 ### 1. Obsidian excelente
 
+**Incluída na candidata 2.0.0.** Os pontos de revisão e navegação foram implementados, mas exigem conferência com material real.
+
 Aperfeiçoar a qualidade, a completude, a legibilidade e a navegação das notas: aulas, módulos, conceitos, códigos, links, horários e mapa de relações. O resultado deve ser útil para revisão manual sem depender de nenhuma IA conectada.
 
 ### 2. Automação confiável
 
+**Implementação incluída na candidata 2.0.0.** A validação com o cofre real do estudante ainda depende do Windows pessoal.
+
 Melhorar integridade, segurança, preservação de dados, desempenho e validação no Windows. Evoluir o cruzamento de fontes para guardar dúvidas, encontrar novas evidências em aulas posteriores e registrar revisões **sem modificar as fontes originais**.
 
-### 3. IA Professor (futura)
+### 3. IA Professor (experimental na candidata 2.0.0)
 
-Estudar uma ferramenta de conversa dentro do TRAMA que **apenas leia** a biblioteca, explique tópicos conforme as aulas, proponha desafios e ajude na revisão. Ela não deve editar o cofre e só fará sentido se a qualidade das respostas for realmente útil.
+O recurso experimental de conversa, explicações, desafios e revisão de código integra a candidata 2.0.0. Sua qualidade ainda depende de respostas com o cofre real e da avaliação visual no Windows. A IA Professor não escreve no cofre e não substitui o processo de organização do Obsidian.
 
 ### Ideias comentadas, sem desenvolvimento previsto agora
 

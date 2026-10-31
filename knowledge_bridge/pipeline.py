@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .ai import BudgetStopped, FreeAIRouter, NoFreeProvider, read_env
-from .content import chunks, file_hash, lesson_identity, slug, timed_lines
+from .content import chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines
 from .code_intel import index_repository, match_lesson_to_repository, find_code_line
 from .publishing import Publisher
 from .store import Store
@@ -131,6 +131,18 @@ class Application:
         self.log(f"Importação concluída. Novos ou alterados: {count}.")
         return count
 
+    def _verified_transcript(self, src) -> str:
+        """Refuse missing or modified cached sources before sending content to AI."""
+        file = (self.store.vault / (src["stored_path"] or "")).resolve()
+        if (not file.is_relative_to(self.store.vault) or not file.is_file() or
+                file.is_symlink()):
+            raise ValueError("Fonte original ausente ou caminho inseguro: " + src["label"])
+        if file_hash(file) != src["digest"]:
+            self.store.update_status(src["id"], "NEEDS_REVIEW")
+            raise ValueError("Transcrição armazenada foi alterada ou corrompida: " +
+                             src["label"] + ". Reimporte a fonte original antes de processar.")
+        return file.read_text(encoding="utf-8-sig", errors="replace")
+
     @staticmethod
     def _clean_result(payload: dict, raw_text: str) -> dict:
         """Limita resultados da IA e valida referências temporais reais."""
@@ -172,6 +184,8 @@ class Application:
             self.log("Nenhuma transcrição cadastrada. Adicione .txt ou .md à pasta de entrada.")
             return {"aulas":0, "conceitos":0, "projetos":len(self.store.repositories())}
         for src in sources:
+            # Validate even already-cached analyses before reusing their notes.
+            text = self._verified_transcript(src)
             # Só reprocessa se o conteúdo mudou ou a nota ainda está pendente.
             context_rows = self.publisher._context_rows(src['lesson'] or '')
             context_payload = [item for _, item in context_rows]
@@ -183,7 +197,6 @@ class Application:
             if was_done:
                 self.log(f"Já analisada, ignorando: {src['label']}")
                 continue
-            text = (self.store.vault / src["stored_path"]).read_text(encoding="utf-8-sig",errors="replace")
             pieces = chunks(text)
             all_results = []
             self.store.update_status(src["id"], "PROCESSING")
@@ -220,10 +233,13 @@ class Application:
             combined = {"resumo":"\n\n".join(f"**Parte {i+1}:** {x['resumo']}" for i,x in enumerate(all_results)),
                         "tipo_aula": "indefinida", "pessoas": [], "atividades": [],
                         "ferramentas": [], "marcos": [], "conceitos": [], "exemplos": [], "duvidas": []}
+            # Preserve different explanations/timestamps from distinct parts of
+            # the same recording. A concept may be introduced and then applied.
             known = set()
             for result in all_results:
                 for item in result.get("conceitos", []):
-                    k = slug(item["nome"])
+                    k = (concept_slug(item["nome"]), item.get("tempo", ""),
+                         item.get("explicacao", "").strip().casefold())
                     if k not in known:
                         combined["conceitos"].append(item)
                         known.add(k)
@@ -246,7 +262,9 @@ class Application:
                                      meta["model"] if meta else "unknown", combined)
             self.store.update_status(src["id"], "PUBLISHED")
             self.log(f"Concluída: {src['label']}")
-            self.publisher.rebuild()  # estado sempre persistido a cada aula
+            # SQLite analysis and status already committed after each lesson.
+            # One final rebuild avoids O(n²) Markdown rewrites for large batches.
+            # If interrupted, rebuilding on the next run recovers saved results.
         # Cross-source comparison is separate from transcription summaries,
         # cached by transcript digest + commit SHA, and opt-in via process().
         self.enrich_context()
@@ -295,7 +313,7 @@ class Application:
         for src in self.store.sources('transcript'):
             analysis=self.store.analysis(src['id'],src['digest'])
             if not analysis:continue  # no externally generated claims without prior summary
-            transcript=(self.store.vault/src['stored_path']).read_text(encoding='utf-8-sig',errors='replace')
+            transcript=self._verified_transcript(src)
             for repo in self.store.repositories():
                 payload=json.loads(repo['payload'])
                 matched=match_lesson_to_repository(transcript,analysis,payload,cap=10)

@@ -39,6 +39,22 @@ CREATE TABLE IF NOT EXISTS repositories (
  payload TEXT NOT NULL, status TEXT NOT NULL,
  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS uncertainties (
+ id TEXT PRIMARY KEY, source_id TEXT NOT NULL, source_digest TEXT NOT NULL,
+ label TEXT NOT NULL, question TEXT NOT NULL, candidate TEXT NOT NULL,
+ status TEXT NOT NULL, evidence_digest TEXT NOT NULL, evidence_json TEXT NOT NULL,
+ updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(source_id) REFERENCES sources(id)
+);
+CREATE TABLE IF NOT EXISTS uncertainty_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, uncertainty_id TEXT NOT NULL,
+ status TEXT NOT NULL, evidence_digest TEXT NOT NULL,
+ source_digest TEXT NOT NULL, candidate TEXT NOT NULL, evidence_json TEXT NOT NULL,
+ created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(uncertainty_id) REFERENCES uncertainties(id)
+);
+CREATE INDEX IF NOT EXISTS idx_uncertainties_source ON uncertainties(source_id);
+CREATE INDEX IF NOT EXISTS idx_uncertainty_events_lookup ON uncertainty_events(uncertainty_id, id);
 """
 
 class Store:
@@ -138,3 +154,43 @@ class Store:
 
     def repositories(self):
         return self.conn.execute("SELECT * FROM repositories ORDER BY name").fetchall()
+
+    def uncertainties(self):
+        return self.conn.execute(
+            "SELECT * FROM uncertainties ORDER BY source_id, id").fetchall()
+
+    def uncertainty_events(self, uncertainty_id: str):
+        return self.conn.execute(
+            "SELECT * FROM uncertainty_events WHERE uncertainty_id=? ORDER BY id",
+            (uncertainty_id,)).fetchall()
+
+    def upsert_uncertainty(self, uid: str, source_id: str, source_digest: str,
+                           label: str, question: str, candidate: str,
+                           status: str, evidence: list[dict]) -> bool:
+        """Append a revision only when evidence/source/state genuinely changed."""
+        serialized = json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+        import hashlib
+        digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+        existing = self.conn.execute("SELECT * FROM uncertainties WHERE id=?", (uid,)).fetchone()
+        if (existing and existing["source_digest"] == source_digest and
+                existing["status"] == status and existing["candidate"] == candidate and
+                existing["evidence_digest"] == digest):
+            return False
+        with self.conn:
+            self.conn.execute("""INSERT INTO uncertainties
+                (id, source_id, source_digest, label, question, candidate,
+                 status, evidence_digest, evidence_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                 source_digest=excluded.source_digest, label=excluded.label,
+                 question=excluded.question, candidate=excluded.candidate,
+                 status=excluded.status, evidence_digest=excluded.evidence_digest,
+                 evidence_json=excluded.evidence_json, updated_at=CURRENT_TIMESTAMP""",
+                (uid, source_id, source_digest, label, question, candidate,
+                 status, digest, serialized))
+            self.conn.execute("""INSERT INTO uncertainty_events
+                (uncertainty_id, status, evidence_digest, source_digest,
+                 candidate, evidence_json)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+                (uid, status, digest, source_digest, candidate, serialized))
+        return True

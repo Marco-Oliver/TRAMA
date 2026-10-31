@@ -14,7 +14,7 @@ function empty(msg){return `<p class="empty-text">${escapeHTML(msg)}</p>`;}
 function notify(message,wait=4000){$('status-message').textContent=message;const e=$('toast');e.textContent=message;e.classList.remove('hidden');clearTimeout(notify.timer);notify.timer=setTimeout(()=>e.classList.add('hidden'),wait);}
 async function call(name,...args){if(!bridge||typeof bridge[name]!=='function'){notify('Conecte o aplicativo TRAMA.');return null;}try{return await bridge[name](...args);}catch(e){notify('Falha ao executar: '+String(e).slice(0,160));return null;}}
 async function refresh(){const data=await call('snapshot');if(!data)return;app.snapshot=data;libraryState.favorites=new Set(data.favorites||[]);document.body.classList.toggle('connected',!!data.connected);$('connect-state').textContent=data.connected?'Obsidian conectado':'Configure o cofre do Obsidian';const s=data.stats||{};$('status-counts').textContent=`▤ ${s.notes||0} notas   │   ▶ ${s.videos||0} vídeos   │   ▤ ${s.transcriptions||0} transcrições   │   ▰ ${s.materials||0} materiais   │   ▱ ${s.repositories||0} projetos`;
- document.querySelector('.status-version').textContent='TRAMA v1.9  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
+ document.querySelector('.status-version').textContent='TRAMA v2.0  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
  if(!data.connected){app.note=null;app.selected=null;}
  renderNavigation();await render();}
 function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
@@ -29,7 +29,7 @@ function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
 }
 function renderNavigation(){document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.view===app.view));}
 async function setView(view){app.view=view;app.filter='';app.tab=view==='lessons'?'Nota completa':'Resumo';$('search-all').value='';$('list-search').value='';renderNavigation();await render();}
-async function render(){if(!app.snapshot)return;if(app.view==='library'){await renderLibraryView();return;}if(['graph','home','settings'].includes(app.view)){renderOverlay();return;}
+async function render(){if(!app.snapshot)return;if(app.view==='library'){await renderLibraryView();return;}if(['graph','home','settings','teacher'].includes(app.view)){renderOverlay();return;}
  $('library-workspace').classList.add('hidden');$('overlay-screen').classList.add('hidden');$('list-panel').classList.remove('hidden');$('note-panel').classList.remove('hidden');$('details-panel').classList.remove('hidden');
  $('list-title').textContent=titles[app.view]||'Minha Biblioteca';
  $('btn-context').style.display=app.view==='lessons'?'':'none';
@@ -122,10 +122,11 @@ function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.inne
   const related=n.related.filter(x=>x.section===action)[i];if(related){app.selected=related.id;app.view='library';await render();}
  }));}
 async function renderOverlay(){$('library-workspace').classList.add('hidden');const el=$('overlay-screen');el.classList.remove('hidden');$('list-panel').classList.add('hidden');$('note-panel').classList.add('hidden');$('details-panel').classList.add('hidden');
+ if(app.view==='teacher'){renderTeacher(el);return;}
  if(app.view==='settings'){
   el.innerHTML=`<div class="wide-header"><h2>Ajustes</h2><p>O cofre do Obsidian é a fonte principal. O TRAMA não cria outra biblioteca.</p></div>
   <div class="settings-grid"><div class="setting-block"><h3>Atualizações do TRAMA</h3>
-    <p>Versão atual: <strong>1.9.0</strong>. Quando houver um canal oficial publicado no GitHub, você poderá verificar e abrir a versão nova sem ZIP.</p>
+    <p>Versão atual: <strong>2.0.0</strong>. Quando houver um canal oficial publicado no GitHub, você poderá verificar e abrir a versão nova sem ZIP.</p>
     <button id="check-updates">Verificar atualizações</button>
     <p id="update-message" class="setting-status">O canal oficial ainda não foi publicado.</p>
     <button id="install-update" class="hidden">Baixar atualização verificada</button>
@@ -133,7 +134,11 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     </div><div class="setting-block"><h3>Biblioteca do Obsidian</h3>
     <p>Selecione a pasta original do seu Obsidian. Ela continua acessível mesmo sem o TRAMA.</p>
     <code>${escapeHTML(app.snapshot?.vault||'Nenhum cofre selecionado')}</code>
-    <button id="choose-vault">Selecionar pasta do Obsidian</button></div>
+    <button id="choose-vault">Selecionar pasta do Obsidian</button>
+    <p>Crie uma cópia do cofre antes de migrar ou atualizar. O ZIP não é criptografado e não é enviado a um servidor.</p>
+    <button id="backup-vault">Criar backup local (.zip)</button>
+    <button id="restore-vault">Restaurar backup em nova pasta</button>
+    <p id="backup-message" class="setting-status" aria-live="polite">Nenhum backup iniciado.</p></div>
   <div class="setting-block"><h3>IA gratuita · chaves protegidas</h3>
     <p>Escolha uma conta Free <strong>sem faturamento</strong>. Chaves são protegidas pelo Windows (DPAPI). Modelos pagos não são selecionados.</p>
     <label for="ai-provider">Provedor</label><select id="ai-provider"><option value="gemini">Google Gemini API Free</option><option value="groq">GroqCloud Free</option><option value="openrouter">OpenRouter free</option></select>
@@ -177,6 +182,22 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     }
   });
   el.querySelector('#choose-vault').addEventListener('click',chooseVault);
+  el.querySelector('#backup-vault').addEventListener('click', async()=>{
+    if(!confirm('Criar ZIP local do cofre? Ele conterá suas notas e fontes sem criptografia. Guarde-o com cuidado.'))return;
+    const button=el.querySelector('#backup-vault'),status=el.querySelector('#backup-message');
+    button.disabled=true;status.textContent='Preparando backup verificado…';
+    try{const r=await call('backup_vault',true);
+      status.textContent=r?.message||'Backup não concluído.';}
+    finally{button.disabled=false;}
+  });
+  el.querySelector('#restore-vault').addEventListener('click', async()=>{
+    if(!confirm('Restaurar um backup ZIP em uma pasta NOVA? O cofre atual não será substituído.'))return;
+    const button=el.querySelector('#restore-vault'),status=el.querySelector('#backup-message');
+    button.disabled=true;status.textContent='Selecione o ZIP e a pasta onde criar o cofre restaurado…';
+    try{const r=await call('restore_vault',true);
+      status.textContent=r?.message||'Backup não restaurado.';}
+    finally{button.disabled=false;}
+  });
   const renderStatus=async()=>{const r=await call('ai_status');const p=el.querySelector('#ai-status');if(!p)return;
    if(!r){p.textContent='Configuração indisponível.';return;}
    const names=Object.entries(r.configured||{}).filter(([k,v])=>v).map(([k])=>k).join(', ');p.textContent='Chaves configuradas: '+(names||'nenhuma')+'.';};
@@ -231,7 +252,11 @@ async function saveClassroomContext(event){
   notify(`Contexto ${result.aula} salvo no cofre. As fontes originais foram preservadas.`);
  }finally{button.disabled=false;}
 }
-async function chooseVault(){const r=await call('select_vault');if(r?.ok){notify('Cofre conectado.');await refresh();}else if(r?.message)notify(r.message);}
+async function chooseVault(){const r=await call('select_vault');if(r?.ok){
+ teacherState.messages=[];teacherState.draft='';teacherState.code='';
+ await call('teacher_reset');
+ notify('Cofre conectado.');await refresh();
+ }else if(r?.message)notify(r.message);}
 async function updateAutoQueue(result){
  if(!result?.ok){$('auto-feedback').textContent=result?.message||'Falha ao preparar os arquivos.';return;}
  const items=result.items||[],list=$('auto-queue');list.replaceChildren();

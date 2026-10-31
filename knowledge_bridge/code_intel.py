@@ -61,16 +61,40 @@ def safe_repo_file(root: Path, rel: str) -> Path | None:
 
 
 def redact_sensitive(text: str) -> str:
-    """Best-effort masking before sending excerpts to an external model.
+    """Best-effort masking of common credentials in snippets and documentation.
 
-    This is defense-in-depth, NOT a guarantee that all credentials are detected.
+    Applied before storing excerpts or sending them to AI. No pattern-based
+    scanner can promise to catch every possible private credential.
     """
-    text = re.sub(r"(?i)\b(?:ghp_|gho_|github_pat_|sk-|AIza)[A-Za-z0-9_\-]{12,}", "[SEGREDO-OCULTO]", text)
-    text = re.sub(r"(?i)\b(?:authorization\s*[:=]\s*['\"]?bearer\s+)\S+", "Authorization: [SEGREDO-OCULTO]", text)
-    text = re.sub(r"(?i)(\b(?:api[_-]?key|token|password|secret|client[_-]?secret)\s*[:=]\s*['\"])([^'\"]{5,})(['\"])",
-                  r"\1[SEGREDO-OCULTO]\3", text)
-    return text
+    marker = "[SEGREDO-OCULTO]"
+    # Recognizable token formats, including credentials embedded inside text.
+    # Match long enough tokens to minimize redaction of ordinary code examples.
+    for pattern in (
+        r"(?i)\b(?:ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|glpat-|sk-|AIza)[A-Za-z0-9_\-]{12,}",
+        r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b",
+        r"\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{12,}\b",  # Stripe
+        r"\bxox[baprs]-[A-Za-z0-9-]{12,}\b",  # Slack
+    ):
+        text = re.sub(pattern, marker, text)
 
+    # Bearer headers are secrets regardless of quoted/unquoted syntax.
+    text = re.sub(r"(?i)(\bauthorization\s*[:=]\s*['\"]?bearer\s+)[^\s'\"]+",
+                  r"\1" + marker, text)
+
+    # Key/value declarations in Python, JavaScript, JSON, YAML, .NET config,
+    # and environment-like snippets. Keep variable name and original quotes.
+    key_name = (r"(?:api[_-]?key|access[_-]?token|auth[_-]?token|"
+                r"(?:aws[_-]?)?(?:secret[_-]?access[_-]?key|access[_-]?key[_-]?id)|"
+                r"client[_-]?secret|password|passwd|secret|private[_-]?key|token)")
+    # Handle unquoted and quoted fields separately to avoid newline swallowing.
+    quoted = re.compile(rf"(?i)(['\"]?\b{key_name}\b['\"]?\s*[:=]\s*)(['\"])([^'\"\r\n]+)(\2)")
+    text = quoted.sub(lambda m: m.group(1) + m.group(2) + marker + m.group(4)
+                      if len(m.group(3)) >= 5 else m.group(0), text)
+    unquoted = re.compile(rf"(?i)(['\"]?\b{key_name}\b['\"]?\s*[:=]\s*)(?!['\"])([^'\"\s,;#}}]+)")
+    text = unquoted.sub(lambda m: m.group(1) + marker
+                        if len(m.group(2)) >= 5 and m.group(2) != marker
+                        else m.group(0), text)
+    return text
 
 def _snippet(lines: list[str], lineno: int, before=2, after=3) -> str:
     first = max(1, lineno - before)

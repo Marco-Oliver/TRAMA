@@ -1,0 +1,47 @@
+name: Testar instalador Windows da automação (sem publicar)
+on:
+  push:
+    branches: [feat/automacao-confiavel-20261031]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  installer:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Conferir fontes e dependências
+        shell: pwsh
+        run: |
+          python tools/audit_release.py
+          python -m pip install --disable-pip-version-check -r requirements.txt "pyinstaller>=6.10,<7"
+      - name: Regressão, adversariais e novo fluxo de backup
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -q
+          python qa_adversarial.py
+      - name: Gerar executável (sem release)
+        run: python -m PyInstaller --clean --noconfirm TRAMA.spec
+      - name: Testar executável empacotado
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path '.\dist\TRAMA\TRAMA.exe').Path
+          $process = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "TRAMA.exe falhou: $($process.ExitCode)" }
+      - name: Compilar instalador local sem publicar
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $compiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) { throw 'Inno Setup não encontrado' }
+          & $compiler 'TRAMA_Instalador.iss'
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path 'release\TRAMA_Setup.exe')) {
+            throw 'Falha ao compilar instalador'
+          }
+      - name: Instalar, reinstalar, testar e desinstalar
+        shell: pwsh
+        run: ./tools/windows_installer_smoke.ps1

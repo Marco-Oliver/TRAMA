@@ -39,6 +39,10 @@ class Bridge:
         self._is_maximized=False
         self._is_fullscreen=False
         self._verified_installer=None  # path + sha256 only after verified download
+        self._teacher_lock=threading.Lock()
+        self._teacher_history=[]
+        self._teacher_vault=None
+        self._teacher_requests=0
         # Fila em memória: nada é enviado nem escrito no Obsidian até Processar tudo.
         self._stage_guard=threading.RLock()
         self._queued={}
@@ -153,7 +157,8 @@ class Bridge:
         summary=(self._section(selected.content,'Resumo da aula') or
                  self._section(selected.content,'Em poucas palavras') or
                  self._section(selected.content,'Resumo') or '')
-        concepts=(self._section(selected.content,'Conceitos ensinados (extraídos pela IA)') or
+        concepts=(self._section(selected.content,'Conceitos identificados pela IA (conferir na fonte)') or
+                  self._section(selected.content,'Conceitos ensinados (extraídos pela IA)') or
                   self._section(selected.content,'Pessoas e assuntos mencionados') or
                   self._section(selected.content,'Conceitos principais') or '')
         examples=self._section(selected.content,'Exemplos mencionados')
@@ -209,6 +214,69 @@ class Bridge:
             return {'ok':False,'message':'Falha na organização: '+str(ex)[:160]}
         finally:
             if app:app.close()
+            self._write_lock.release()
+
+    def backup_vault(self, confirmed=False):
+        """Save a local ZIP backup after explicit consent; never uploads data."""
+        if not confirmed:
+            return {'ok': False, 'message': 'Confirme a criação de backup local.'}
+        vault = self._vault()
+        if not vault or not self._window:
+            return {'ok': False, 'message': 'Selecione um cofre e abra o aplicativo.'}
+        if not self._write_lock.acquire(blocking=False):
+            return {'ok': False, 'message': 'Aguarde a conclusão do processamento.'}
+        try:
+            import webview
+            from .recovery import create_backup
+            save_dialog = getattr(webview, "SAVE_DIALOG", None)
+            if save_dialog is None:
+                save_dialog = webview.FileDialog.SAVE
+            selection = self._window.create_file_dialog(
+                save_dialog, save_filename="TRAMA_Backup.zip",
+                file_types=("Arquivo ZIP (*.zip)",))
+            if not selection:
+                return {'ok': False, 'message': 'Backup cancelado.'}
+            destination = selection[0] if isinstance(selection, (tuple, list)) else selection
+            report = create_backup(vault, Path(destination))
+            return {**report, 'message': 'Backup criado localmente. Guarde o ZIP em local seguro: não é criptografado.'}
+        except (OSError, ValueError, RuntimeError) as error:
+            return {'ok': False, 'message': 'Backup não criado: ' + str(error)[:140]}
+        finally:
+            self._write_lock.release()
+
+    def restore_vault(self, confirmed=False):
+        """Restore ZIP into a *new* folder; never replace the selected vault."""
+        if not confirmed:
+            return {'ok': False, 'message': 'Confirme que deseja restaurar em uma pasta nova.'}
+        if not self._window:
+            return {'ok': False, 'message': 'Janela não disponível.'}
+        if not self._write_lock.acquire(blocking=False):
+            return {'ok': False, 'message': 'Aguarde o processamento atual.'}
+        try:
+            import webview
+            import zipfile
+            from .recovery import restore_backup
+            open_dialog = getattr(webview, "OPEN_DIALOG", None) or webview.FileDialog.OPEN
+            folder_dialog = getattr(webview, "FOLDER_DIALOG", None) or webview.FileDialog.FOLDER
+            selected = self._window.create_file_dialog(
+                open_dialog, file_types=("Arquivo ZIP (*.zip)",))
+            if not selected:
+                return {'ok': False, 'message': 'Restauração cancelada.'}
+            archive = selected[0] if isinstance(selected, (list, tuple)) else selected
+            parent = self._window.create_file_dialog(folder_dialog)
+            if not parent:
+                return {'ok': False, 'message': 'Restauração cancelada.'}
+            folder = Path(parent[0] if isinstance(parent, (list, tuple)) else parent).resolve()
+            vault = self._vault()
+            if vault and folder.is_relative_to(vault):
+                return {'ok': False, 'message': 'Escolha uma pasta fora do cofre atual.'}
+            destination = folder / ("TRAMA-Restaurado-" + datetime.now().strftime("%Y%m%d-%H%M%S"))
+            restored = restore_backup(Path(archive), destination)
+            return {**restored, 'message':
+                    'Restaurado em ' + str(destination) + '. Use Selecionar pasta para abri-la; o cofre anterior foi preservado.'}
+        except (OSError, ValueError, RuntimeError, zipfile.BadZipFile) as error:
+            return {'ok': False, 'message': 'Backup não restaurado: ' + str(error)[:140]}
+        finally:
             self._write_lock.release()
 
     def select_vault(self):
@@ -514,6 +582,63 @@ class Bridge:
         webbrowser.open(address)
         return {'ok':True}
 
+    def teacher_ask(self, question, mode="explicar", code="", confirmed=False):
+        """One consented request, read-only vault retrieval and short session memory."""
+        if confirmed is not True:
+            return {'ok': False, 'message': 'Autorize o envio dos trechos selecionados à API externa.'}
+        if not isinstance(question, str) or not isinstance(code, str) or not isinstance(mode, str):
+            return {'ok': False, 'message': 'Pergunta, modo ou código inválido.'}
+        if not self._teacher_lock.acquire(blocking=False):
+            return {'ok': False, 'message': 'O Professor já está respondendo outra pergunta.'}
+        router = None
+        try:
+            vault = self._vault()
+            if vault is None:
+                return {'ok': False, 'message': 'Selecione o cofre do Obsidian em Ajustes.'}
+            if self._teacher_vault != str(vault):
+                self._teacher_history = []
+                self._teacher_requests = 0
+                self._teacher_vault = str(vault)
+            if self._teacher_requests >= 24:
+                return {'ok': False, 'message':
+                        'Limite de 24 perguntas nesta sessão. Reabra o aplicativo para iniciar outra sessão.'}
+            if not self.settings.get('confirmed_free'):
+                return {'ok': False, 'message': 'Configure um provedor gratuito em Ajustes primeiro.'}
+            env = self._key_vault.get_env()
+            if not env:
+                return {'ok': False, 'message': 'Nenhuma chave Free configurada. Abra Ajustes.'}
+            env['FREE_TIER_CONFIRMED'] = 'YES'
+            env['MAX_REQUESTS_PER_RUN'] = '3'
+            router = FreeAIRouter(env)
+            from .teacher import teacher_answer
+            result = teacher_answer(vault, question, mode, code,
+                                    self._teacher_history, router)
+            if result.get('ok'):
+                self._teacher_history.append(
+                    {'question': question[:600], 'answer': result['answer'][:1000]})
+                self._teacher_history = self._teacher_history[-5:]
+            return result
+        except (OSError, ValueError, TypeError, NoFreeProvider, BudgetStopped,
+                ProviderError, RuntimeError) as exc:
+            return {'ok': False, 'message': str(exc)[:200]}
+        except Exception:
+            # No raw model output or user content in error messages.
+            return {'ok': False, 'message': 'O Professor não conseguiu consultar as notas; tente novamente.'}
+        finally:
+            if router is not None:
+                self._teacher_requests += router.attempts
+            self._teacher_lock.release()
+
+    def teacher_reset(self):
+        """Clear only volatile conversation context; never touch the Obsidian."""
+        if not self._teacher_lock.acquire(blocking=False):
+            return {'ok': False, 'message': 'Aguarde a resposta em andamento.'}
+        try:
+            self._teacher_history = []
+            return {'ok': True}
+        finally:
+            self._teacher_lock.release()
+
     def ai_status(self):
         return {"configured":self._key_vault.configured(),
                 "confirmed_free":self.settings.get('confirmed_free',False),
@@ -770,6 +895,12 @@ class PublicApi:
     def organize_library(self, confirmed=False):
         return self._bridge.organize_library(confirmed)
 
+    def backup_vault(self, confirmed=False):
+        return self._bridge.backup_vault(confirmed)
+
+    def restore_vault(self, confirmed=False):
+        return self._bridge.restore_vault(confirmed)
+
     def select_vault(self):
         return self._bridge.select_vault()
 
@@ -842,6 +973,12 @@ class PublicApi:
     def open_update_page(self, address):
         return self._bridge.open_update_page(address)
 
+    def teacher_ask(self, question, mode="explicar", code="", confirmed=False):
+        return self._bridge.teacher_ask(question, mode, code, confirmed)
+
+    def teacher_reset(self):
+        return self._bridge.teacher_reset()
+
     def ai_status(self):
         return self._bridge.ai_status()
 
@@ -868,7 +1005,7 @@ def load_local_ui():
     for href,filename in substitutions:
         css=(base/filename).read_text(encoding='utf-8')
         html=html.replace(f'<link rel="stylesheet" href="{href}">','<style>'+css+'</style>')
-    for script in ('library.js','app.js'):
+    for script in ('library.js','app.js','teacher.js'):
         js=(base/script).read_text(encoding='utf-8')
         html=html.replace(f'<script src="{script}"></script>','<script>'+js+'</script>')
     return html
