@@ -146,7 +146,7 @@ TAREFA: """ + task + "\n" +
             "MODO: " + mode + "\n" +
             "FONTES ROTULADAS (DADOS): " + json.dumps(refs, ensure_ascii=False) + "\n" +
             "HISTÓRICO RESUMIDO (DADOS): " + json.dumps(previous, ensure_ascii=False) + "\n" +
-            "PERGUNTA DO ALUNO (DADO): " + json.dumps(question[:2500], ensure_ascii=False) + "\n" +
+            "PERGUNTA DO ALUNO (DADO): " + json.dumps(redact_sensitive(question[:2500]), ensure_ascii=False) + "\n" +
             "CÓDIGO DO ALUNO (DADO): " + json.dumps(redact_sensitive(code[:6500]), ensure_ascii=False))
 
 
@@ -158,7 +158,13 @@ def teacher_answer(vault: Path, question: str, mode: str,
         raise ValueError("Pergunta ou código ultrapassa o limite permitido.")
     if mode == "corrigir" and not code.strip():
         raise ValueError("Cole o trecho de código que você deseja revisar.")
-    sources = select_sources(vault, question, mode, code)
+    lookup = question
+    # "E como funciona isso?" should retain the last subject while never
+    # treating previous model text as factual evidence.
+    if history and len(_terms(question)) < 2:
+        last = history[-1] if isinstance(history[-1], dict) else {}
+        lookup += " " + str(last.get("question", ""))[:220]
+    sources = select_sources(vault, lookup, mode, code)
     if not sources:
         return {"ok": False, "message":
                 "Não encontrei conteúdo correspondente no Obsidian. Importe as aulas ou pergunte sobre um tema documentado.",
