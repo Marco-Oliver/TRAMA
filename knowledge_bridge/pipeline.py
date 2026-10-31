@@ -220,10 +220,13 @@ class Application:
             combined = {"resumo":"\n\n".join(f"**Parte {i+1}:** {x['resumo']}" for i,x in enumerate(all_results)),
                         "tipo_aula": "indefinida", "pessoas": [], "atividades": [],
                         "ferramentas": [], "marcos": [], "conceitos": [], "exemplos": [], "duvidas": []}
+            # Preserve different explanations/timestamps from distinct parts of
+            # the same recording. A concept may be introduced and then applied.
             known = set()
             for result in all_results:
                 for item in result.get("conceitos", []):
-                    k = concept_slug(item["nome"])
+                    k = (concept_slug(item["nome"]), item.get("tempo", ""),
+                         item.get("explicacao", "").strip().casefold())
                     if k not in known:
                         combined["conceitos"].append(item)
                         known.add(k)
