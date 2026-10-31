@@ -203,6 +203,51 @@ As funcionalidades abaixo estão no código da branch [`feat/obsidian-excelente-
 
 As melhorias de automação confiável — incluindo investigação longitudinal de dúvidas, escala, restauração/backup e upgrade de instalador — continuam pertencendo à etapa 2. A IA Professor permanece posterior.
 
+## 9.2 Automação confiável: funcionamento acrescentado após a v1.9.0
+
+As funcionalidades abaixo pertencem à branch [`feat/automacao-confiavel-20261031`](https://github.com/Marco-Oliver/TRAMA/tree/feat/automacao-confiavel-20261031), construída sobre as melhorias anteriores. **Não estão no instalador público 1.9.0.**
+
+### Dúvidas antigas e novas evidências
+
+- Dúvidas apontadas na análise são guardadas separadamente no banco SQLite, com status, origem, hash da transcrição e histórico de revisões.
+- Quando uma gravação posterior cita um termo técnico reconhecido ou o índice do repositório contém código relacionado, o sistema adiciona a **evidência identificada** à dúvida anterior.
+- A dúvida muda para **nova evidência para revisar**, e não para resolvida. Repetir o mesmo termo mal transcrito não é considerado nova comprovação; o objetivo é facilitar a investigação.
+- Cada atualização significativa conserva um registro próprio, com o estado anterior e as fontes presentes naquela revisão. Reconstruir o cofre repetidamente sem novas evidências não deve gerar histórico duplicado.
+- O Obsidian recebe um **Índice de Dúvidas** e páginas individuais com fonte original, termo candidato quando identificável, evidências posteriores e histórico. São notas auxiliares, sem alteração das transcrições.
+- Quando uma dúvida desaparece após nova análise, o registro antigo é arquivado, não apagado.
+
+**Limitação importante:** a identificação automática de termos depende de um vocabulário técnico limitado e de menções verificáveis. Questões sem correspondência suficiente continuam pendentes; não existe garantia de resolução semântica e não há verificação automática do áudio original.
+
+### Integridade, processamento e recuperação
+
+- A integridade das transcrições guardadas no cofre é verificada por SHA-256 antes do processamento, inclusive quando existe análise em cache. Se um arquivo estiver corrompido ou alterado, o TRAMA interrompe a operação e pede revisão, sem enviar a fonte modificada à IA.
+- A reconstrução automática de Markdown também verifica as transcrições antes de modificar notas.
+- Trechos já analisados permanecem salvos no SQLite; uma interrupção por cota permite continuar sem repetir os trechos concluídos, quando o contexto das fontes não mudou.
+- A geração global do Markdown é realizada após a análise do lote, evitando reconstruções repetitivas para cada gravação. As análises e estados continuam persistidos progressivamente.
+- As três correções críticas de integridade, distinção entre linguagens e ocultação de credenciais permanecem incluídas por herança da branch anterior.
+
+### Backup e restauração
+
+- Em **Ajustes**, o usuário pode autorizar a criação de um **ZIP local verificado**, contendo as notas Markdown, anexos e uma cópia consistente do banco SQLite, inclusive configurações locais do Obsidian quando presentes no cofre.
+- O sistema gera um manifesto com tamanhos e hashes SHA-256 dos arquivos; verifica que não houve alteração durante a cópia. Um backup pré-existente não deve ser sobrescrito.
+- A restauração é disponibilizada por linha de comando e exige uma **pasta nova**, nunca um cofre existente. O ZIP é verificado e restaurado em área temporária antes de expor a biblioteca restaurada.
+- **Os backups não são criptografados e não são enviados ao GitHub**; a pessoa precisa guardá-los em local privado.
+
+Comandos disponíveis para uso técnico:
+
+```powershell
+python main.py backup --vault "C:\\Meu-Obsidian" --backup "C:\\Backups\\TRAMA_Backup.zip"
+python main.py restore --backup "C:\\Backups\\TRAMA_Backup.zip" --restore-to "C:\\Meu-Obsidian-Restaurado"
+```
+
+### O que estes avanços não significam
+
+- A IA não confirma sozinha que o professor realmente falou um termo.
+- A biblioteca pode continuar contendo classificações por módulo baseadas em palavras-chave, sujeitas a revisão.
+- Testes com acervos fictícios não provam desempenho nem fidelidade do conteúdo real no computador pessoal.
+- Os comandos de restauração são para criar uma nova pasta; **não são migração automática ou atualização do instalador**.
+- A integração e publicação de uma nova versão Windows ainda dependem da validação e do release específico.
+
 ## 10. Próximas evoluções do TRAMA
 
 As melhorias serão avaliadas nesta ordem. **Elas estão planejadas e não devem ser confundidas com o que já foi entregue.**
@@ -214,6 +259,8 @@ As melhorias serão avaliadas nesta ordem. **Elas estão planejadas e não devem
 Aperfeiçoar a qualidade, a completude, a legibilidade e a navegação das notas: aulas, módulos, conceitos, códigos, links, horários e mapa de relações. O resultado deve ser útil para revisão manual sem depender de nenhuma IA conectada.
 
 ### 2. Automação confiável
+
+**Implementação desenvolvida na branch acima, ainda não publicada.** Os cenários de uso real e o upgrade entre instaladores continuam pendentes.
 
 Melhorar integridade, segurança, preservação de dados, desempenho e validação no Windows. Evoluir o cruzamento de fontes para guardar dúvidas, encontrar novas evidências em aulas posteriores e registrar revisões **sem modificar as fontes originais**.
 
