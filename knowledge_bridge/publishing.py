@@ -91,7 +91,7 @@ class Publisher:
         output = self.vault / rel
         if output.exists():
             # Uma cópia incompleta nunca pode ser tratada como importação concluída.
-            if output.stat().st_size != original.stat().st_size:
+            if output.stat().st_size != original.stat().st_size or file_hash(output) != digest:
                 raise ValueError("Cópia parcial/inconsistente detectada em anexos. Revise o arquivo antes de continuar.")
             return rel
         # Copia para arquivo temporário primeiro: se o programa fechar ou faltar
@@ -100,6 +100,10 @@ class Publisher:
         try:
             os.close(fd)
             shutil.copy2(original,tmp)
+            # The input might change while being copied. Never publish a copy
+            # that differs from the digest stored in the source catalog.
+            if file_hash(Path(tmp)) != digest:
+                raise ValueError("O arquivo de origem mudou durante a cópia. Importe novamente.")
             os.replace(tmp,output)
         finally:
             if os.path.exists(tmp):
