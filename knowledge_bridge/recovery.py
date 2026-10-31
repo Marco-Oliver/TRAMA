@@ -50,6 +50,8 @@ def create_backup(vault: Path, destination: Path) -> dict:
         if not file.is_file():
             continue
         rel = file.relative_to(vault).as_posix()
+        if rel == MANIFEST:
+            raise ValueError("Renomeie o manifesto reservado antes de criar backup.")
         if rel == DB_FILE or rel in (DB_FILE + "-wal", DB_FILE + "-shm"):
             continue
         size = file.stat().st_size
@@ -88,7 +90,9 @@ def create_backup(vault: Path, destination: Path) -> dict:
             # Never silently replace a previous backup.
             if destination.exists():
                 raise FileExistsError("Destino passou a existir durante o backup.")
-            os.replace(temp, destination)
+            # Atomic, no-clobber publication: hardlink fails if name exists.
+            # Both files are on the same filesystem (destination.parent).
+            os.link(temp, destination)
             return {"ok": True, "path": str(destination), "files": len(entries),
                     "bytes": sum(x["size"] for x in entries.values())}
         finally:
@@ -111,6 +115,8 @@ def restore_backup(archive_path: Path, destination_vault: Path) -> dict:
             names = archive.namelist()
             if len(names) != len(set(names)) or MANIFEST not in names:
                 raise ValueError("Manifesto ausente ou nomes duplicados no ZIP.")
+            if archive.getinfo(MANIFEST).file_size > 16 * 1024 * 1024:
+                raise ValueError("Manifesto excede tamanho máximo permitido.")
             manifest = json.loads(archive.read(MANIFEST))
             if manifest.get("format") != 1 or not isinstance(manifest.get("files"), dict):
                 raise ValueError("Formato de backup incompatível.")
@@ -119,8 +125,14 @@ def restore_backup(archive_path: Path, destination_vault: Path) -> dict:
                 raise ValueError("Backup inválido, sem catálogo SQLite ou com excesso de arquivos.")
             if set(names) != set(entries) | {MANIFEST}:
                 raise ValueError("Arquivos não declarados ou ausentes no manifesto.")
-            if sum(int(item["size"]) for item in entries.values()) > MAX_BYTES:
-                raise ValueError("Backup maior que o limite permitido.")
+            if (any(not isinstance(item, dict) or
+                    not isinstance(item.get("size"), int) or
+                    item["size"] < 0 or
+                    not isinstance(item.get("sha256"), str) or
+                    len(item["sha256"]) != 64
+                    for item in entries.values()) or
+                    sum(item["size"] for item in entries.values()) > MAX_BYTES):
+                raise ValueError("Manifesto inválido ou maior que o limite permitido.")
             for info in archive.infolist():
                 name = info.filename
                 if name == MANIFEST:
