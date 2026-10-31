@@ -34,6 +34,9 @@
 
 ## ✨ O que o TRAMA faz
 
+**Novidade da versão 2.0:** biblioteca de estudos aprimorada, investigação de dúvidas ao longo das aulas, backup/restauração local e uma **IA Professor experimental**, que apenas consulta o Obsidian.
+
+
 | 🗂️ Minhas Aulas | 🧠 Meu Conhecimento | 💻 Meus Projetos |
 | :--- | :--- | :--- |
 | Agrupa V01, V02, V03 de uma aula; preserva transcrições, horários, prints e links. | Consolida conceitos e contexto do curso sem perder suas fontes. | Lê código e documentação Git; associa conceitos a arquivos, linhas e commits. |
@@ -67,10 +70,22 @@ Transcrições + prints + links + repositórios GitHub
 - **Pessoas e contexto:** aulas de apresentação, metodologia e atividades também entram na biblioteca, mesmo sem código.
 - **Evolução explicável:** diferencia menção, retomada, aplicação, hipótese e evidência confirmada.
 - **Visual de desktop clássico:** biblioteca, busca, notas e painéis relacionados na mesma tela.
+- **Memória de dúvidas:** pistas surgidas em aulas futuras são associadas ao histórico, sem corrigir automaticamente o professor.
+- **Revisão por módulo:** reúne resumos completos, exemplos e conceitos com as fontes originais.
+- **Backup e restauração:** em Ajustes, crie um ZIP local e restaure em uma pasta nova, sem sobrescrever o cofre existente.
+
+### IA Professor (experimental)
+
+Na aba **IA Professor**, você pode pedir explicações, gerar desafios progressivos e colar código para receber dicas. O Python recupera notas relevantes do seu Obsidian e um provedor gratuito configurado produz a resposta. As referências levam às notas consultadas.
+
+- **Somente leitura:** o Professor não edita seu Obsidian, não executa seu código e não grava o chat como nota.
+- **Envio controlado:** cada pergunta exige autorização para enviar trechos à API externa; não há modelo local embutido.
+- **Qualidade experimental:** citações válidas identificam notas consultadas, mas não garantem a correção de cada explicação. Consulte as fontes.
+- **Custos:** uma assinatura ChatGPT Plus/Claude Pro não fornece acesso à API do TRAMA. Verifique cotas e faturamento do seu provedor antes de usar.
 
 ## 📦 Instalação
 
-> **Estado da distribuição:** o instalador Windows só estará disponível no link abaixo quando o fluxo de compilação e a primeira publicação do GitHub Actions terminarem com sucesso. Não confunda o código-fonte com um aplicativo instalável.
+> **Estado da distribuição:** a versão 1.9.0 já foi publicada. A versão 2.0.0 será disponibilizada neste mesmo endereço após a aprovação dos testes finais e a publicação oficial.
 
 **[⬇️ Baixar TRAMA para Windows (última versão publicada)](https://github.com/Marco-Oliver/TRAMA/releases/latest/download/TRAMA_Setup.exe)**
 
@@ -83,7 +98,7 @@ Transcrições + prints + links + repositórios GitHub
 
 ### Atualizações
 
-O aplicativo possui um mecanismo para consultar releases e baixar instaladores com verificação de hash SHA-256. **A atualização não é silenciosa:** você confirma a instalação. O fluxo completo de upgrade ainda precisa ser validado entre duas versões públicas sucessivas.
+O aplicativo possui um mecanismo para consultar releases e baixar instaladores com verificação de hash SHA-256. **A atualização não é silenciosa:** você confirma a instalação. A atualização entre 1.9.0 e 2.0.0 será submetida a um teste específico de preservação de dados; recomenda-se criar backup antes de instalar.
 
 ## 🔐 Privacidade e segurança
 
@@ -91,9 +106,9 @@ O aplicativo possui um mecanismo para consultar releases e baixar instaladores c
 - **Chaves de API são configuradas localmente**, com proteção DPAPI no Windows; nunca devem ser commitadas nem incluídas em relatórios.
 - O TRAMA não ativa faturamento: a utilização de Gemini/Groq/OpenRouter depende da **conta e dos limites configurados por você**. Serviços externos aplicam as próprias políticas de privacidade.
 - A análise de conteúdo por IA exige sua autorização antes de enviar materiais ao provedor configurado.
-- Notas editadas manualmente não devem ser sobrescritas silenciosamente. Guarde backups do cofre.
+- Notas editadas manualmente não devem ser sobrescritas silenciosamente. Guarde backups do cofre; os ZIPs gerados pelo aplicativo não são criptografados.
 
-Leia [SECURITY.md](SECURITY.md).
+Leia [SECURITY.md](SECURITY.md). Para descrição detalhada das funcionalidades, veja [PLANEJAMENTO_TRAMA.md](PLANEJAMENTO_TRAMA.md).
 
 ## 🛠️ Desenvolvimento
 
