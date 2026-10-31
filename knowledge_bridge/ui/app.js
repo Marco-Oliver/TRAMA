@@ -252,7 +252,11 @@ async function saveClassroomContext(event){
   notify(`Contexto ${result.aula} salvo no cofre. As fontes originais foram preservadas.`);
  }finally{button.disabled=false;}
 }
-async function chooseVault(){const r=await call('select_vault');if(r?.ok){notify('Cofre conectado.');await refresh();}else if(r?.message)notify(r.message);}
+async function chooseVault(){const r=await call('select_vault');if(r?.ok){
+ teacherState.messages=[];teacherState.draft='';teacherState.code='';
+ await call('teacher_reset');
+ notify('Cofre conectado.');await refresh();
+ }else if(r?.message)notify(r.message);}
 async function updateAutoQueue(result){
  if(!result?.ok){$('auto-feedback').textContent=result?.message||'Falha ao preparar os arquivos.';return;}
  const items=result.items||[],list=$('auto-queue');list.replaceChildren();
