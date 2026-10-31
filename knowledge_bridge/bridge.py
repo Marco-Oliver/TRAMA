@@ -240,6 +240,41 @@ class Bridge:
         finally:
             self._write_lock.release()
 
+    def restore_vault(self, confirmed=False):
+        """Restore ZIP into a *new* folder; never replace the selected vault."""
+        if not confirmed:
+            return {'ok': False, 'message': 'Confirme que deseja restaurar em uma pasta nova.'}
+        if not self._window:
+            return {'ok': False, 'message': 'Janela não disponível.'}
+        if not self._write_lock.acquire(blocking=False):
+            return {'ok': False, 'message': 'Aguarde o processamento atual.'}
+        try:
+            import webview
+            import zipfile
+            from .recovery import restore_backup
+            open_dialog = getattr(webview, "OPEN_DIALOG", None) or webview.FileDialog.OPEN
+            folder_dialog = getattr(webview, "FOLDER_DIALOG", None) or webview.FileDialog.FOLDER
+            selected = self._window.create_file_dialog(
+                open_dialog, file_types=("Arquivo ZIP (*.zip)",))
+            if not selected:
+                return {'ok': False, 'message': 'Restauração cancelada.'}
+            archive = selected[0] if isinstance(selected, (list, tuple)) else selected
+            parent = self._window.create_file_dialog(folder_dialog)
+            if not parent:
+                return {'ok': False, 'message': 'Restauração cancelada.'}
+            folder = Path(parent[0] if isinstance(parent, (list, tuple)) else parent).resolve()
+            vault = self._vault()
+            if vault and folder.is_relative_to(vault):
+                return {'ok': False, 'message': 'Escolha uma pasta fora do cofre atual.'}
+            destination = folder / ("TRAMA-Restaurado-" + datetime.now().strftime("%Y%m%d-%H%M%S"))
+            restored = restore_backup(Path(archive), destination)
+            return {**restored, 'message':
+                    'Biblioteca restaurada numa pasta nova. Use Selecionar pasta para abri-la; o cofre anterior foi preservado.'}
+        except (OSError, ValueError, RuntimeError, zipfile.BadZipFile) as error:
+            return {'ok': False, 'message': 'Backup não restaurado: ' + str(error)[:140]}
+        finally:
+            self._write_lock.release()
+
     def select_vault(self):
         if not self._window:return {'ok':False,'message':'Janela não disponível'}
         import webview
@@ -801,6 +836,9 @@ class PublicApi:
 
     def backup_vault(self, confirmed=False):
         return self._bridge.backup_vault(confirmed)
+
+    def restore_vault(self, confirmed=False):
+        return self._bridge.restore_vault(confirmed)
 
     def select_vault(self):
         return self._bridge.select_vault()
