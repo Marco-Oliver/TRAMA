@@ -1,150 +1,174 @@
 <div align="center">
 
-<img src="assets/trama-logo-64.png" width="66" alt="Logotipo do TRAMA" />
+<img src="assets/trama-logo-64.png" width="84" alt="Símbolo verde do TRAMA" />
 
 # TRAMA
 
-### Seu conhecimento, organizado. Seu aprendizado, conectado.
+### Transforme aulas soltas em uma biblioteca que faz sentido.
 
-**Um aplicativo Windows para transformar aulas, transcrições e código em uma memória pessoal consultável.**
+**Organize seus estudos, encontre o que o professor ensinou e revise seu código — tudo conectado ao Obsidian.**
 
-[![Windows](https://img.shields.io/badge/Windows-10%2F11-2D6A59?logo=windows&logoColor=white)](https://github.com/Marco-Oliver/TRAMA/releases)
-[![Python](https://img.shields.io/badge/Python-3.11%2B-2D6A59?logo=python&logoColor=white)](https://www.python.org/)
-[![GitHub Actions](https://github.com/Marco-Oliver/TRAMA/actions/workflows/release.yml/badge.svg)](https://github.com/Marco-Oliver/TRAMA/actions/workflows/release.yml)
+[![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-2B7550?style=flat-square&logo=windows&logoColor=white)](https://github.com/Marco-Oliver/TRAMA/releases/latest)
+[![Última versão](https://img.shields.io/github/v/release/Marco-Oliver/TRAMA?style=flat-square&color=2B7550&label=Vers%C3%A3o)](https://github.com/Marco-Oliver/TRAMA/releases/latest)
+[![Testes](https://img.shields.io/github/actions/workflow/status/Marco-Oliver/TRAMA/release.yml?style=flat-square&label=Publica%C3%A7%C3%A3o)](https://github.com/Marco-Oliver/TRAMA/actions/workflows/release.yml)
+[![Licença](https://img.shields.io/badge/Dados-no%20seu%20Obsidian-336D55?style=flat-square)](#-segurança-e-privacidade)
 
-[**Instalação**](#-instalação) · [**Como funciona**](#-como-funciona) · [**Privacidade**](#-privacidade-e-segurança) · [**Desenvolvimento**](#-desenvolvimento)
+### [⬇️ **BAIXAR TRAMA PARA WINDOWS**](https://github.com/Marco-Oliver/TRAMA/releases/latest/download/TRAMA_Setup.exe)
+
+**Instalador Windows · Não exige Python · Sem configurar terminal**
+
+[Como instalar](#-instalação-em-4-passos) · [Ver as telas](#-conheça-o-trama) · [IA Professor](#-ia-professor-experimental) · [Como atualizar](#-atualizar-sem-complicação)
 
 </div>
 
 ---
 
-## 🖥️ Conheça o aplicativo
+## 🖥️ Conheça o TRAMA
 
-<p align="center">
-  <img src="docs/screenshots/mapa-evolucao.png" width="100%" alt="Captura real da interface do TRAMA mostrando a biblioteca, aulas e mapa de evolução de conceitos" />
-</p>
-
-<sub>Captura da interface renderizada durante testes, com **conteúdo de demonstração**. Não representa uma análise completa de aulas pessoais reais.</sub>
+<figure>
+<img src="docs/screenshots/mapa-evolucao.png" alt="Tela de demonstração do TRAMA com aulas, notas e mapa de relações" width="100%"/>
+<figcaption><sub>Interface do aplicativo com conteúdo de demonstração utilizado nos testes.</sub></figcaption>
+</figure>
 
 <details>
-<summary><b>Ver outra tela: Biblioteca do Obsidian</b></summary>
-<br />
-<img src="docs/screenshots/biblioteca.png" alt="Captura da Biblioteca do Obsidian dentro do TRAMA" width="100%" />
+<summary><strong>📚 Ver a Biblioteca do Obsidian</strong></summary>
+
+<img src="docs/screenshots/biblioteca.png" alt="Tela da biblioteca local de notas Markdown no TRAMA" width="100%" />
+
 </details>
 
-## ✨ O que o TRAMA faz
+O TRAMA não substitui o Obsidian: ele **organiza, conecta e facilita o estudo** sobre os mesmos arquivos Markdown que você já pode abrir e editar normalmente.
 
-**Novidade da versão 2.0:** biblioteca de estudos aprimorada, investigação de dúvidas ao longo das aulas, backup/restauração local e uma **IA Professor experimental**, que apenas consulta o Obsidian.
+## ✨ Tudo num só lugar
 
+| Recurso | O que você consegue fazer |
+| :-- | :-- |
+| 📚 **Aulas** | Reunir gravações V01/V02/V03, transcrições, arquivos e links na mesma aula. |
+| 🧠 **Conhecimento** | Ler resumos por aula e módulo, consultar conceitos e acompanhar a evolução dos estudos. |
+| 💻 **Projetos** | Relacionar explicações com arquivos, exemplos de código e linhas dos repositórios Git. |
+| 🔗 **Biblioteca** | Navegar pelas notas e conexões diretamente no TRAMA ou abrir o Obsidian. |
+| 🔎 **Busca e filtros** | Encontrar aulas e notas; filtrar itens recentes ou favoritos. |
+| 🛟 **Dúvidas** | Guardar hipóteses e localizar possíveis evidências em aulas futuras, sem inventar respostas. |
+| 💾 **Backup** | Criar um ZIP local verificado e restaurar em outra pasta sem sobrescrever a biblioteca atual. |
+| 🎓 **IA Professor** | Conversar sobre as aulas, receber desafios e revisar código com referências ao material encontrado. |
 
-| 🗂️ Minhas Aulas | 🧠 Meu Conhecimento | 💻 Meus Projetos |
-| :--- | :--- | :--- |
-| Agrupa V01, V02, V03 de uma aula; preserva transcrições, horários, prints e links. | Consolida conceitos e contexto do curso sem perder suas fontes. | Lê código e documentação Git; associa conceitos a arquivos, linhas e commits. |
-
-A proposta é sair de **arquivos isolados** para explicações como:
-
-> “Este conceito apareceu na Aula X, voltou na Aula Y e foi utilizado neste trecho do Projeto Z.”
-
-Essas relações devem apontar **evidências verificáveis**. Encontrar código em um repositório compartilhado não comprova automaticamente quem o escreveu ou o nível de domínio de alguém.
-
-### Do material à biblioteca
+### Como o conteúdo vira conhecimento
 
 ```text
-Transcrições + prints + links + repositórios GitHub
-                       │
-                Importar em lote
-                       │
-          Interpretar, validar e relacionar
-                       │
-         ┌─────────────┼─────────────┐
-         ▼             ▼             ▼
-     Minhas Aulas  Meu Conhecimento  Meus Projetos
-         └─────────────┼─────────────┘
-                       ▼
-                 Obsidian Vault
-             (arquivos Markdown locais)
+     Transcrições · prints · documentos · links · Git
+                            │
+                     Importar e organizar
+                            │
+                 Análise opcional por IA
+                            │
+           Conferência de trechos e relações
+                            │
+                        OBSIDIAN
+            ┌───────────────┼───────────────┐
+            ▼               ▼               ▼
+           Aulas         Conceitos        Projetos
+            └───────────────┼───────────────┘
+                            ▼
+                     Revisão e estudo
 ```
 
-- **Sem copiar os vídeos:** as gravações ficam por link, enquanto transcrições e notas podem permanecer no cofre.
-- **Fila de importação:** adicione arquivos de várias vezes, cole prints com `Ctrl + V` e só depois clique em **Processar tudo**.
-- **Pessoas e contexto:** aulas de apresentação, metodologia e atividades também entram na biblioteca, mesmo sem código.
-- **Evolução explicável:** diferencia menção, retomada, aplicação, hipótese e evidência confirmada.
-- **Visual de desktop clássico:** biblioteca, busca, notas e painéis relacionados na mesma tela.
-- **Memória de dúvidas:** pistas surgidas em aulas futuras são associadas ao histórico, sem corrigir automaticamente o professor.
-- **Revisão por módulo:** reúne resumos completos, exemplos e conceitos com as fontes originais.
-- **Backup e restauração:** em Ajustes, crie um ZIP local e restaure em uma pasta nova, sem sobrescrever o cofre existente.
+**Vídeos permanecem por link:** o TRAMA não baixa automaticamente os arquivos do Classroom ou do Meet. Você seleciona as fontes; o sistema as organiza e preserva suas referências.
 
-### IA Professor (experimental)
+## 🎓 IA Professor (experimental)
 
-Na aba **IA Professor**, você pode pedir explicações, gerar desafios progressivos e colar código para receber dicas. O Python recupera notas relevantes do seu Obsidian e um provedor gratuito configurado produz a resposta. As referências levam às notas consultadas.
+A IA Professor lê **trechos selecionados das notas do cofre** e solicita uma resposta ao provedor externo que você configurar. O Python faz a busca e prepara o contexto; **não é um modelo treinado pelo TRAMA**.
 
-- **Somente leitura:** o Professor não edita seu Obsidian, não executa seu código e não grava o chat como nota.
-- **Envio controlado:** cada pergunta exige autorização para enviar trechos à API externa; não há modelo local embutido.
-- **Qualidade experimental:** citações válidas identificam notas consultadas, mas não garantem a correção de cada explicação. Consulte as fontes.
-- **Custos:** uma assinatura ChatGPT Plus/Claude Pro não fornece acesso à API do TRAMA. Verifique cotas e faturamento do seu provedor antes de usar.
+- **Explicar / revisar:** faça uma pergunta e confira as notas utilizadas.
+- **Criar desafios:** pratique somente assuntos encontrados na sua biblioteca.
+- **Corrigir meu código:** cole um trecho e peça pistas sobre erros, sem executar o programa.
 
-## 📦 Instalação
+As respostas mostram referências clicáveis. Se não houver material correspondente, o Professor informa que falta contexto em vez de escolher um assunto não relacionado.
 
-> **Versão atual: 2.0.0 (Windows).** Publicada em 31/10/2026 com instalador e verificação SHA-256. A versão anterior, 1.9.0, continua disponível no [histórico de releases](https://github.com/Marco-Oliver/TRAMA/releases).
+**Privacidade:** o chat é temporário, o Professor não escreve no Obsidian e o envio de cada pergunta exige autorização. Algumas informações podem ser enviadas à API externa; remova dados privados antes de enviar.
 
-**[⬇️ Baixar TRAMA 2.0.0 para Windows](https://github.com/Marco-Oliver/TRAMA/releases/download/v2.0.0/TRAMA_Setup.exe)**
+**Qualidade:** as citações confirmam *quais notas foram consultadas*, mas não comprovam que o modelo interpretou tudo corretamente. Uma conversa com modelo simulado não substitui avaliação com modelo real.
 
-1. Baixe `TRAMA_Setup.exe` pela página de [Releases](https://github.com/Marco-Oliver/TRAMA/releases).
-2. Execute o instalador e abra **TRAMA** pelo menu Iniciar.
-3. Em **Ajustes**, selecione seu cofre local do Obsidian e, opcionalmente, configure uma chave de IA de uma conta gratuita.
-4. Adicione materiais à fila e clique em **Processar tudo**.
+## 📦 Instalação em 4 passos
 
-**Não é necessário instalar Python** para utilizar o aplicativo compilado. Sem assinatura digital de código, o Windows pode apresentar um aviso SmartScreen; confira a origem e os arquivos de verificação do release antes de executá-lo.
+<details open>
+<summary><strong>Quero só usar o aplicativo (não sou desenvolvedor)</strong></summary>
 
-### Atualizações
+1. Clique em **[Baixar TRAMA para Windows](https://github.com/Marco-Oliver/TRAMA/releases/latest/download/TRAMA_Setup.exe)**.
+2. Abra o arquivo **`TRAMA_Setup.exe`**, siga as telas do instalador e, ao terminar, abra **TRAMA** pelo menu Iniciar.
+3. Na aba **Ajustes**, clique em **Selecionar pasta do Obsidian**. Pode escolher um cofre existente ou um cofre preparado para seus estudos.
+4. Clique em **Importar e organizar**, adicione suas transcrições, prints e links, confira a fila e selecione **Processar tudo**.
 
-O aplicativo possui um mecanismo para consultar releases e baixar instaladores com verificação de hash SHA-256. **A atualização não é silenciosa:** você confirma a instalação. O upgrade da 1.9.0 para a 2.0.0 passou nos testes automatizados do Windows, com banco e anotação pessoal preservados. **Faça backup do seu cofre antes de atualizar**, especialmente se tiver notas editadas manualmente.
+**Não precisa:** clonar GitHub, instalar Python, rodar comandos, configurar Docker ou baixar um ZIP com código-fonte.
 
-## 🔐 Privacidade e segurança
+</details>
 
-- **Seus dados ficam na sua máquina:** cofre Obsidian, SQLite, transcrições, vídeos por link e preferências locais **não são armazenados neste repositório**.
-- **Chaves de API são configuradas localmente**, com proteção DPAPI no Windows; nunca devem ser commitadas nem incluídas em relatórios.
-- O TRAMA não ativa faturamento: a utilização de Gemini/Groq/OpenRouter depende da **conta e dos limites configurados por você**. Serviços externos aplicam as próprias políticas de privacidade.
-- A análise de conteúdo por IA exige sua autorização antes de enviar materiais ao provedor configurado.
-- Notas editadas manualmente não devem ser sobrescritas silenciosamente. Guarde backups do cofre; os ZIPs gerados pelo aplicativo não são criptografados.
+> **Aviso do Windows:** o instalador ainda não tem assinatura digital. O Windows pode alertar sobre aplicativos de editor não reconhecido. Confira sempre que o download veio da [release oficial](https://github.com/Marco-Oliver/TRAMA/releases/latest) e valide o SHA-256 disponibilizado no mesmo release. Não execute um arquivo cuja origem você não consiga verificar.
 
-Leia [SECURITY.md](SECURITY.md). Para descrição detalhada das funcionalidades, veja [PLANEJAMENTO_TRAMA.md](PLANEJAMENTO_TRAMA.md).
+### 🔄 Atualizar sem complicação
 
-## 🛠️ Desenvolvimento
+Dentro do TRAMA:
 
-| Camada | Tecnologias |
-| --- | --- |
-| Interface | HTML, CSS, JavaScript — tema clássico |
-| Desktop Windows | Python + pywebview / WebView2 |
-| Backend e processamento | Python 3.11+, Git, SQLite |
-| Base de conhecimento | Markdown em cofre Obsidian local |
-| IA opcional | APIs gratuitas configuradas por usuário |
-| Empacotamento | PyInstaller + Inno Setup 6 |
-| CI/CD | GitHub Actions em runner Windows |
+1. Entre em **Ajustes → Verificar atualizações**.
+2. Se houver versão nova, clique em **Baixar e instalar nova versão**.
+3. O TRAMA baixa o instalador do canal oficial e confere seu **SHA-256**. Você confirma antes de executar a instalação.
+4. Reabra o TRAMA e selecione seu cofre, se necessário.
+
+O instalador de uma versão nova **não substitui nem desinstala seu Obsidian**. Recomendamos criar um backup antes de atualizar: **Ajustes → Criar backup local (.zip)**. Para recuperação, escolha **Restaurar backup em nova pasta**.
+
+Caso o verificador do aplicativo esteja indisponível, baixe manualmente pela [página de releases](https://github.com/Marco-Oliver/TRAMA/releases/latest).
+
+**Importante:** a atualização não é automática nem silenciosa; depende de você. O teste automatizado de upgrade valida cofres de demonstração e não substitui a conferência da sua biblioteca real.
+
+## 🔐 Segurança e privacidade
+
+| Dados | Tratamento |
+| :-- | :-- |
+| Notas e transcrições | Arquivos locais no cofre escolhido. |
+| Banco de dados | SQLite local para catalogar fontes, resumos e histórico. |
+| Chaves de IA | Configuradas localmente; no Windows, protegidas com DPAPI. |
+| IA externa | Só recebe contexto quando você autoriza; valem as políticas do provedor. |
+| Código do estudante | Não é executado pela IA Professor. |
+| Backup | ZIP com verificação de arquivos, **não criptografado**. Guarde com cuidado. |
+
+O TRAMA aceita provedores opcionais como Gemini, Groq e OpenRouter, sujeitos aos termos e cotas de cada serviço. **ChatGPT Plus e Claude Pro não equivalem a chaves de API gratuitas**; o TRAMA não consegue verificar ou bloquear faturamento de terceiros.
+
+O sistema tenta ocultar formatos comuns de credenciais, mas nenhuma filtragem garante detectar todos os dados sensíveis. Evite importar materiais com senhas, segredos ou informações pessoais desnecessárias.
+
+Leia também [SECURITY.md](SECURITY.md) e a [documentação completa do produto](PLANEJAMENTO_TRAMA.md).
+
+## 🛠️ Para quem quer desenvolver
+
+<details>
+<summary><strong>Arquitetura, testes e execução a partir do código-fonte</strong></summary>
+
+| Parte | Tecnologia |
+| :-- | :-- |
+| Interface desktop | HTML, CSS, JavaScript e pywebview/WebView2 |
+| Automação | Python 3.11+, Git e SQLite |
+| Conhecimento | Markdown e links internos do Obsidian |
+| IA (opcional) | API externa configurada pelo usuário |
+| Instalador | PyInstaller e Inno Setup |
+| Validação | unittest, cenários adversariais, GitHub Actions e testes automatizados de interface |
 
 ```powershell
 python -m pip install -r requirements.txt
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -q
 python qa_adversarial.py
 python main.py gui
 ```
 
-### Testes do aplicativo instalável
+A auditoria completa inclui **personagens fictícios**, testes de segurança, fluxo de telas em navegador automatizado e compilação/instalação do executável Windows. Testes simulados não são avaliação de qualidade de um Gemini real.
 
-O fluxo em [`.github/workflows/release.yml`](.github/workflows/release.yml) executa:
+Veja os workflows na pasta [`.github/workflows`](.github/workflows).
 
-1. Auditoria de arquivos e possíveis credenciais.
-2. Testes de regressão e casos adversariais.
-3. Compilação do **TRAMA.exe** com todos os recursos locais.
-4. Teste do executável compilado com `--self-test`.
-5. Geração do **TRAMA_Setup.exe**, instalação silenciosa em ambiente Windows de CI, novo teste do executável instalado e desinstalação.
-6. Teste real de atualização do instalador anterior (1.9.0 → 2.0.0) com cofre de demonstração e nota pessoal preservados.
-7. Verificação SHA-256 antes de disponibilizar o release.
-
-**Limite dos testes:** essa automação não substitui a validação visual da janela, do WebView2 em diferentes PCs, nem a avaliação factual de respostas reais do Gemini com suas aulas e projetos.
+</details>
 
 ---
 
 <div align="center">
-<sub>TRAMA é uma ferramenta pessoal de aprendizagem em evolução. O Obsidian permanece independente — o seu conhecimento não fica preso ao aplicativo.</sub>
+
+**TRAMA · Seu conhecimento, organizado.**
+
+<sub>Feito para estudar melhor, mantendo seu material no Obsidian e seu controle sobre dados e atualizações.</sub>
+
 </div>
