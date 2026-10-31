@@ -18,11 +18,29 @@ const libPretty=folder=>{
 const libHumanTitle=n=>n.kind==='visao_geral'?'Visão geral da aula':n.title.replace(/^Aula-\d+\s+[—-]\s+/i,'');
 
 function libFindLink(raw,source){
- const basic=String(raw||'').split('|')[0].split('#')[0].replaceAll('\\','/').replace(/\.md$/i,'').trim().toLowerCase();
- if(!basic||basic.includes('..'))return null;
- const notes=libNotes();const selfDir=libParts(source||'').slice(0,-1).join('/').toLowerCase();
- const matches=notes.filter(x=>x.id.toLowerCase().replace(/\.md$/,'')===basic||x.id.toLowerCase().replace(/\.md$/,'').endsWith('/'+basic)||x.id.toLowerCase().split('/').at(-1).replace(/\.md$/,'')===basic||x.title.toLowerCase()===basic);
- return matches.find(x=>x.id.toLowerCase().startsWith(selfDir+'/'))||matches[0]||null;
+ // Never guess which document the user wanted when multiple lessons share
+ // "00-Visao-geral.md" or a generic note name.
+ const basic=String(raw||'').split('|')[0].split('#')[0]
+  .replaceAll('\\','/').replace(/\.md$/i,'').trim().toLowerCase();
+ if(!basic||basic.startsWith('/')||basic.split('/').includes('..'))return null;
+ const notes=libNotes();
+ const normalized=n=>n.id.toLowerCase().replace(/\.md$/,'');
+ const currentDir=libParts(source||'').slice(0,-1).join('/').toLowerCase();
+ const exact=notes.filter(n=>normalized(n)===basic);
+ if(exact.length===1)return exact[0];
+ if(exact.length>1)return null;
+ if(basic.includes('/')){
+  const suffix=notes.filter(n=>normalized(n).endsWith('/'+basic));
+  return suffix.length===1?suffix[0]:null;
+ }
+ const matches=notes.filter(n=>normalized(n).split('/').at(-1)===basic||
+                                  n.title.toLowerCase()===basic);
+ if(currentDir){
+  const same=matches.filter(n=>normalized(n).startsWith(currentDir+'/'));
+  if(same.length===1)return same[0];
+  if(same.length>1)return null;
+ }
+ return matches.length===1?matches[0]:null;
 }
 function libWiki(content,source){
  let safe=libE(content);
