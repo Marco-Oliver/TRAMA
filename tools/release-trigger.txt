@@ -1,1 +1,1 @@
-TRAMA Windows release requested after correcting Windows short/long path identity test.
+Retry Windows release with frozen executable startup diagnostics, 2026-10-31.
