@@ -182,7 +182,8 @@ def nondestructive_reimport():
 
 def tampered_update_assets():
     repo='owner-private/trama'
-    tag='v1.9.7'
+    current=version_tuple(VERSION)
+    tag=f'v{current[0]}.{current[1]}.{current[2]+7}'
     base=f'https://github.com/{repo}/releases/download/{tag}/'
     data=b'MZ'+bytes(range(256))*8
     digest=hashlib.sha256(data).hexdigest()
