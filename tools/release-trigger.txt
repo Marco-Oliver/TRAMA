@@ -1,1 +1,1 @@
-Retry Windows release with proper exit-code capture for GUI executables, 2026-10-31.
+Publish TRAMA 2.0.0 after merging validated 3-priority release candidate. Windows/Linux regressions passed; v1.9.0-to-v2.0.0 upgrade passed on Windows CI. 2026-10-31.
