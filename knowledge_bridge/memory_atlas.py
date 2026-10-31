@@ -52,7 +52,7 @@ def make_atlas(store, max_concepts: int = 2000) -> dict:
             if not isinstance(row,dict):continue
             name = str(row.get('nome','')).strip()[:90]
             key = norm(name)
-            if len(key)<3 or len(key)>90:continue
+            if (len(key)<3 and key != "c") or len(key)>90:continue
             if key not in concepts and len(concepts)>=max_concepts:continue
             stamp = str(row.get('tempo','')).strip('[]')
             exists = bool(stamp and stamp in timestamps)
