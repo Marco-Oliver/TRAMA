@@ -131,6 +131,18 @@ class Application:
         self.log(f"Importação concluída. Novos ou alterados: {count}.")
         return count
 
+    def _verified_transcript(self, src) -> str:
+        """Refuse missing or modified cached sources before sending content to AI."""
+        file = (self.store.vault / (src["stored_path"] or "")).resolve()
+        if (not file.is_relative_to(self.store.vault) or not file.is_file() or
+                file.is_symlink()):
+            raise ValueError("Fonte original ausente ou caminho inseguro: " + src["label"])
+        if file_hash(file) != src["digest"]:
+            self.store.update_status(src["id"], "NEEDS_REVIEW")
+            raise ValueError("Transcrição armazenada foi alterada ou corrompida: " +
+                             src["label"] + ". Reimporte a fonte original antes de processar.")
+        return file.read_text(encoding="utf-8-sig", errors="replace")
+
     @staticmethod
     def _clean_result(payload: dict, raw_text: str) -> dict:
         """Limita resultados da IA e valida referências temporais reais."""
@@ -183,7 +195,7 @@ class Application:
             if was_done:
                 self.log(f"Já analisada, ignorando: {src['label']}")
                 continue
-            text = (self.store.vault / src["stored_path"]).read_text(encoding="utf-8-sig",errors="replace")
+            text = self._verified_transcript(src)
             pieces = chunks(text)
             all_results = []
             self.store.update_status(src["id"], "PROCESSING")
@@ -249,7 +261,9 @@ class Application:
                                      meta["model"] if meta else "unknown", combined)
             self.store.update_status(src["id"], "PUBLISHED")
             self.log(f"Concluída: {src['label']}")
-            self.publisher.rebuild()  # estado sempre persistido a cada aula
+            # SQLite analysis and status already committed after each lesson.
+            # One final rebuild avoids O(n²) Markdown rewrites for large batches.
+            # If interrupted, rebuilding on the next run recovers saved results.
         # Cross-source comparison is separate from transcription summaries,
         # cached by transcript digest + commit SHA, and opt-in via process().
         self.enrich_context()
@@ -298,7 +312,7 @@ class Application:
         for src in self.store.sources('transcript'):
             analysis=self.store.analysis(src['id'],src['digest'])
             if not analysis:continue  # no externally generated claims without prior summary
-            transcript=(self.store.vault/src['stored_path']).read_text(encoding='utf-8-sig',errors='replace')
+            transcript=self._verified_transcript(src)
             for repo in self.store.repositories():
                 payload=json.loads(repo['payload'])
                 matched=match_lesson_to_repository(transcript,analysis,payload,cap=10)
