@@ -11,7 +11,7 @@ class NativeBootTests(TestCase):
         api=PublicApi(bridge)
         public={k:v for k,v in inspect.getmembers(api) if not k.startswith('_')}
         self.assertEqual(set(public), {
-            'snapshot','note','graph','audit_note','organize_library','select_vault','backup_vault','import_materials','auto_import',
+            'snapshot','note','graph','audit_note','organize_library','select_vault','backup_vault','restore_vault','import_materials','auto_import',
             'staged_items','stage_files','stage_clipboard_image','remove_staged','clear_staged','process_staged',
             'process','add_repo','toggle_favorite','reveal_note','open_note',
             'open_obsidian','open_attachment','open_video_link','window_action',
