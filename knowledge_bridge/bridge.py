@@ -212,6 +212,34 @@ class Bridge:
             if app:app.close()
             self._write_lock.release()
 
+    def backup_vault(self, confirmed=False):
+        """Save a local ZIP backup after explicit consent; never uploads data."""
+        if not confirmed:
+            return {'ok': False, 'message': 'Confirme a criação de backup local.'}
+        vault = self._vault()
+        if not vault or not self._window:
+            return {'ok': False, 'message': 'Selecione um cofre e abra o aplicativo.'}
+        if not self._write_lock.acquire(blocking=False):
+            return {'ok': False, 'message': 'Aguarde a conclusão do processamento.'}
+        try:
+            import webview
+            from .recovery import create_backup
+            save_dialog = getattr(webview, "SAVE_DIALOG", None)
+            if save_dialog is None:
+                save_dialog = webview.FileDialog.SAVE
+            selection = self._window.create_file_dialog(
+                save_dialog, save_filename="TRAMA_Backup.zip",
+                file_types=("Arquivo ZIP (*.zip)",))
+            if not selection:
+                return {'ok': False, 'message': 'Backup cancelado.'}
+            destination = selection[0] if isinstance(selection, (tuple, list)) else selection
+            report = create_backup(vault, Path(destination))
+            return {**report, 'message': 'Backup criado localmente. Guarde o ZIP em local seguro: não é criptografado.'}
+        except (OSError, ValueError, RuntimeError) as error:
+            return {'ok': False, 'message': 'Backup não criado: ' + str(error)[:140]}
+        finally:
+            self._write_lock.release()
+
     def select_vault(self):
         if not self._window:return {'ok':False,'message':'Janela não disponível'}
         import webview
@@ -770,6 +798,9 @@ class PublicApi:
 
     def organize_library(self, confirmed=False):
         return self._bridge.organize_library(confirmed)
+
+    def backup_vault(self, confirmed=False):
+        return self._bridge.backup_vault(confirmed)
 
     def select_vault(self):
         return self._bridge.select_vault()
