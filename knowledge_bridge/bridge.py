@@ -269,7 +269,7 @@ class Bridge:
             destination = folder / ("TRAMA-Restaurado-" + datetime.now().strftime("%Y%m%d-%H%M%S"))
             restored = restore_backup(Path(archive), destination)
             return {**restored, 'message':
-                    'Biblioteca restaurada numa pasta nova. Use Selecionar pasta para abri-la; o cofre anterior foi preservado.'}
+                    'Restaurado em ' + str(destination) + '. Use Selecionar pasta para abri-la; o cofre anterior foi preservado.'}
         except (OSError, ValueError, RuntimeError, zipfile.BadZipFile) as error:
             return {'ok': False, 'message': 'Backup não restaurado: ' + str(error)[:140]}
         finally:
