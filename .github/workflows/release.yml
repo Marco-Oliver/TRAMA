@@ -22,6 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -68,6 +69,11 @@ jobs:
       - name: Instalar, reinstalar e desinstalar no Windows real de CI
         shell: pwsh
         run: ./tools/windows_installer_smoke.ps1
+      - name: Testar atualização 1.9.0 para 2.0.0 mantendo cofre
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./tools/windows_upgrade_smoke.ps1
       - name: Hash SHA-256 do instalador
         shell: pwsh
         run: |
