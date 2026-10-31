@@ -184,6 +184,29 @@ class ReliableAutomation(unittest.TestCase):
             self.assertIn(".base-conhecimento/estado.sqlite3", archive.namelist())
             self.assertNotIn("api_keys.dpapi.json", archive.namelist())
 
+    def test_windows_settings_restore_creates_new_vault_without_replacing_old(self):
+        from unittest.mock import Mock, patch
+        from types import SimpleNamespace
+        from knowledge_bridge.bridge import Bridge, PublicApi
+        self.add_lesson(1, "[0:03] Fonte de teste.")
+        original_count = len(self.app.store.sources("transcript"))
+        archive = self.base / "backup.zip"
+        create_backup(self.vault, archive)
+        bridge = Bridge()
+        bridge.settings = {"vault": str(self.vault)}
+        bridge._window = Mock()
+        bridge._window.create_file_dialog.side_effect = [
+            [str(archive)], [str(self.base)]]
+        api = PublicApi(bridge)
+        self.assertFalse(api.restore_vault(False)["ok"])
+        with patch.dict("sys.modules", {"webview":
+                        SimpleNamespace(OPEN_DIALOG="open", FOLDER_DIALOG="folder")}):
+            report = api.restore_vault(True)
+        self.assertTrue(report["ok"], report)
+        self.assertNotEqual(Path(report["path"]), self.vault)
+        self.assertTrue((Path(report["path"]) / ".base-conhecimento/estado.sqlite3").exists())
+        self.assertEqual(len(self.app.store.sources("transcript")), original_count)
+
     def test_tampered_zip_is_rejected_without_destination_files(self):
         self.add_lesson(1, "[0:01] Conteúdo.")
         archive = self.base / "original.zip"
