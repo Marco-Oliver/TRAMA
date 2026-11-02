@@ -151,7 +151,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     <label for="ai-key">Chave de API (não será exibida depois)</label>
     <input type="password" id="ai-key" placeholder="Cole sua chave aqui" autocomplete="off" spellcheck="false"/>
     <label class="free-confirm"><input id="ai-free" type="checkbox"/> Confirmei que a chave é de uma conta/projeto Free sem faturamento.</label>
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><button id="save-ai">Salvar chave</button><button id="remove-ai">Remover chave</button></div>
+    <div class="ai-key-actions"><button id="save-ai">Salvar chave</button><button id="remove-ai">Remover chave</button></div>
     <p id="ai-status" class="setting-status">Consultando configuração…</p>
     <div class="ai-diagnostic">
       <h3>Testar inteligência artificial</h3>
@@ -236,7 +236,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
  }
  const graph=await call('graph');const nodes=graph?.nodes||[],edges=graph?.edges||[];
  el.innerHTML=`<div class="wide-header"><h2>Grafo de conexões</h2><p>${nodes.length} notas e ${edges.length} links reais entre arquivos do Obsidian.</p></div><div class="graph-box" id="graph-box"><svg id="graph-svg" viewBox="0 0 1000 700" aria-label="Grafo das notas"></svg></div>`;
- if(!nodes.length){el.querySelector('.graph-box').innerHTML='<p class="empty-text" style="padding:25px">Seu grafo será construído quando suas notas tiverem links internos [[...]].</p>';return;}
+ if(!nodes.length){el.querySelector('.graph-box').innerHTML='<p class="empty-text" class="graph-empty">Seu grafo será construído quando suas notas tiverem links internos [[...]].</p>';return;}
  const svg=$('graph-svg'),ns='http://www.w3.org/2000/svg';const clusters={'01-Meu-Conhecimento':[-240,-90],'02-Minhas-Aulas':[200,-70],'03-Meus-Projetos':[0,180],'00-Inicio':[0,-220]};const counts={};
  const pos=nodes.map(n=>{const i=counts[n.section]||0;counts[n.section]=i+1;const a=i*2.399,r=65+16*Math.sqrt(i),c=clusters[n.section]||[0,0];return [500+c[0]+Math.cos(a)*r,350+c[1]+Math.sin(a)*r];});
  for(const [a,b] of edges){const edge=document.createElementNS(ns,'line');edge.setAttribute('x1',pos[a][0]);edge.setAttribute('y1',pos[a][1]);edge.setAttribute('x2',pos[b][0]);edge.setAttribute('y2',pos[b][1]);svg.appendChild(edge);}
