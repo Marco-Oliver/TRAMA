@@ -457,3 +457,32 @@ Essa proteção é uma barreira adicional, não garantia contra qualquer explora
 WebView ou de componentes nativos; por isso o usuário continua responsável por
 evitar materiais ou links suspeitos e o código deve manter suas validações de entrada.
 
+
+### 11.5 Endurecimento de privacidade e execução dos testes
+
+- A consulta da IA Professor agora indexa **somente** as três pastas de ensino
+  (conhecimento, aulas e projetos). Notas pessoais e anexos não são abertos
+  durante a busca.
+- Links simbólicos encontrados em qualquer componente do caminho Markdown
+  são recusados, e a leitura usa descritor de arquivo com verificação do
+  tipo/tamanho e `O_NOFOLLOW` onde o sistema operacional oferece suporte.
+- O contexto enviado ao provedor não inclui nomes nem caminhos locais das
+  notas: apenas identificadores anônimos `F1`, `F2` e trechos selecionados.
+- A ocultação de dados foi ampliada para emails, CPF formatado, JWTs,
+  blocos de chave privada e parâmetros de URLs. Parágrafos que tentam dar
+  ordens à IA são omitidos do contexto.
+- Respostas e avisos devolvidos pela IA são novamente filtrados antes
+  de aparecer na interface. Nenhum filtro de padrões consegue garantir
+  sigilo absoluto; somente conteúdo apropriado deve ser autorizado para envio.
+- Erros de atualização, importação e consulta do Professor não apresentam
+  exceções brutas contendo caminhos locais, URLs privadas ou tokens.
+- Em cada alteração do código a integração executa somente a bateria
+  de segurança e regressão no Linux. A compilação e teste completo do
+  Windows/navegador ficam disponíveis em execução **manual** da auditoria.
+  O autoteste nativo do instalador tem limite explícito de 90 segundos.
+
+**Limite adicional:** a flag `O_NOFOLLOW` e a verificação de caminhos
+reduzem ataques com links simbólicos, mas não equivalem a uma sandbox completa
+contra outro programa com permissões do usuário modificando arquivos ao mesmo
+tempo. Qualidade com modelos de IA reais e assinatura de executáveis também
+exigem validação posterior.

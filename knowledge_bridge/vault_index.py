@@ -7,7 +7,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import os
 import re
+import stat
 
 WIKI_RE = re.compile(r"(?<!!)\[\[([^\[\]\n]+)\]\]")
 FRONT_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.S)
@@ -27,8 +29,9 @@ class VaultNote:
 
 
 class VaultIndex:
-    def __init__(self, vault: Path):
+    def __init__(self, vault: Path, allowed_sections: set[str] | None = None):
         self.vault = vault.expanduser().resolve()
+        self.allowed_sections = frozenset(allowed_sections) if allowed_sections is not None else None
         self.notes: list[VaultNote] = []
         self.by_relative: dict[str, VaultNote] = {}
         self.by_stem: dict[str, list[VaultNote]] = {}
@@ -45,14 +48,33 @@ class VaultIndex:
             if len(self.notes) >= 12000:
                 break
             try:
-                if file.is_symlink() or not file.is_file() or file.stat().st_size > 2_000_000:
+                relative_path = file.relative_to(self.vault)
+                if (not relative_path.parts or
+                        self.allowed_sections is not None and
+                        relative_path.parts[0] not in self.allowed_sections):
                     continue
-                if not file.resolve().is_relative_to(self.vault):
+                # Do not even open excluded sections or hidden folders.
+                if any(p.startswith('.') for p in relative_path.parts):
                     continue
-                relative = file.relative_to(self.vault).as_posix()
-                if any(p.startswith('.') for p in file.relative_to(self.vault).parts):
+                # Reject symbolic links in EVERY path component, not only
+                # the Markdown file. This also protects in-vault aliases.
+                if any((self.vault / Path(*relative_path.parts[:i])).is_symlink()
+                       for i in range(1, len(relative_path.parts) + 1)):
                     continue
-                raw = file.read_text(encoding='utf-8-sig', errors='replace')
+                if not file.is_file() or not file.resolve().is_relative_to(self.vault):
+                    continue
+                # O_NOFOLLOW prevents a final-component symlink swap on
+                # platforms that support it; fstat checks the opened handle.
+                flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+                with os.fdopen(os.open(file, flags), "rb") as opened:
+                    info = os.fstat(opened.fileno())
+                    if not stat.S_ISREG(info.st_mode) or info.st_size > 2_000_000:
+                        continue
+                    content = opened.read(2_000_001)
+                if len(content) > 2_000_000:
+                    continue
+                relative = relative_path.as_posix()
+                raw = content.decode('utf-8-sig', errors='replace')
             except (OSError, ValueError, UnicodeError):
                 continue
             info = {}

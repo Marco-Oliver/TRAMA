@@ -17,7 +17,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-2022]
+        # On pushes, run only fast Linux tests. Windows is a manual release gate.
+        os: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["ubuntu-latest","windows-2022"]' || '["ubuntu-latest"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,6 +50,7 @@ jobs:
           node --check knowledge_bridge/ui/app.js
           node --check knowledge_bridge/ui/teacher.js
   browser:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -81,6 +83,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
   installer:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
@@ -96,7 +99,14 @@ jobs:
         shell: pwsh
         run: |
           $exe = (Resolve-Path '.\dist\TRAMA\TRAMA.exe').Path
-          $result = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -Wait
+          $result = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru
+          try {
+            Wait-Process -Id $result.Id -Timeout 90 -ErrorAction Stop
+          } catch {
+            Stop-Process -Id $result.Id -Force -ErrorAction SilentlyContinue
+            throw 'Auto-teste do executável excedeu 90 segundos ou falhou.'
+          }
+          $result.Refresh()
           if ($result.ExitCode -ne 0) { throw "Executável falhou: $($result.ExitCode)" }
       - name: Compilar instalador sem publicar
         shell: pwsh

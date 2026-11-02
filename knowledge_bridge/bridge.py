@@ -26,6 +26,7 @@ from .secure_keys import KeyVault, PROVIDERS
 from .ai import FreeAIRouter, ALLOWED, ProviderError, NoFreeProvider, BudgetStopped
 from .diagnostic import run_ai_diagnostic, format_diagnostic_report, MissingTestSources
 from .vault_index import VaultIndex
+from .code_intel import redact_sensitive
 from .gui_legacy import DATA_HOME, SETTINGS_FILE, CONFIG_FILE
 
 ALLOWED_ATTACHMENTS={'.txt','.md','.mp4','.mkv','.mov','.webm','.png','.jpg','.jpeg','.webp','.pdf','.docx'}
@@ -622,9 +623,10 @@ class Bridge:
                     {'question': question[:600], 'answer': result['answer'][:1000]})
                 self._teacher_history = self._teacher_history[-5:]
             return result
-        except (OSError, ValueError, TypeError, NoFreeProvider, BudgetStopped,
-                ProviderError, RuntimeError) as exc:
-            return {'ok': False, 'message': str(exc)[:200]}
+        except (ValueError, TypeError, NoFreeProvider, BudgetStopped, ProviderError) as exc:
+            return {'ok': False, 'message': redact_sensitive(str(exc)[:200])}
+        except (OSError, RuntimeError):
+            return {'ok': False, 'message': 'Falha local ao consultar as aulas. Tente novamente.'}
         except Exception:
             # No raw model output or user content in error messages.
             return {'ok': False, 'message': 'O Professor não conseguiu consultar as notas; tente novamente.'}
@@ -741,8 +743,9 @@ class Bridge:
         app=self._make_application(vault,log=lambda text:logs.append(str(text)))
         try:
             app.process()
-        except Exception as exc:
-            return {'ok':False,'message':type(exc).__name__+': '+str(exc)[:150]}
+        except Exception:
+            # Exceptions from files or network may contain local paths or tokens.
+            return {'ok':False,'message':'Não foi possível processar os materiais. Consulte as fontes locais.'}
         finally:
             app.close()
             self._write_lock.release()
@@ -756,7 +759,7 @@ class Bridge:
         try:
             app.add_repo(url.strip())
             return {'ok':True}
-        except Exception as exc:return {'ok':False,'message':str(exc)[:200]}
+        except Exception:return {'ok':False,'message':'Não foi possível adicionar o repositório. Confira o endereço e tente novamente.'}
         finally:
             app.close()
             self._write_lock.release()
