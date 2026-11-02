@@ -64,6 +64,15 @@ try{
     page.on('console',msg=>{if(msg.type()==='error')errors.push(`${width}px console: ${msg.text()}`);});
     await page.addInitScript(makeBridge, {notes});
     await page.goto(pathToFileURL(pagePath).href);
+    const clippedNavigation=await page.evaluate(()=>{
+      const button=document.querySelector('.nav-item[data-view="knowledge"]');
+      const label=[...button.childNodes].find(n=>n.nodeType===Node.TEXT_NODE);
+      if(!label)return true;
+      const range=document.createRange();
+      range.selectNodeContents(label);
+      return range.getBoundingClientRect().right>button.getBoundingClientRect().right-2;
+    });
+    if(clippedNavigation)throw Error('Knowledge navigation label is visually clipped');
     const assertNoUiError=async step=>{
       const status=(await page.locator('#status-message').textContent())||'';
       const toast=(await page.locator('#toast').textContent())||'';

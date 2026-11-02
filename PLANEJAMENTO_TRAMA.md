@@ -434,3 +434,11 @@ e o botão Recentes ordena corretamente as datas reais em formato DD/MM/AAAA.
 As verificações são executadas tanto no arquivo HTML de desenvolvimento quanto
 no HTML empacotado na janela Windows. Elas não substituem testes manuais com dados reais.
 
+
+### 12.2 Navegação em janelas compactas
+
+Na janela de aproximadamente 800–980 px, o menu mantém rótulos legíveis e os
+conteúdos permanecem disponíveis. Os botões de abas podem rolar horizontalmente.
+Os testes visuais incluem uma verificação de que o texto "Conhecimento" não fica
+cortado pelos limites do botão, além dos controles e conteúdos já validados.
+
