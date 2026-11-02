@@ -39,3 +39,16 @@ cada script e folha de estilos locais incorporados. Isso impede a execução de
 scripts inline não autorizados e carregamento de código remoto pela página,
 sem abrir exceções como `unsafe-inline` ou `unsafe-eval`.
 O aplicativo mantém API nativa explícita e validações de dados separadas da CSP.
+
+## Provedores e arquivos não confiáveis
+
+- O tráfego de IA exige HTTPS para um dos três hosts oficiais permitidos
+  (Gemini, Groq ou OpenRouter), sem credenciais na URL, portas incomuns ou
+  redirecionamentos HTTP. As respostas são limitadas a 2 MB.
+- Arquivos DOCX utilizam um parser XML protegido (defusedxml) para recusar
+  entidades XML hostis; seu conteúdo é lido localmente antes do consentimento
+  de envio à IA.
+- Notas do Professor usam somente as três pastas de estudo, sem enviar caminhos
+  nem nomes de arquivos; tokens e identificadores comuns são ocultados.
+- Essas medidas reduzem riscos conhecidos, mas não prometem isolamento contra
+  software malicioso executado com as mesmas permissões do usuário.

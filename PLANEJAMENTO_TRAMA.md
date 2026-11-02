@@ -498,3 +498,12 @@ que a inicialização da aplicação ou seu fechamento falhem.
 Mensagens de exceção de rede continuam genéricas para não revelar tokens ou
 URLs privadas; quando a assinatura SHA-256 do instalador diverge, a mensagem
 de integridade é específica e não revela dados internos.
+
+
+### 11.7 Reforço do acesso à IA e documentos Word
+
+As requisições à API são feitas somente para hosts oficiais de
+Gemini/Groq/OpenRouter, com HTTPS, sem redirecionamentos e resposta de até 2 MB.
+Isso impede que um redirecionamento envie a chave ou os trechos da aula a
+destinos diferentes. O DOCX usa o parser defusedxml para recusar entidades
+XML hostis, com teste que garante que documentos normais continuam legíveis.

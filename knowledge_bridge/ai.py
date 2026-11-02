@@ -7,6 +7,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,20 @@ ALLOWED = {
     "groq": ("openai/gpt-oss-20b", "GROQ_API_KEY"),
     "openrouter": ("openrouter/free", "OPENROUTER_API_KEY"),
 }
+
+API_HOSTS = {
+    "gemini": "generativelanguage.googleapis.com",
+    "groq": "api.groq.com",
+    "openrouter": "openrouter.ai",
+}
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never forward a provider request or its credentials to a redirect."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
 
 class ProviderError(Exception):
     def __init__(self, provider: str, message: str, quota: bool = False):
@@ -48,11 +63,27 @@ def read_env(path: Path) -> dict[str, str]:
 
 
 def _send(url: str, body: dict, headers: dict[str, str], provider: str) -> dict:
+    # Only official HTTPS API endpoints may receive a key or course excerpts.
+    # urllib's default redirect handler would otherwise change destinations.
+    try:
+        endpoint = urlsplit(url)
+        safe = (endpoint.scheme == "https" and
+                endpoint.hostname == API_HOSTS.get(provider) and
+                endpoint.username is None and endpoint.password is None and
+                endpoint.port in (None, 443) and not endpoint.fragment)
+    except ValueError:
+        safe = False
+    if not safe:
+        raise ProviderError(provider, "destino da API não autorizado")
     request = urllib.request.Request(url, data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
                                      headers={"Content-Type": "application/json", **headers}, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=100) as response:
-            return json.loads(response.read().decode("utf-8"))
+        opener = urllib.request.build_opener(_NoRedirect)
+        with opener.open(request, timeout=100) as response:
+            data = response.read(2_000_001)
+            if len(data) > 2_000_000:
+                raise ProviderError(provider, "resposta da API excede 2 MB")
+            return json.loads(data.decode("utf-8"))
     except urllib.error.HTTPError as e:
         # Não imprimir resposta bruta: pode incluir dados privados do provedor.
         if e.code == 429:
