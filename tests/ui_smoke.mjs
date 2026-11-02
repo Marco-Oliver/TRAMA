@@ -8,6 +8,11 @@ import { pathToFileURL } from 'node:url';
 import { mkdir } from 'node:fs/promises';
 
 const root = path.resolve(import.meta.dirname, '..');
+const bundle = Boolean(process.env.TRAMA_BUNDLED_HTML);
+const pagePath = bundle
+  ? path.resolve(process.env.TRAMA_BUNDLED_HTML)
+  : path.join(root,'knowledge_bridge/ui/index.html');
+const prefix = bundle ? 'bundled-' : '';
 const screenshots = path.join(root, 'ui-smoke-artifacts');
 await mkdir(screenshots, { recursive: true });
 
@@ -55,10 +60,10 @@ try{
     page.on('pageerror',error=>errors.push(`${width}px: ${error.message}`));
     page.on('console',msg=>{if(msg.type()==='error')errors.push(`${width}px console: ${msg.text()}`);});
     await page.addInitScript(makeBridge, {notes});
-    await page.goto(pathToFileURL(path.join(root,'knowledge_bridge/ui/index.html')).href);
+    await page.goto(pathToFileURL(pagePath).href);
     await page.locator('.nav-item[data-view="home"]').click();
     await page.getByRole('button',{name:'Conectar meu cofre'}).waitFor();
-    await page.screenshot({path:path.join(screenshots,`home-${width}.png`),fullPage:true});
+    await page.screenshot({path:path.join(screenshots,`${prefix}home-${width}.png`),fullPage:true});
     await page.getByRole('button',{name:'Ver minhas aulas'}).click();
     await page.locator('.lesson-row').first().waitFor();
     await page.locator('[data-list-filter="favorites"]').click();
@@ -66,14 +71,14 @@ try{
     await page.locator('[data-list-filter="recent"]').click();
     if(await page.locator('.lesson-row').count()!==2)throw Error('Recent filter did not work');
     await page.locator('[data-list-filter="all"]').click();
-    await page.screenshot({path:path.join(screenshots,`lessons-${width}.png`),fullPage:true});
+    await page.screenshot({path:path.join(screenshots,`${prefix}lessons-${width}.png`),fullPage:true});
     await page.locator('#search-all').fill('Angular');
     await page.locator('#btn-search-all').click();
     await page.locator('#library-workspace').waitFor({state:'visible'});
-    await page.screenshot({path:path.join(screenshots,`library-${width}.png`),fullPage:true});
+    await page.screenshot({path:path.join(screenshots,`${prefix}library-${width}.png`),fullPage:true});
     await page.locator('.nav-item[data-view="teacher"]').click();
     await page.getByRole('heading',{name:/IA Professor/}).waitFor();
-    await page.screenshot({path:path.join(screenshots,`professor-empty-${width}.png`),fullPage:true});
+    await page.screenshot({path:path.join(screenshots,`${prefix}professor-empty-${width}.png`),fullPage:true});
     await page.locator('[data-teacher-mode="corrigir"]').click();
     if(!(await page.locator('#teacher-code').isVisible()))throw Error('Review-code box hidden');
     await page.locator('#teacher-question').fill('Como corrigir Console.WriteLine em C#?');
@@ -84,7 +89,7 @@ try{
     await page.locator('#teacher-consent').check();
     await page.locator('#teacher-submit').click();
     await page.getByText('O código precisa de aspas corretas.').waitFor();
-    await page.screenshot({path:path.join(screenshots,`professor-answer-${width}.png`),fullPage:true});
+    await page.screenshot({path:path.join(screenshots,`${prefix}professor-answer-${width}.png`),fullPage:true});
     // Attack simulation: model output must stay inert, even with forged HTML.
     await page.locator('[data-teacher-mode="explicar"]').click();
     await page.locator('#teacher-question').fill('XSSTEST: revise os exemplos de Hello World em C#');
@@ -100,7 +105,7 @@ try{
     await page.locator('.nav-item[data-view="settings"]').click();
     await page.getByRole('button',{name:'Verificar atualizações'}).click();
     await page.getByText('Você já está na versão mais recente.').waitFor();
-    await page.screenshot({path:path.join(screenshots,`settings-${width}.png`),fullPage:true});
+    await page.screenshot({path:path.join(screenshots,`${prefix}settings-${width}.png`),fullPage:true});
     const dimensions=await page.evaluate(()=>({viewport:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth}));
     if(dimensions.scrollWidth>dimensions.viewport+2)throw Error(`Horizontal viewport overflow at ${width}: ${JSON.stringify(dimensions)}`);
     await page.close();

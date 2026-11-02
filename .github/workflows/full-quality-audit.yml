@@ -56,11 +56,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Preparar Playwright Chromium
         run: |
           npm install --no-save --no-audit --no-fund playwright
           npx playwright install --with-deps chromium
-      - name: Testar fluxos reais da interface com API fictícia
+      - name: Testar visual original e tentativas de injeção
+        run: node tests/ui_smoke.mjs
+      - name: Preparar o HTML exato embutido no executável
+        run: |
+          python -c "from pathlib import Path; from knowledge_bridge.bridge import load_local_ui; p=Path('ui-smoke-artifacts/native-bundle.html'); p.parent.mkdir(exist_ok=True); p.write_text(load_local_ui(),encoding='utf-8')"
+      - name: Testar HTML empacotado e tentativas de injeção
+        env:
+          TRAMA_BUNDLED_HTML: ui-smoke-artifacts/native-bundle.html
         run: node tests/ui_smoke.mjs
       - name: Salvar capturas das telas testadas
         uses: actions/upload-artifact@v4
