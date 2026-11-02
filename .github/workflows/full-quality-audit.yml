@@ -8,12 +8,12 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: full-quality-audit-${{ github.ref }}
+  group: fast-security-hardening-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   python:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 35 || 12 }}
     strategy:
       fail-fast: false
       matrix:
