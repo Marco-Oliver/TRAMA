@@ -174,3 +174,7 @@ button:not(:disabled):hover{filter:brightness(.98)}
  .teacher-modes button{font-size:11px;padding:7px}
  .status-version{font-size:9px}
 }
+
+/* CSS for settings and graph controls (CSP-compliant) */
+.ai-key-actions{display:flex;gap:8px;flex-wrap:wrap}
+.graph-empty{padding:25px}
