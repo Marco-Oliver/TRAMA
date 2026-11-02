@@ -6,6 +6,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: full-quality-audit-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   python:
     runs-on: ${{ matrix.os }}
