@@ -1,6 +1,6 @@
 # TRAMA — Como o sistema funciona
 
-**Estado documentado:** 31 de outubro de 2026  
+**Estado documentado:** 2 de novembro de 2026  
 **Versão pública atual:** 2.0.0 (Windows), publicada em 31/10/2026. **Versão anterior:** 1.9.0. [Instalador e SHA-256](https://github.com/Marco-Oliver/TRAMA/releases/tag/v2.0.0)  
 **Projeto:** [GitHub — TRAMA](https://github.com/Marco-Oliver/TRAMA)
 
@@ -315,3 +315,76 @@ Um explorador de arquivos dos repositórios dentro do TRAMA e, no futuro, uma ve
 ---
 
 **Resumo:** o TRAMA automatiza a transformação de materiais de estudo em um Obsidian organizado. A biblioteca deve continuar acessível, compreensível e útil para o estudante independentemente do próprio TRAMA. Este documento pode ser atualizado conforme as funcionalidades do sistema evoluírem.
+
+## 11. Revisão de qualidade após o lançamento 2.0.0
+
+Esta seção descreve o funcionamento da **revisão ainda não publicada**, guardada na branch
+[`fix/quality-personas-ui-security-20261031`](https://github.com/Marco-Oliver/TRAMA/tree/fix/quality-personas-ui-security-20261031).
+A versão pública permanece **2.0.0** até a revisão ser integrada e uma nova distribuição ser aprovada.
+
+### 11.1 Estudo com a IA Professor
+
+O Professor é um recurso opcional de **leitura do Obsidian**. Na revisão, ele continua com os três modos:
+explicação/revisão, desafios progressivos e revisão de código colado. O Python escolhe trechos
+das aulas, conceitos e projetos; uma IA externa produz a explicação. A consulta só acontece
+com consentimento para enviar dados ao provedor, sem executar código ou modificar o cofre.
+
+A seleção de fontes foi reforçada para **não enviar a pasta de anotações pessoais à API**
+e para **não escolher aulas aleatórias quando um desafio cita um assunto ausente**.
+Perguntas e respostas antigas utilizadas como contexto recebem novamente a ocultação
+de credenciais antes do envio. Esses filtros reduzem o risco, mas não substituem a revisão
+do material pelo próprio estudante.
+
+A IA pode interpretar uma nota incorretamente ou citar um documento sem provar a conclusão.
+As referências identificam notas consultadas, não uma garantia de veracidade. As
+conversas persistem somente na memória da janela e podem ser limpas com "Nova conversa".
+
+### 11.2 Navegação e aparência
+
+A interface da revisão mantém a aparência de aplicativo Windows compacto, com seções claras:
+Início, Aulas, Conhecimento, Projetos, Biblioteca, IA Professor e Ajustes.
+
+- A página Início orienta a sequência **conectar cofre → importar materiais → estudar**.
+- A busca principal tem botão **Buscar** e abre a Biblioteca com a consulta.
+- A lista de aulas tem filtros funcionais **Todas**, **Recentes** e **Favoritas**;
+  favoritos marcados na biblioteca refletem na lista.
+- Links internos `[[nota]]` com títulos repetidos **não são direcionados arbitrariamente
+  para outra aula**: o link ambíguo permanece sem destino até haver referência específica.
+- A árvore de pastas e controles utilizam classes CSS compatíveis com a política
+  de segurança do aplicativo. Os estilos não requerem liberar CSS inline.
+- A interface possui rótulos de navegação e foco visível para teclado, além de
+  ajustes para janelas de tamanhos diferentes.
+- A aba IA Professor exibe fontes consultadas para abertura na biblioteca;
+  mostra claramente quando consentimento, código ou conteúdo de aula estão ausentes.
+
+### 11.3 Instalar e atualizar
+
+Para uso normal no Windows, não é necessário Python nem terminal:
+baixa-se o `TRAMA_Setup.exe` da página oficial do GitHub e instala-se pelo assistente.
+
+Em **Ajustes → Verificar atualizações**, o usuário consulta uma nova versão.
+Quando disponível, **Baixar e instalar nova versão** baixa a distribuição oficial,
+verifica seu SHA-256 e pergunta antes de iniciar o instalador. Não há atualização silenciosa.
+É recomendável usar **Criar backup local (.zip)** antes de migrar. **Restaurar backup**
+usa uma pasta nova e não sobrescreve o cofre aberto.
+
+O instalador ainda **não tem assinatura digital**. O aviso de editor desconhecido no
+Windows é esperado, mas o usuário deve confirmar a origem e o SHA-256 antes de executar.
+O ZIP de backup não é criptografado; mantenha-o em local privado.
+
+### 11.4 Qualidade e testes
+
+A revisão contém cenários com alunos fictícios de C#, Angular, revisão de código,
+desafios, conteúdo ausente, tentativas de instruções maliciosas, proteção de segredos
+em histórico e validação de citações. Os modelos nesses testes são **simulados**:
+avaliam o comportamento do sistema, não a qualidade pedagógica de um Gemini real.
+
+A validação automatizada também executa a bateria de `unittest` em Linux e Windows,
+cenários adversariais, auditoria de arquivos, navegador automatizado com telas e botões
+e o ciclo de compilação, instalação, reinstalação e desinstalação do Windows.
+
+**Limite de aceitação:** mesmo que o aplicativo passe nesses testes,
+a qualidade das explicações com aulas reais e o acabamento visual no Windows do
+estudante exigem avaliação manual. Não apresentar resposta simulada como certificação
+pedagógica nem prometer ausência total de bugs ou vulnerabilidades.
+
