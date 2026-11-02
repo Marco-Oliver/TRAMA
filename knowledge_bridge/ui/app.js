@@ -73,7 +73,7 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
  if(app.tab==='Nota completa'){
    box.innerHTML=`<div class="note-source-banner">Visualização da mesma nota Markdown do Obsidian. Para ver edições recentes, clique em Atualizar.</div>${libRenderMarkdown(n.content,n.id,n.title)}`;
    box.querySelectorAll('[data-lib-note]').forEach(el=>el.addEventListener('click',async(e)=>{
-      e.preventDefault();app.selected=el.dataset.libNote;app.view='library';app.note=await call('note',app.selected);await render();
+      e.preventDefault();libraryState.search='';app.selected=el.dataset.libNote;app.view='library';app.note=await call('note',app.selected);await render();
    }));return;
  }
  if(app.tab==='Markdown'){const pre=document.createElement('pre');pre.className='note-markdown';pre.textContent=n.content;box.append(pre);return;}
@@ -108,7 +108,7 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
  box.innerHTML=html;wireFiles();}
 function fileRow(icon,title,detail,cta,kind,i){return `<div class="resource-row"><span class="resource-icon">${icon}</span><span class="resource-text"><strong>${escapeHTML(title)}</strong><small>${escapeHTML(detail)}</small></span><button class="row-open" data-file-kind="${kind}" data-file-idx="${i}">${cta} ↗</button></div>`;}
 function wireFiles(){document.querySelectorAll('[data-file-kind]').forEach(el=>el.addEventListener('click',async()=>{const kind=el.dataset.fileKind,media=app.note?.media?.[kind]?.[Number(el.dataset.fileIdx)];if(media)await call(kind==='video_links'?'open_video_link':'open_attachment',kind==='video_links'?media.url:media.stored);}));}
-function wireRelations(){document.querySelectorAll('[data-related]').forEach(el=>el.addEventListener('click',async()=>{app.selected=app.note.related[Number(el.dataset.related)].id;app.view='library';await render();}));}
+function wireRelations(){document.querySelectorAll('[data-related]').forEach(el=>el.addEventListener('click',async()=>{libraryState.search='';app.selected=app.note.related[Number(el.dataset.related)].id;app.view='library';await render();}));}
 function detail(title,icon,body){return `<section class="detail-card"><h3><span class="mini-icon">${icon}</span>${escapeHTML(title)}</h3><div class="detail-body">${body}</div></section>`;}
 function detailRow(icon,caption,action,idx){return `<button class="detail-row" data-action="${action}" data-idx="${idx}"><span class="detail-icon">${icon}</span><span class="detail-title">${escapeHTML(caption)}</span><span class="detail-muted">↗</span></button>`;}
 function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.innerHTML=detail('Obsidian','◆',empty('Aguardando conexão com sua biblioteca.'));return;}
@@ -131,7 +131,7 @@ function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.inne
   const action=button.dataset.action,i=Number(button.dataset.idx);
   if(['video','transcript','video_links'].includes(action)){
    const m=n.media[action][i];if(m)await call(action==='video_links'?'open_video_link':'open_attachment',action==='video_links'?m.url:m.stored);return;}
-  const related=n.related.filter(x=>x.section===action)[i];if(related){app.selected=related.id;app.view='library';await render();}
+  const related=n.related.filter(x=>x.section===action)[i];if(related){libraryState.search='';app.selected=related.id;app.view='library';await render();}
  }));}
 async function renderOverlay(){$('library-workspace').classList.add('hidden');const el=$('overlay-screen');el.classList.remove('hidden');$('list-panel').classList.add('hidden');$('note-panel').classList.add('hidden');$('details-panel').classList.add('hidden');
  if(app.view==='teacher'){renderTeacher(el);return;}

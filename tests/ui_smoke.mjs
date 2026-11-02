@@ -120,6 +120,8 @@ try{
     if(unsafe)throw Error('Untrusted AI output was interpreted as executable HTML');
     await page.locator('.teacher-ref').first().click();
     await page.locator('#library-workspace').waitFor({state:'visible'});
+    await page.locator('.lib-title').getByText('Hello World em C#').waitFor();
+    await assertNoUiError('teacher cited source');
     await page.locator('.nav-item[data-view="settings"]').click();
     await page.getByRole('button',{name:'Verificar atualizações'}).click();
     await page.getByText('Você já está na versão mais recente.').waitFor();
