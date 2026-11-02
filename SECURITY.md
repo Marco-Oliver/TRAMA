@@ -10,3 +10,24 @@ Este repositório contém somente o aplicativo, documentação técnica e testes
 - Se uma credencial tiver sido exposta, revogue-a no provedor e crie outra.
 - O instalador ainda não possui assinatura de código; o Windows pode mostrar aviso SmartScreen.
 - O arquivo SHA256SUMS.txt verifica integridade do download, mas não equivale a assinatura digital de autor.
+
+## Proteções adicionais em revisão (ainda não publicadas)
+
+A branch `fix/security-hardening-20261102`, construída sobre a revisão de qualidade, inclui:
+
+- Abertura de anexos permitida **somente se o caminho estiver dentro do cofre E cadastrado no SQLite** como material, transcrição ou vídeo; a API da janela não deve funcionar como explorador arbitrário de arquivos.
+- Páginas de atualização devem ter URL canônica de tag de versão dentro do repositório oficial; caminhos de aparência semelhante, parâmetros e fragmentos são recusados.
+- Links de vídeo rejeitam URLs inválidas, credenciais embutidas e caracteres de controle.
+- ZIPs de restauração recusam nomes reservados no Windows, duplicatas sem distinção de maiúsculas/minúsculas, compressão extremamente suspeita e restaurações com espaço insuficiente.
+- Testes simulam payload HTML em resposta da IA, tentativas de acesso indevido ao cofre e arquivos ZIP manipulados.
+- GitHub Actions executa testes de regressão, cenários adversariais, navegador, instalação Windows, `pip-audit` e análise estática `bandit`.
+
+### Limites que continuam importantes
+
+- **Sem assinatura de código:** SHA-256 hospedado junto ao instalador verifica integridade, não prova a identidade do autor. Confira a origem da release e não execute instaladores de terceiros.
+- **IA externa:** somente envie conteúdos que esteja disposto a revelar ao provedor escolhido. Máscaras de credenciais podem falhar para formatos desconhecidos.
+- **Arquivos locais e backups:** ZIPs não têm criptografia. Qualquer pessoa com acesso ao seu Windows e aos seus arquivos pode conseguir ler o cofre e backups.
+- **Notas não confiáveis:** renderização em HTML é protegida por escape e testes anti-injeção, mas uma interface desktop conectada a arquivos locais não é uma sandbox universal. Não importa material executável suspeito nem dê permissões extras ao aplicativo.
+- **Verificação:** análises estáticas e testes não demonstram ausência total de vulnerabilidades; revisões independentes e testes em Windows real continuam úteis.
+
+A branch está separada da versão pública 2.0.0; não afirmar que os ajustes estão disponíveis no instalador até haver publicação.

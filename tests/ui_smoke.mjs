@@ -30,7 +30,9 @@ const makeBridge=({notes})=>{window.__TRAMA_API__=({
   ai_status: async()=>({configured:{gemini:true},confirmed_free:true}),
   check_updates: async()=>({ok:true,available:false,message:'Você já está na versão mais recente.'}),
   teacher_ask: async (question, mode, code, confirmed)=>confirmed?({
-    ok:true,answer:mode==='corrigir'?'O código precisa de aspas corretas.':'Use **Console.WriteLine**. Veja a aula.',
+    ok:true,answer:question.includes('XSSTEST')
+      ? 'Conteúdo malicioso simulado: <img src=x onerror="window.__tramaXss=true"> <svg onload="window.__tramaXss=true"></svg>'
+      : mode==='corrigir'?'O código precisa de aspas corretas.':'Use **Console.WriteLine**. Veja a aula.',
     sources:[{id:notes[0].id,title:notes[0].title,section:notes[0].section}],
     provider:'offline-test',model:'persona',uncertainty:'',read_only:true
   }):({ok:false,message:'Consentimento obrigatório'}),
@@ -83,7 +85,17 @@ try{
     await page.locator('#teacher-submit').click();
     await page.getByText('O código precisa de aspas corretas.').waitFor();
     await page.screenshot({path:path.join(screenshots,`professor-answer-${width}.png`),fullPage:true});
-    await page.locator('.teacher-ref').click();
+    // Attack simulation: model output must stay inert, even with forged HTML.
+    await page.locator('[data-teacher-mode="explicar"]').click();
+    await page.locator('#teacher-question').fill('XSSTEST: revise os exemplos de Hello World em C#');
+    await page.locator('#teacher-consent').check();
+    await page.locator('#teacher-submit').click();
+    await page.getByText(/Conteúdo malicioso simulado/).waitFor();
+    const unsafe = await page.evaluate(() =>
+      Boolean(window.__tramaXss || document.querySelector('.teacher-markdown img[src=x]') ||
+              document.querySelector('.teacher-markdown svg[onload]')));
+    if(unsafe)throw Error('Untrusted AI output was interpreted as executable HTML');
+    await page.locator('.teacher-ref').first().click();
     await page.locator('#library-workspace').waitFor({state:'visible'});
     await page.locator('.nav-item[data-view="settings"]').click();
     await page.getByRole('button',{name:'Verificar atualizações'}).click();
