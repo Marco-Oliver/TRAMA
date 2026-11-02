@@ -442,3 +442,18 @@ conteúdos permanecem disponíveis. Os botões de abas podem rolar horizontalmen
 Os testes visuais incluem uma verificação de que o texto "Conhecimento" não fica
 cortado pelos limites do botão, além dos controles e conteúdos já validados.
 
+
+### 12.3 Política de segurança da janela instalada
+
+O aplicativo Windows reúne CSS e JS locais no HTML embutido, mas não precisa deixar
+a janela sem política de segurança. A montagem passou a incluir uma **Content Security
+Policy restritiva** com hashes SHA-256 para os estilos e scripts próprios do TRAMA,
+bloqueando scripts externos e inline não autorizados e conexões de rede diretas da
+página. A interface continua usando sua API local permitida. Os testes cobrem
+tanto a janela empacotada quanto a página de desenvolvimento, incluindo tentativas
+de injetar HTML malicioso por respostas da IA.
+
+Essa proteção é uma barreira adicional, não garantia contra qualquer exploração do
+WebView ou de componentes nativos; por isso o usuário continua responsável por
+evitar materiais ou links suspeitos e o código deve manter suas validações de entrada.
+

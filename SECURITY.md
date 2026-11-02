@@ -31,3 +31,11 @@ A branch `fix/security-hardening-20261102`, construída sobre a revisão de qual
 - **Verificação:** análises estáticas e testes não demonstram ausência total de vulnerabilidades; revisões independentes e testes em Windows real continuam úteis.
 
 A branch está separada da versão pública 2.0.0; não afirmar que os ajustes estão disponíveis no instalador até haver publicação.
+
+## CSP da interface Windows (revisão ainda não publicada)
+
+O HTML da janela Windows inclui CSP restritiva com hashes SHA-256 calculados para
+cada script e folha de estilos locais incorporados. Isso impede a execução de
+scripts inline não autorizados e carregamento de código remoto pela página,
+sem abrir exceções como `unsafe-inline` ou `unsafe-eval`.
+O aplicativo mantém API nativa explícita e validações de dados separadas da CSP.

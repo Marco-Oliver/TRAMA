@@ -1036,13 +1036,28 @@ def load_local_ui():
     html=(base/'index.html').read_text(encoding='utf-8')
     substitutions=(('style.css','style.css'),('library.css','library.css'),
                    ('classic.css','classic.css'),('faithful.css','faithful.css'))
+    # The packaged window requires inline local assets. Keep a strict CSP
+    # with exact SHA-256 hashes of the bundled CSS and JS, instead of removing
+    # the policy and allowing any injected script to execute.
     html=re.sub(r'<meta http-equiv="Content-Security-Policy"[^>]*>', '', html)
+    styles=[];scripts=[]
+    def content_hash(source):
+        digest=hashlib.sha256(source.encode('utf-8')).digest()
+        return "'sha256-" + base64.b64encode(digest).decode('ascii') + "'"
     for href,filename in substitutions:
         css=(base/filename).read_text(encoding='utf-8')
+        styles.append(content_hash(css))
         html=html.replace(f'<link rel="stylesheet" href="{href}">','<style>'+css+'</style>')
     for script in ('library.js','app.js','teacher.js'):
         js=(base/script).read_text(encoding='utf-8')
+        scripts.append(content_hash(js))
         html=html.replace(f'<script src="{script}"></script>','<script>'+js+'</script>')
+    csp=("default-src 'none'; style-src " + " ".join(styles) +
+         "; script-src " + " ".join(scripts) +
+         "; img-src data:; connect-src 'none'; font-src 'none'; " +
+         "base-uri 'none'; form-action 'none'")
+    html=html.replace('</head>', '<meta http-equiv="Content-Security-Policy" content="' +
+                      csp + '">\n</head>')
     return html
 
 def start_webview():
