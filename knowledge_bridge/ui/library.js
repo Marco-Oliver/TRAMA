@@ -195,7 +195,7 @@ function libWire(){const root=$('library-workspace');
   if(a==='history')notify('O histórico de alterações fica no Obsidian (Recuperação de arquivos, se habilitada).');
   if(a==='close'){libraryState.allowEmpty=true;app.selected=null;app.note=null;await renderLibraryView();}
   if(a==='new')await call('open_obsidian');
-  if(a==='favorite'&&app.note){const r=await call('toggle_favorite',app.note.id);if(r?.ok){libraryState.favorites=new Set(r.favorites);await renderLibraryView();}else notify('Não foi possível salvar o favorito.');}
+  if(a==='favorite'&&app.note){const r=await call('toggle_favorite',app.note.id);if(r?.ok){libraryState.favorites=new Set(r.favorites||[]);if(app.snapshot)app.snapshot.favorites=[...libraryState.favorites];await renderLibraryView();}else notify('Não foi possível salvar o favorito.');}
  };
  root.oninput=(event)=>{
   const search=event.target.closest('#lib-folder-search');if(!search)return;
