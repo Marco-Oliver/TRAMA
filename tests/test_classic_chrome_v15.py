@@ -16,7 +16,7 @@ class ClassicChromeV15Tests(TestCase):
             self.assertNotIn(f'id="{button_id}"', html)
         self.assertNotIn("classic-controls-enabled", html)
         self.assertIn("event.key==='F11'", html)
-        self.assertIn('TRAMA v1.9', html)
+        self.assertIn('TRAMA v2.0', html)
 
     def test_buttons_dispatch_to_native_window_without_exposing_window_to_js(self):
         bridge = Bridge()
