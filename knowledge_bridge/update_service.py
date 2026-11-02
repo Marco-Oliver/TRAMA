@@ -42,7 +42,7 @@ def check_release(repo: str, opener=None) -> dict:
         # The app only displays metadata. Installation requires manually
         # clicking a GitHub release page and verifying the publisher.
         page = release.get('html_url','')
-        if not isinstance(page,str) or not page.startswith(f'https://github.com/{repo}/releases/'):
+        if not isinstance(page,str) or page != f'https://github.com/{repo}/releases/tag/{tag}':
             return {'ok': False, 'message': 'Página do release inesperada.'}
         assets = release.get('assets',[])
         found = any(isinstance(x,dict) and x.get('name')=='TRAMA_Setup.exe' for x in assets)
@@ -71,16 +71,23 @@ def download_verified_installer(repo: str, destination, opener=None) -> dict:
     path.mkdir(parents=True,exist_ok=True)
     req=urllib.request.Request(
         f'https://api.github.com/repos/{repo}/releases/latest',
-        headers={'Accept':'application/vnd.github+json','User-Agent':'TRAMA-Update-Check/1.9'})
+        headers={'Accept':'application/vnd.github+json','User-Agent':'TRAMA-Update-Check/2.0'})
     try:
         with opener(req,timeout=15) as reply:
             obj=json.loads(reply.read(120_000))
+        if not isinstance(obj,dict):
+            return {'ok':False,'message':'Metadados do release inválidos.'}
         tag=obj.get('tag_name','')
+        if not isinstance(tag,str) or len(tag)>40:
+            return {'ok':False,'message':'Tag de release inválida.'}
         if not version_tuple(tag) or not version_tuple(tag)>version_tuple(VERSION):
             return {'ok':False,'message':'Nenhuma versão mais nova disponível.'}
         if obj.get('html_url')!=f'https://github.com/{repo}/releases/tag/{tag}':
             return {'ok':False,'message':'URL do release inesperada.'}
-        assets={a.get('name'):a for a in obj.get('assets',[]) if isinstance(a,dict)}
+        asset_list=obj.get('assets',[])
+        if not isinstance(asset_list,list) or len(asset_list)>100:
+            return {'ok':False,'message':'Lista de assets inválida.'}
+        assets={a.get('name'):a for a in asset_list if isinstance(a,dict)}
         names=('TRAMA_Setup.exe','SHA256SUMS.txt')
         if not all(name in assets for name in names):
             return {'ok':False,'message':'Release sem instalador e hash de verificação.'}
@@ -88,7 +95,7 @@ def download_verified_installer(repo: str, destination, opener=None) -> dict:
         for name in names:
             if assets[name].get('browser_download_url')!=prefix+name:
                 return {'ok':False,'message':'Link do asset fora do canal oficial.'}
-        with opener(urllib.request.Request(prefix+'SHA256SUMS.txt',headers={'User-Agent':'TRAMA-Update-Check/1.9'}), timeout=20) as reply:
+        with opener(urllib.request.Request(prefix+'SHA256SUMS.txt',headers={'User-Agent':'TRAMA-Update-Check/2.0'}), timeout=20) as reply:
             text=reply.read(4096).decode('ascii')
         expected=''
         for row in text.splitlines():
@@ -100,7 +107,7 @@ def download_verified_installer(repo: str, destination, opener=None) -> dict:
         h=hashlib.sha256();total=0
         try:
             with os.fdopen(fd,'wb') as out:
-                with opener(urllib.request.Request(prefix+'TRAMA_Setup.exe',headers={'User-Agent':'TRAMA-Update-Check/1.9'}),timeout=90) as reply:
+                with opener(urllib.request.Request(prefix+'TRAMA_Setup.exe',headers={'User-Agent':'TRAMA-Update-Check/2.0'}),timeout=90) as reply:
                     while True:
                         part=reply.read(512*1024)
                         if not part:break

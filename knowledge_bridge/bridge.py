@@ -574,11 +574,15 @@ class Bridge:
 
     def open_update_page(self, address):
         """Abre a página oficial somente após escolha explícita do usuário."""
-        from urllib.parse import urlparse
+        from .update_service import version_tuple
         repo=self._release_repo()
-        prefix=f'https://github.com/{repo}/releases/' if repo else ''
-        if not prefix or not isinstance(address,str) or not address.startswith(prefix):
-            return {'ok':False, 'message':'Não existe um canal oficial de atualizações configurado.'}
+        prefix=f'https://github.com/{repo}/releases/tag/' if repo else ''
+        # Exact version-tag route: reject path traversal, query fragments,
+        # spoofed release pages and malformed/untrusted browser URLs.
+        if (not prefix or not isinstance(address,str) or
+                not address.startswith(prefix) or
+                not version_tuple(address[len(prefix):])):
+            return {'ok':False, 'message':'Página de atualização não reconhecida.'}
         webbrowser.open(address)
         return {'ok':True}
 
@@ -801,12 +805,20 @@ class Bridge:
     @staticmethod
     def _valid_video_url(url):
         from urllib.parse import urlsplit
-        if not isinstance(url,str) or len(url)>1700 or any(c.isspace() for c in url):
+        if (not isinstance(url,str) or len(url)>1700 or
+                any(ord(c)<32 or ord(c)==127 for c in url) or
+                any(c.isspace() for c in url) or
+                any(c in url for c in ('<','>','\\'))):
             return False
-        parts=urlsplit(url)
-        return (parts.scheme in ('http','https') and bool(parts.netloc) and
-                parts.username is None and parts.password is None and
-                not any(c in url for c in ('<','>','\\')))
+        try:
+            parts=urlsplit(url)
+            # hostname and port properties can throw for malformed URLs.
+            port=parts.port
+            return (parts.scheme in ('http','https') and bool(parts.hostname) and
+                    parts.username is None and parts.password is None and
+                    (port is None or port>0))
+        except ValueError:
+            return False
 
     def open_video_link(self,url):
         """Apenas URLs cadastradas pelo usuário; não aceita protocolos arbitrários."""
@@ -837,10 +849,32 @@ class Bridge:
         return {'ok':bool(webbrowser.open(url))}
 
     def open_attachment(self,stored):
+        """Open only media imported into this vault's SQLite catalog.
+
+        The JS bridge must never become an arbitrary local file opener.
+        """
         vault=self._vault()
-        if vault is None or not isinstance(stored,str) or len(stored)>700:return {'ok':False}
+        if (vault is None or not isinstance(stored,str) or not stored or
+                len(stored)>700 or '\\' in stored or
+                any(p in ('.','..') for p in stored.split('/'))):
+            return {'ok':False}
         path=(vault/stored).resolve()
-        if not path.is_relative_to(vault) or not path.is_file() or path.suffix.lower() not in ALLOWED_ATTACHMENTS:
+        if (not path.is_relative_to(vault) or not path.is_file() or
+                path.suffix.lower() not in ALLOWED_ATTACHMENTS):
+            return {'ok':False}
+        db=vault/'.base-conhecimento'/'estado.sqlite3'
+        if not db.is_file():
+            return {'ok':False}
+        try:
+            with closing(sqlite3.connect(
+                    f'file:{quote(db.as_posix())}?mode=ro',uri=True,timeout=2)) as con:
+                registered=con.execute(
+                    "SELECT 1 FROM sources WHERE stored_path=? "
+                    "AND kind IN ('video','transcript','material') LIMIT 1",
+                    (stored,)).fetchone()
+            if not registered:
+                return {'ok':False}
+        except (sqlite3.Error,OSError,ValueError):
             return {'ok':False}
         try:
             if sys.platform=='win32':os.startfile(str(path))
@@ -848,7 +882,8 @@ class Bridge:
                 import subprocess
                 subprocess.Popen(['open' if sys.platform=='darwin' else 'xdg-open',str(path)])
             return {'ok':True}
-        except OSError:return {'ok':False}
+        except OSError:
+            return {'ok':False}
 
 
 
