@@ -166,3 +166,11 @@ button,input{font-family:inherit}
  .tabs{overflow-x:auto;scrollbar-width:thin;scrollbar-color:#bacdbd transparent}
  .tab{flex:none;font-size:10px;padding:0 8px}
 }
+
+/* Final width audit: readable nav labels at normal and compact sizes. */
+.navigation{width:169px}
+.nav-item{font-family:'Roboto Condensed','Segoe UI',sans-serif;font-size:13px;gap:7px;padding:9px 6px;white-space:nowrap}
+@media(max-width:980px){
+ .navigation{width:145px}
+ .nav-item{font-size:12px;gap:5px;padding:9px 5px}
+}
