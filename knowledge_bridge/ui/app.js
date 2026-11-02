@@ -25,7 +25,7 @@ function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
  }
 
  if(app.filter){const q=app.filter.toLowerCase();matches=matches.filter(n=>(n.title+' '+n.id+' '+n.lesson).toLowerCase().includes(q));}
- if(app.listFilter==='favorites'){const saved=new Set(app.snapshot?.favorites||[]);matches=matches.filter(n=>saved.has(n.id));}
+ if(app.listFilter==='favorites'){matches=matches.filter(n=>libraryState.favorites.has(n.id));}
  if(app.listFilter==='recent'){matches=[...matches].sort((a,b)=>{
   const aTime=Date.parse(a.updated||'')||0,bTime=Date.parse(b.updated||'')||0;
   return bTime-aTime||a.id.localeCompare(b.id);
