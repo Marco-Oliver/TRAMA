@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from contextlib import closing
 import sys
 import tempfile
 import unittest
@@ -92,8 +93,9 @@ class SecurityBoundaryTests(unittest.TestCase):
     def test_restorer_rejects_windows_devices_and_trailing_aliases(self):
         with tempfile.TemporaryDirectory(dir=self.root) as scratch:
             source=Path(scratch)/'original.sqlite3'
-            with sqlite3.connect(source) as conn:
+            with closing(sqlite3.connect(source)) as conn:
                 conn.execute('CREATE TABLE IF NOT EXISTS check_me (value INTEGER)')
+                conn.commit()
             db=source.read_bytes()
             for i,name in enumerate(('CON.txt','folder/NUL.md','AUX','file.','trailing ',
                                      'COM1.txt','notes/LPT9.jpg')):
