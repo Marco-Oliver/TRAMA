@@ -34,7 +34,7 @@ class DistributionContractTests(unittest.TestCase):
             self.assertIn('docs/screenshots/' + name, readme)
             self.assertGreater((ROOT / 'docs/screenshots' / name).stat().st_size, 10000)
         self.assertIn('releases/latest/download/TRAMA_Setup.exe', readme)
-        self.assertIn('Versão atual: 2.0.0', readme)
+        self.assertIn('Última versão', readme)
         self.assertNotIn('primeira publicação do GitHub Actions', readme)
 
 if __name__ == '__main__': unittest.main()
