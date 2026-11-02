@@ -23,7 +23,7 @@ const notes = [
    content:'# Console\n\nConceito de saída usado nos exemplos C#.'},
 ];
 const baseNote = n=>({...n,media:{video:[],video_links:[],transcript:[],materials:[]},related:[]});
-const makeBridge=()=>({
+const makeBridge=({notes})=>{window.__TRAMA_API__=({
   snapshot: async()=>({connected:true,vault:'C:\\TRAMA-Teste\\Cofre',notes,stats:{notes:3,videos:2,transcriptions:2,materials:0,repositories:1},favorites:[notes[0].id]}),
   note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n):{error:'Nota não encontrada'};},
   graph: async()=>({nodes:notes,edges:[[0,2]]}),
@@ -43,7 +43,7 @@ const makeBridge=()=>({
   window_action: async()=>({ok:true}),
   staged_items: async()=>({ok:true,items:[],max:100}),
   check_update: async()=>({ok:true}),
-});
+ });};
 
 let errors=[];
 const browser=await chromium.launch({headless:true});
@@ -52,7 +52,7 @@ try{
     const page=await browser.newPage({viewport:{width,height}});
     page.on('pageerror',error=>errors.push(`${width}px: ${error.message}`));
     page.on('console',msg=>{if(msg.type()==='error')errors.push(`${width}px console: ${msg.text()}`);});
-    await page.addInitScript(makeBridge);
+    await page.addInitScript(makeBridge, {notes});
     await page.goto(pathToFileURL(path.join(root,'knowledge_bridge/ui/index.html')).href);
     await page.locator('.nav-item[data-view="home"]').click();
     await page.getByRole('button',{name:'Conectar meu cofre'}).waitFor();
