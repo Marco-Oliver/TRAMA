@@ -124,4 +124,4 @@ def download_verified_installer(repo: str, destination, opener=None) -> dict:
         finally:
             if os.path.exists(tmp):os.unlink(tmp)
     except (OSError,ValueError,TypeError,KeyError,UnicodeError,urllib.error.URLError) as exc:
-        return {'ok':False,'message':'Atualização não foi baixada: '+str(exc)[:140]}
+        # Network/OS exceptions may embed signed URLs, local paths or tokens.\n        # Do not expose raw exception text to the UI or logs.\n        return {'ok':False,'message':'Não foi possível baixar a atualização. Verifique a conexão e tente novamente.'}
