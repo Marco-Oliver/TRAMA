@@ -16,6 +16,10 @@ _REPO = re.compile(r'^[A-Za-z0-9_.-]{1,80}/[A-Za-z0-9_.-]{1,100}$')
 _VERSION = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:[-+][A-Za-z0-9.-]+)?$')
 
 
+class IntegrityVerificationError(ValueError):
+    """Checksum mismatch; return only a fixed, safe failure message."""
+
+
 def version_tuple(version: str):
     match = _VERSION.fullmatch(str(version))
     return tuple(int(x) for x in match.groups()) if match else None
@@ -116,14 +120,16 @@ def download_verified_installer(repo: str, destination, opener=None) -> dict:
                             raise ValueError('Instalador maior que o limite de 350 MB.')
                         h.update(part);out.write(part)
             if total<1024 or h.hexdigest()!=expected:
-                raise ValueError('Assinatura SHA-256 do instalador não corresponde ao manifesto.')
+                raise IntegrityVerificationError('SHA-256 mismatch')
             final=path/f'TRAMA_Setup_{tag}.exe'
             os.replace(tmp,final)
             return {'ok':True,'path':str(final),'sha256':expected,'version':tag,
                     'message':'Instalador verificado. O Windows ainda pedirá confirmação para executar.'}
         finally:
             if os.path.exists(tmp):os.unlink(tmp)
-    except (OSError,ValueError,TypeError,KeyError,UnicodeError,urllib.error.URLError) as exc:
+    except IntegrityVerificationError:
+        return {'ok':False,'message':'Verificação SHA-256 falhou. Instalação bloqueada.'}
+    except (OSError,ValueError,TypeError,KeyError,UnicodeError,urllib.error.URLError):
         # Network/OS exceptions may embed signed URLs, local paths or tokens.
         # Do not expose raw exception text to the UI or logs.
         return {'ok':False,'message':'Não foi possível baixar a atualização. Verifique a conexão e tente novamente.'}

@@ -28,6 +28,28 @@ class SecurityBoundaryTests(unittest.TestCase):
         self.bridge=Bridge()
         self.bridge.settings={'vault':str(self.vault)}
     
+    def test_classroom_json_rejects_symlink_and_large_file(self):
+        folder=self.vault/'99-Anexos'
+        folder.mkdir(exist_ok=True)
+        huge=folder/'oversized.json'
+        huge.write_bytes(b' ' * 2_000_002)
+        self.assertIsNone(self.bridge._safe_classroom_record(
+            self.vault,'99-Anexos/oversized.json'))
+        honest=folder/'metadata.json'
+        honest.write_text('{"videos":[{"url":"https://drive.google.com/file/d/id/view"}]}',
+                          encoding='utf-8')
+        self.assertEqual(len(self.bridge._safe_classroom_record(
+            self.vault,'99-Anexos/metadata.json')['videos']),1)
+        alias=folder/'alias.json'
+        try:
+            alias.symlink_to(honest)
+        except (OSError,NotImplementedError):
+            self.skipTest('Symlinks unavailable on this platform')
+        self.assertIsNone(self.bridge._safe_classroom_record(
+            self.vault,'99-Anexos/alias.json'))
+        self.assertIsNone(self.bridge._safe_classroom_record(
+            self.vault,'../outside.json'))
+
     def test_attachment_must_be_registered_and_not_a_private_note(self):
         sensitive=self.vault/'not-authorized.txt'
         sensitive.write_text('private, not in catalog',encoding='utf-8')

@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sqlite3
+import stat
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -69,6 +70,34 @@ class Bridge:
         path=self._vault()
         return VaultIndex(path) if path else None
 
+    @staticmethod
+    def _safe_classroom_record(vault, stored):
+        """Only read bounded, non-symlink Classroom JSON inside the vault."""
+        if (not isinstance(stored,str) or not stored or len(stored)>700 or
+                '\\' in stored or Path(stored).is_absolute() or
+                any(part in ('.','..') for part in stored.split('/'))):
+            return None
+        path=vault/stored
+        rel=Path(stored)
+        try:
+            if any((vault/Path(*rel.parts[:i])).is_symlink()
+                   for i in range(1,len(rel.parts)+1)):
+                return None
+            if not path.resolve().is_relative_to(vault.resolve()):
+                return None
+            flags=os.O_RDONLY | getattr(os,'O_BINARY',0) | getattr(os,'O_NOFOLLOW',0)
+            with os.fdopen(os.open(path,flags),'rb') as source:
+                stat_info=os.fstat(source.fileno())
+                if not stat.S_ISREG(stat_info.st_mode) or stat_info.st_size>2_000_000:
+                    return None
+                payload=source.read(2_000_001)
+            if len(payload)>2_000_000:
+                return None
+            result=json.loads(payload.decode('utf-8-sig'))
+            return result if isinstance(result,dict) else None
+        except (OSError,ValueError,UnicodeError,TypeError):
+            return None
+
     def _stats(self,path):
         output={'transcriptions':0,'videos':0,'repositories':0,'notes':0,'materials':0,'classrooms':0}
         db=path/'.base-conhecimento'/'estado.sqlite3'
@@ -83,11 +112,10 @@ class Bridge:
                 output['repositories']=con.execute('SELECT COUNT(*) FROM repositories').fetchone()[0]
                 for (stored,) in con.execute("SELECT stored_path FROM sources WHERE kind='classroom'"):
                     try:
-                        file=(path/stored).resolve()
-                        if not file.is_relative_to(path):
-                            continue
-                        rows=json.loads(file.read_text(encoding='utf-8')).get('videos',[])
-                        output['videos'] += sum(1 for entry in rows if isinstance(entry,dict) and self._valid_video_url(entry.get('url')))
+                        record=self._safe_classroom_record(path,stored)
+                        rows=record.get('videos',[]) if record else []
+                        if isinstance(rows,list):
+                            output['videos'] += sum(1 for entry in rows[:100] if isinstance(entry,dict) and self._valid_video_url(entry.get('url')))
                     except (OSError,ValueError,UnicodeError,AttributeError,TypeError):
                         continue
         except (sqlite3.Error,OSError):pass
@@ -135,11 +163,13 @@ class Bridge:
                         out[kind].append({'label':label,'stored':stored,'video_id':video or ''})
                     elif kind == 'classroom' and stored:
                         try:
-                            source_file=(idx.vault/stored).resolve()
-                            if not source_file.is_relative_to(idx.vault):
+                            item=self._safe_classroom_record(idx.vault,stored)
+                            rows=item.get('videos',[]) if item else []
+                            if not isinstance(rows,list):
                                 continue
-                            item=json.loads(source_file.read_text(encoding='utf-8'))
-                            for entry in item.get('videos',[])[:30]:
+                            for entry in rows[:30]:
+                                if not isinstance(entry,dict):
+                                    continue
                                 url=entry.get('url','')
                                 if self._valid_video_url(url):
                                     out['video_links'].append({'label':str(entry.get('titulo','Gravação'))[:160], 'url':url})
@@ -740,29 +770,36 @@ class Bridge:
         if not vault:return {'ok':False,'message':'Configure o cofre primeiro.'}
         if not self._write_lock.acquire(blocking=False):return {'ok':False,'message':'Já existe um processamento em andamento.'}
         logs=[]
-        app=self._make_application(vault,log=lambda text:logs.append(str(text)))
+        app=None
         try:
+            app=self._make_application(vault,log=lambda text:logs.append(redact_sensitive(str(text))[:600]))
             app.process()
         except Exception:
             # Exceptions from files or network may contain local paths or tokens.
             return {'ok':False,'message':'Não foi possível processar os materiais. Consulte as fontes locais.'}
         finally:
-            app.close()
-            self._write_lock.release()
+            try:
+                if app is not None:app.close()
+            finally:
+                self._write_lock.release()
         return {'ok':True,'logs':logs[-8:]}
 
     def add_repo(self,url):
         if not self._vault():return {'ok':False,'message':'Configure o cofre primeiro.'}
         if not isinstance(url,str) or not url.strip() or len(url)>1000:return {'ok':False,'message':'URL inválida'}
         if not self._write_lock.acquire(blocking=False):return {'ok':False,'message':'Já existe um processamento em andamento.'}
-        app=Application(self._vault(),CONFIG_FILE,log=lambda _s:None)
+        app=None
         try:
+            app=Application(self._vault(),CONFIG_FILE,log=lambda _s:None)
             app.add_repo(url.strip())
             return {'ok':True}
-        except Exception:return {'ok':False,'message':'Não foi possível adicionar o repositório. Confira o endereço e tente novamente.'}
+        except Exception:
+            return {'ok':False,'message':'Não foi possível adicionar o repositório. Confira o endereço e tente novamente.'}
         finally:
-            app.close()
-            self._write_lock.release()
+            try:
+                if app is not None:app.close()
+            finally:
+                self._write_lock.release()
 
     def toggle_favorite(self, note_id):
         idx=self._index()
@@ -835,16 +872,13 @@ class Bridge:
         try:
             with closing(sqlite3.connect(f'file:{quote(db.as_posix())}?mode=ro',uri=True,timeout=2)) as con:
                 for (stored,) in con.execute("SELECT stored_path FROM sources WHERE kind='classroom'"):
-                    source=(vault/stored).resolve()
-                    if not source.is_relative_to(vault):
-                        continue
-                    try:
-                        record=json.loads(source.read_text(encoding='utf-8'))
-                        if any(isinstance(row,dict) and row.get('url') == url for row in record.get('videos',[])[:30]):
-                            allowed=True
-                            break
-                    except (OSError,ValueError,UnicodeError,AttributeError,TypeError):
-                        continue
+                    record=self._safe_classroom_record(vault,stored)
+                    rows=record.get('videos',[]) if record else []
+                    if isinstance(rows,list) and any(
+                            isinstance(row,dict) and row.get('url') == url
+                            for row in rows[:30]):
+                        allowed=True
+                        break
         except (OSError,sqlite3.Error):
             return {'ok':False,'message':'Não foi possível verificar o link do vídeo.'}
         if not allowed:

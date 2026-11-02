@@ -486,3 +486,15 @@ reduzem ataques com links simbólicos, mas não equivalem a uma sandbox completa
 contra outro programa com permissões do usuário modificando arquivos ao mesmo
 tempo. Qualidade com modelos de IA reais e assinatura de executáveis também
 exigem validação posterior.
+
+### 11.6 Proteção complementar do Classroom e robustez
+
+Os JSONs de materiais associados ao Classroom são limitados a 2 MB, lidos
+apenas dentro do cofre, com bloqueio de links simbólicos e validação de
+estrutura. Referências do catálogo SQLite não dão acesso indiscriminado ao
+disco do usuário. O aplicativo libera seus bloqueios de processamento mesmo
+que a inicialização da aplicação ou seu fechamento falhem.
+
+Mensagens de exceção de rede continuam genéricas para não revelar tokens ou
+URLs privadas; quando a assinatura SHA-256 do instalador diverge, a mensagem
+de integridade é específica e não revela dados internos.
