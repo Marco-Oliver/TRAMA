@@ -388,3 +388,37 @@ a qualidade das explicações com aulas reais e o acabamento visual no Windows d
 estudante exigem avaliação manual. Não apresentar resposta simulada como certificação
 pedagógica nem prometer ausência total de bugs ou vulnerabilidades.
 
+
+## 12. Segurança adicional — revisão após a v2.0.0
+
+Esta revisão **ainda não integra o instalador público**. O código fica em
+[`fix/security-hardening-20261102`](https://github.com/Marco-Oliver/TRAMA/tree/fix/security-hardening-20261102),
+sobre a auditoria de interface e automação anterior.
+
+### Proteção de arquivos e atualização
+
+- Abrir um anexo pelo aplicativo exige que o arquivo esteja **dentro do cofre** e que seu
+  caminho esteja registrado no catálogo SQLite como vídeo, material ou transcrição. Um
+  arquivo arbitrário do cofre não pode ser aberto só porque possui extensão aceita.
+- Páginas de atualização abrem exclusivamente endereços canônicos de releases por
+  versão do repositório configurado. URLs manipuladas ou malformadas são recusadas.
+- Links externos cadastrados são validados antes da abertura, incluindo rejeição de
+  caracteres de controle e credenciais no endereço.
+- Backups ZIP são extraídos somente em pasta nova e recebem inspeção adicional de
+  nomes reservados no Windows, duplicações de caminho e compressão suspeita, além
+  de verificar o espaço disponível e o SHA-256 de cada arquivo.
+
+### Como a segurança é testada
+
+Os testes incluem tentativas de abrir arquivos privados não cadastrados, links com rotas
+maliciosas, endereços de vídeo malformados, arquivos ZIP com nomes especiais do Windows
+e respostas de IA contendo HTML perigoso. Nada disso é executado deliberadamente;
+os testes conferem se o aplicativo rejeita ou exibe o material como texto.
+
+O GitHub Actions também executa verificações de dependências e análise estática.
+**Não há garantia de ausência total de vulnerabilidades**. As chamadas para modelos
+externos podem revelar o contexto autorizado ao provedor, mesmo quando não contêm
+credenciais óbvias; o próprio aluno deve selecionar fontes adequadas.
+
+**Status de distribuição:** ainda não publicado; a v2.0.0 permanece como última
+versão estável enquanto a revisão aguarda testes automatizados e avaliação manual.
