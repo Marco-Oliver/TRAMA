@@ -43,7 +43,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           python -m pip install --disable-pip-version-check bandit
-          python -m bandit -r knowledge_bridge -lll -iii
+          python -m bandit -r knowledge_bridge -ll -ii
       - name: Conferir sintaxe JS
         run: |
           node --check knowledge_bridge/ui/library.js
