@@ -19,16 +19,19 @@ await mkdir(screenshots, { recursive: true });
 const notes = [
   {id:'02-Minhas-Aulas/Aula-001/00-Visao-geral.md', title:'Hello World em C#', lesson:'Aula-001',
    section:'02-Minhas-Aulas',kind:'visao_geral',state:'resumida_com_ia',
-   updated:'2026-10-28T15:00:00',content:'# Hello World em C#\n\nO professor explicou **Console.WriteLine** para escrever uma mensagem no terminal.\n\n## Código\n\n```csharp\nConsole.WriteLine("Olá!");\n```\n\n[[01-Meu-Conhecimento/Conceitos/console|Console]]'},
+   updated:'28/10/2026',content:'# Hello World em C#\n\nO professor explicou **Console.WriteLine** para escrever uma mensagem no terminal.\n\n## Código\n\n```csharp\nConsole.WriteLine("Olá!");\n```\n\n[[01-Meu-Conhecimento/Conceitos/console|Console]]'},
   {id:'02-Minhas-Aulas/Aula-025/00-Visao-geral.md', title:'Angular — componentes',lesson:'Aula-025',
    section:'02-Minhas-Aulas',kind:'visao_geral',state:'resumida_com_ia',
-   updated:'2026-10-30T18:00:00',content:'# Angular — componentes\n\nUm componente Angular organiza a interface.'},
+   updated:'30/10/2026',content:'# Angular — componentes\n\nUm componente Angular organiza a interface.'},
   {id:'01-Meu-Conhecimento/Conceitos/console.md',title:'Console',section:'01-Meu-Conhecimento',
-   kind:'conceito',state:'resumida_com_ia', updated:'2026-10-27T13:00:00',
+   kind:'conceito',state:'resumida_com_ia', updated:'27/10/2026',
    content:'# Console\n\nConceito de saída usado nos exemplos C#.'},
 ];
-const baseNote = n=>({...n,media:{video:[],video_links:[],transcript:[],materials:[]},related:[]});
-const makeBridge=({notes})=>{window.__TRAMA_API__=({
+const makeBridge=({notes})=>{
+ // Playwright serializes this function into the page. Never reference
+ // Node-side closures from the injected fake bridge.
+ const baseNote=n=>({...n,media:{video:[],video_links:[],transcript:[],materials:[]},related:[]});
+ window.__TRAMA_API__=({
   snapshot: async()=>({connected:true,vault:'C:\\TRAMA-Teste\\Cofre',notes,stats:{notes:3,videos:2,transcriptions:2,materials:0,repositories:1},favorites:[notes[0].id]}),
   note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n):{error:'Nota não encontrada'};},
   graph: async()=>({nodes:notes,edges:[[0,2]]}),
@@ -61,20 +64,35 @@ try{
     page.on('console',msg=>{if(msg.type()==='error')errors.push(`${width}px console: ${msg.text()}`);});
     await page.addInitScript(makeBridge, {notes});
     await page.goto(pathToFileURL(pagePath).href);
+    const assertNoUiError=async step=>{
+      const status=(await page.locator('#status-message').textContent())||'';
+      const toast=(await page.locator('#toast').textContent())||'';
+      if(/Falha ao executar|ReferenceError:|TypeError:/.test(status+' '+toast))
+        throw Error(step+': the app swallowed an error: '+status+' / '+toast);
+    };
+    await assertNoUiError('initial load');
     await page.locator('.nav-item[data-view="home"]').click();
     await page.getByRole('button',{name:'Conectar meu cofre'}).waitFor();
     await page.screenshot({path:path.join(screenshots,`${prefix}home-${width}.png`),fullPage:true});
     await page.getByRole('button',{name:'Ver minhas aulas'}).click();
     await page.locator('.lesson-row').first().waitFor();
+    await page.locator('#note-heading .note-title').getByText('Hello World em C#').waitFor();
+    if((await page.locator('#note-content').innerText()).includes('Suas notas aparecerão'))
+      throw Error('Lesson notes were not loaded into the interface');
+    await assertNoUiError('lessons');
     await page.locator('[data-list-filter="favorites"]').click();
     if(await page.locator('.lesson-row').count()!==1)throw Error('Favorites filter did not work');
     await page.locator('[data-list-filter="recent"]').click();
     if(await page.locator('.lesson-row').count()!==2)throw Error('Recent filter did not work');
+    if(!(await page.locator('.lesson-row').first().innerText()).includes('Aula 025'))
+      throw Error('Recent filter must sort real Brazilian DD/MM/YYYY dates');
     await page.locator('[data-list-filter="all"]').click();
     await page.screenshot({path:path.join(screenshots,`${prefix}lessons-${width}.png`),fullPage:true});
     await page.locator('#search-all').fill('Angular');
     await page.locator('#btn-search-all').click();
     await page.locator('#library-workspace').waitFor({state:'visible'});
+    await page.locator('.lib-title').getByText('Angular — componentes').waitFor();
+    await assertNoUiError('library search');
     await page.screenshot({path:path.join(screenshots,`${prefix}library-${width}.png`),fullPage:true});
     await page.locator('.nav-item[data-view="teacher"]').click();
     await page.getByRole('heading',{name:/IA Professor/}).waitFor();
@@ -105,6 +123,7 @@ try{
     await page.locator('.nav-item[data-view="settings"]').click();
     await page.getByRole('button',{name:'Verificar atualizações'}).click();
     await page.getByText('Você já está na versão mais recente.').waitFor();
+    await assertNoUiError('settings and updates');
     await page.screenshot({path:path.join(screenshots,`${prefix}settings-${width}.png`),fullPage:true});
     const dimensions=await page.evaluate(()=>({viewport:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth}));
     if(dimensions.scrollWidth>dimensions.viewport+2)throw Error(`Horizontal viewport overflow at ${width}: ${JSON.stringify(dimensions)}`);

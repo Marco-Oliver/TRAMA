@@ -27,8 +27,14 @@ function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
  if(app.filter){const q=app.filter.toLowerCase();matches=matches.filter(n=>(n.title+' '+n.id+' '+n.lesson).toLowerCase().includes(q));}
  if(app.listFilter==='favorites'){matches=matches.filter(n=>libraryState.favorites.has(n.id));}
  if(app.listFilter==='recent'){matches=[...matches].sort((a,b)=>{
-  const aTime=Date.parse(a.updated||'')||0,bTime=Date.parse(b.updated||'')||0;
-  return bTime-aTime||a.id.localeCompare(b.id);
+  // Bridge returns the actual date in pt-BR (DD/MM/YYYY). Date.parse
+  // cannot parse days > 12 consistently, so sort these explicitly.
+  const timestamp=n=>{
+    const value=String(n.updated||'');
+    const br=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+    return br?Date.UTC(+br[3],+br[2]-1,+br[1]):(Date.parse(value)||0);
+  };
+  return timestamp(b)-timestamp(a)||a.id.localeCompare(b.id);
  }).slice(0,20);}
  return matches;
 }

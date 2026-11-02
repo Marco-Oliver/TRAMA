@@ -208,11 +208,16 @@ function libWire(){const root=$('library-workspace');
 async function renderLibraryView(){
  if(!app.snapshot)return;
  const root=$('library-workspace');$('overlay-screen').classList.add('hidden');$('list-panel').classList.add('hidden');$('note-panel').classList.add('hidden');$('details-panel').classList.add('hidden');root.classList.remove('hidden');
- const notes=libNotes();if(!notes.some(n=>n.id===app.selected)&&app.selected!==null)app.selected=notes[0]?.id||null;
- if(app.selected)app.note=await call('note',app.selected);
- if(!app.selected&&notes.length&&!libraryState.allowEmpty){app.selected=notes[0].id;app.note=await call('note',app.selected);}
+ const notes=libNotes();
  const visibleNotes=notes.filter(n=>libraryState.showTechnical||!['00-Inicio','90-Sistema'].includes(n.section));
  const treeNotes=libraryState.search?visibleNotes.filter(n=>(n.id+' '+n.title).toLowerCase().includes(libraryState.search.toLowerCase())):visibleNotes;
+ if(libraryState.search){
+   // A global search must not show an unrelated previously-selected note.
+   if(!treeNotes.some(n=>n.id===app.selected))app.selected=treeNotes[0]?.id||null;
+ }else if(!notes.some(n=>n.id===app.selected)){
+   app.selected=!libraryState.allowEmpty?notes[0]?.id||null:null;
+ }
+ app.note=app.selected?await call('note',app.selected):null;
  root.innerHTML=`<section class="lib-tree-panel"><div class="lib-tree-head"><span class="lib-obs-icon" aria-label="Obsidian"></span><div><strong>Biblioteca do Obsidian</strong><small>As mesmas notas do seu cofre, organizadas para estudar.</small></div></div><div class="lib-tree-tools"><button data-lib-action="organize" title="Atualizar organização sem gastar API">↻ Organizar aulas</button><button data-lib-action="atlas" title="Ver conceitos, fontes e retomadas">⌁ Minha evolução</button><button data-lib-action="technical" title="Mostrar ou ocultar pastas internas, sem mover arquivos">${libraryState.showTechnical?"Ocultar técnicas":"Pastas técnicas"}</button></div><div class="lib-search"><span>⌕</span><input id="lib-folder-search" aria-label="Buscar pastas e notas" placeholder="Buscar pastas e notas..."></div><div class="lib-tree-scroll" id="lib-tree-content">${libTreeMarkup(treeNotes)}</div></section><section class="lib-note-panel">${libCenterPanel(app.note)}</section><aside class="lib-right-panel">${app.note&&!app.note.error?libMetaPanel(app.note):''}</aside>`;
  libWire();
 }

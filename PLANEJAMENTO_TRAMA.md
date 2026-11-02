@@ -422,3 +422,15 @@ credenciais óbvias; o próprio aluno deve selecionar fontes adequadas.
 
 **Status de distribuição:** ainda não publicado; a v2.0.0 permanece como última
 versão estável enquanto a revisão aguarda testes automatizados e avaliação manual.
+
+### 12.1 Cobertura visual contra falsos resultados
+
+A auditoria visual foi reforçada após inspecionar as capturas geradas: o simulador de API
+do navegador continha uma referência não definida, mas a interface tratava a exceção
+como aviso e o teste anterior passava apesar de a nota ficar vazia. O simulador foi
+corrigido e agora **o teste falha se a nota não aparecer ou se houver aviso de erro**
+no aplicativo. A busca global deve selecionar uma nota correspondente ao filtro,
+e o botão Recentes ordena corretamente as datas reais em formato DD/MM/AAAA.
+As verificações são executadas tanto no arquivo HTML de desenvolvimento quanto
+no HTML empacotado na janela Windows. Elas não substituem testes manuais com dados reais.
+
