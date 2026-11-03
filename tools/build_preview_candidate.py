@@ -49,6 +49,11 @@ def prepare():
         "TRAMA v2.0.1  │  ",
         PREVIEW_LABEL + "  │  ",
     )
+    replace_exact(
+        ROOT / "knowledge_bridge" / "ui" / "app.js",
+        "Versão instalada: 2.0.1.",
+        "Versão experimental: TRAMA Preview 2.1.",
+    )
     iss = (ROOT / "TRAMA_Instalador.iss").read_text(encoding="utf-8")
     changes = [
         ('#define MyAppName "TRAMA"', '#define MyAppName "TRAMA Preview"'),
