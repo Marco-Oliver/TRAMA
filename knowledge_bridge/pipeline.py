@@ -211,7 +211,7 @@ class Application:
             label=concept.get("nome","").strip()
             normalized_label=norm(label)
             if (normalized_label and
-                    re.search(r"(?<!\\w)"+re.escape(normalized_label)+r"(?!\\w)",
+                    re.search(r"(?<!\w)"+re.escape(normalized_label)+r"(?!\w)",
                               normalized_source)):
                 grounded.append(concept)
             else:
