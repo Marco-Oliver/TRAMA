@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 import tempfile
 import unittest
 import zipfile
@@ -25,9 +26,10 @@ class RestoreBackupFoundationsTests(unittest.TestCase):
         self.vault = self.root / "original"
         db = self.vault / ".base-conhecimento" / "estado.sqlite3"
         db.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(db) as conn:
+        with closing(sqlite3.connect(db)) as conn:
             conn.execute("CREATE TABLE evidencias (id TEXT PRIMARY KEY, descricao TEXT)")
             conn.execute("INSERT INTO evidencias VALUES (?,?)", ("aula-001", "fonte artificial"))
+            conn.commit()
         # Several valid path components, together longer than classic MAX_PATH.
         self.relative = (
             ".base-conhecimento/repos/" +
@@ -56,7 +58,7 @@ class RestoreBackupFoundationsTests(unittest.TestCase):
             self.original_file.read_text(encoding="utf-8"),
             "Apenas texto fictício da Aula 001.",
         )
-        with sqlite3.connect(target / ".base-conhecimento" / "estado.sqlite3") as conn:
+        with closing(sqlite3.connect(target / ".base-conhecimento" / "estado.sqlite3")) as conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM evidencias").fetchone()[0], 1)
 
     def test_restore_never_overwrites_an_existing_vault(self):
