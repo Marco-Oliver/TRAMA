@@ -169,7 +169,8 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
         `Transcrições preservadas: ${c.arquivos_integros||0}/${c.transcricoes||0}`,
         `Gravações com resumo de IA: ${c.com_resumo||0}/${c.transcricoes||0}`,
         `Contextos do Classroom: ${c.contextos||0}`,
-        `Referências de tempo válidas: ${c.horarios_validos||0}`,
+        `Horários informados pela IA e encontrados no TXT: ${c.horarios_validos||0}`,
+        `Menções com horário recuperado localmente: ${c.horarios_recuperados_txt||0}`,
         `Trechos para conferir: ${c.referencias_duvidosas||0}`,
         `Links de gravações: ${c.videos_links||0}`];
       box.innerHTML=card('Conferência local das fontes',
