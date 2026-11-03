@@ -146,3 +146,40 @@ jobs:
           path: ui-smoke-artifacts/
           if-no-files-found: ignore
           retention-days: 7
+
+  v220-public-course:
+    name: TRAMA 2.2 - codigo autentico da Academia (TXT sinteticos)
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/v2.2.0-automation-foundations'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: trama
+          persist-credentials: false
+      - name: Baixar repositório público de referência em commit fixo
+        uses: actions/checkout@v4
+        with:
+          repository: academiadoprogramador-fullstack/gerador-de-certificados-2026
+          ref: cd86334568a034c9847b34e1e0e9841381fc31a1
+          path: academy-course-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Instalar dependencias do TRAMA
+        working-directory: trama
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Validar tres aulas sinteticas contra codigo publico real
+        working-directory: trama
+        run: python tools/qa_public_course.py ../academy-course-source
+      - name: Arquivar relatorio de integracao, sem dados privados
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trama-v220-auditoria-codigo-publico
+          path: trama/qa-artifacts/public-course-integration.md
+          if-no-files-found: ignore
+          retention-days: 14
