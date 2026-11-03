@@ -64,6 +64,8 @@ const makeBridge=({notes})=>{
     }))};
   },
   copy_note_link: async id=>({ok:true,message:'Link interno copiado.'}),
+  vault_disk_usage: async()=>({ok:true,total_bytes:10485760,files:15,
+    categories:{notes:1048576,attachments:2097152,repositories:5242880,catalog:1048576,other:1048576}}),
   check_updates: async()=>({ok:true,available:false,message:'Você já está na versão mais recente.'}),
   teacher_ask: async (question, mode, code, confirmed)=>confirmed?({
     ok:true,answer:question.includes('XSSTEST')
