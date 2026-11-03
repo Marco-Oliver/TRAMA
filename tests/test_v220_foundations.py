@@ -292,5 +292,41 @@ class IncrementalAutomationFoundationsTests(unittest.TestCase):
                 app.close()
 
 
+
+class LargeLocalLibraryTests(unittest.TestCase):
+    def test_150_lessons_enter_six_at_a_time_without_losing_structure(self):
+        """Simulate the user's gradual import rhythm without an external API."""
+        from knowledge_bridge.pipeline import Application
+
+        with tempfile.TemporaryDirectory(prefix="trama-v220-150-lessons-") as folder:
+            base = Path(folder)
+            app = Application(base / "cofre", base / "no-key.env", log=lambda _: None)
+            try:
+                for number in range(1, 151):
+                    name = f"Aula-{number:03d}-V01.txt"
+                    source = base / name
+                    source.write_text(
+                        f"[0:01] Material fictício referente à aula {number}.",
+                        encoding="utf-8",
+                    )
+                    self.assertTrue(app.add_file(source))
+                    if number % 6 == 0:
+                        app.publisher.rebuild()
+                sources = app.store.sources("transcript")
+                self.assertEqual(len(sources), 150)
+                lessons = app.store.vault / "02-Minhas-Aulas"
+                self.assertTrue((lessons / "Aula-001" / "00-Visao-geral.md").is_file())
+                self.assertTrue((lessons / "Aula-150" / "00-Visao-geral.md").is_file())
+                self.assertEqual(
+                    sum(p.is_dir() and p.name.startswith("Aula-") for p in lessons.iterdir()),
+                    150,
+                )
+                self.assertEqual(
+                    len(list(app.store.vault.rglob("*.PROPOSTA*.md"))), 0
+                )
+            finally:
+                app.close()
+
+
 if __name__ == "__main__":
     unittest.main()
