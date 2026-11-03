@@ -13,6 +13,26 @@ class InterfaceBundleTests(unittest.TestCase):
         self.assertNotIn('<script src=',html)
         self.assertNotIn('@import ',html)
 
+    def test_packaged_window_keeps_hash_allowlisted_content_security_policy(self):
+        import base64
+        import hashlib
+        import re
+        from html import unescape
+        html=load_local_ui()
+        match=re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)"',html)
+        self.assertIsNotNone(match)
+        policy=unescape(match.group(1))
+        self.assertIn("default-src 'none'",policy)
+        self.assertIn("script-src 'sha256-",policy)
+        self.assertIn("style-src 'sha256-",policy)
+        self.assertNotIn("'unsafe-inline'",policy)
+        self.assertNotIn("'unsafe-eval'",policy)
+        for tag in ("script","style"):
+            for source in re.findall(rf'<{tag}>(.*?)</{tag}>', html, flags=re.S):
+                digest=base64.b64encode(hashlib.sha256(source.encode('utf-8')).digest()).decode('ascii')
+                self.assertIn("'sha256-"+digest+"'",policy)
+        self.assertIn("connect-src 'none'",policy)
+
     def test_batch_dialog_does_not_process_during_file_selection(self):
         html=load_local_ui()
         self.assertIn('id="auto-paste-zone"',html)

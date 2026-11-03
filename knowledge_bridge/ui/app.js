@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const escapeHTML = value => String(value??'').replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-const app={view:'lessons',tab:'Nota completa',snapshot:null,note:null,selected:null,filter:''};
+const app={view:'lessons',tab:'Nota completa',snapshot:null,note:null,selected:null,filter:'',listFilter:'all'};
 let bridge=null;
 const categories={lessons:'02-Minhas-Aulas',knowledge:'01-Meu-Conhecimento',projects:'03-Meus-Projetos'};
 const titles={lessons:'Minhas Aulas',knowledge:'Meu Conhecimento',projects:'Meus Projetos',library:'Biblioteca do Obsidian'};
@@ -14,7 +14,7 @@ function empty(msg){return `<p class="empty-text">${escapeHTML(msg)}</p>`;}
 function notify(message,wait=4000){$('status-message').textContent=message;const e=$('toast');e.textContent=message;e.classList.remove('hidden');clearTimeout(notify.timer);notify.timer=setTimeout(()=>e.classList.add('hidden'),wait);}
 async function call(name,...args){if(!bridge||typeof bridge[name]!=='function'){notify('Conecte o aplicativo TRAMA.');return null;}try{return await bridge[name](...args);}catch(e){notify('Falha ao executar: '+String(e).slice(0,160));return null;}}
 async function refresh(){const data=await call('snapshot');if(!data)return;app.snapshot=data;libraryState.favorites=new Set(data.favorites||[]);document.body.classList.toggle('connected',!!data.connected);$('connect-state').textContent=data.connected?'Obsidian conectado':'Configure o cofre do Obsidian';const s=data.stats||{};$('status-counts').textContent=`▤ ${s.notes||0} notas   │   ▶ ${s.videos||0} vídeos   │   ▤ ${s.transcriptions||0} transcrições   │   ▰ ${s.materials||0} materiais   │   ▱ ${s.repositories||0} projetos`;
- document.querySelector('.status-version').textContent='TRAMA v2.0  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
+ document.querySelector('.status-version').textContent='TRAMA v2.0.1  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
  if(!data.connected){app.note=null;app.selected=null;}
  renderNavigation();await render();}
 function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
@@ -25,13 +25,25 @@ function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
  }
 
  if(app.filter){const q=app.filter.toLowerCase();matches=matches.filter(n=>(n.title+' '+n.id+' '+n.lesson).toLowerCase().includes(q));}
+ if(app.listFilter==='favorites'){matches=matches.filter(n=>libraryState.favorites.has(n.id));}
+ if(app.listFilter==='recent'){matches=[...matches].sort((a,b)=>{
+  // Bridge returns the actual date in pt-BR (DD/MM/YYYY). Date.parse
+  // cannot parse days > 12 consistently, so sort these explicitly.
+  const timestamp=n=>{
+    const value=String(n.updated||'');
+    const br=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+    return br?Date.UTC(+br[3],+br[2]-1,+br[1]):(Date.parse(value)||0);
+  };
+  return timestamp(b)-timestamp(a)||a.id.localeCompare(b.id);
+ }).slice(0,20);}
  return matches;
 }
 function renderNavigation(){document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.view===app.view));}
-async function setView(view){app.view=view;app.filter='';app.tab=view==='lessons'?'Nota completa':'Resumo';$('search-all').value='';$('list-search').value='';renderNavigation();await render();}
+async function setView(view){app.view=view;app.filter='';app.listFilter='all';app.tab=view==='lessons'?'Nota completa':'Resumo';$('search-all').value='';$('list-search').value='';renderNavigation();await render();}
 async function render(){if(!app.snapshot)return;if(app.view==='library'){await renderLibraryView();return;}if(['graph','home','settings','teacher'].includes(app.view)){renderOverlay();return;}
  $('library-workspace').classList.add('hidden');$('overlay-screen').classList.add('hidden');$('list-panel').classList.remove('hidden');$('note-panel').classList.remove('hidden');$('details-panel').classList.remove('hidden');
  $('list-title').textContent=titles[app.view]||'Minha Biblioteca';
+ document.querySelectorAll('[data-list-filter]').forEach(btn=>btn.classList.toggle('active',btn.dataset.listFilter===app.listFilter));
  $('btn-context').style.display=app.view==='lessons'?'':'none';
  $('list-search').placeholder=app.view==='lessons'?'Buscar aulas...':'Buscar notas...';
  const notes=getNotes();if(!notes.some(n=>n.id===app.selected))app.selected=notes[0]?.id||null;
@@ -61,7 +73,7 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
  if(app.tab==='Nota completa'){
    box.innerHTML=`<div class="note-source-banner">Visualização da mesma nota Markdown do Obsidian. Para ver edições recentes, clique em Atualizar.</div>${libRenderMarkdown(n.content,n.id,n.title)}`;
    box.querySelectorAll('[data-lib-note]').forEach(el=>el.addEventListener('click',async(e)=>{
-      e.preventDefault();app.selected=el.dataset.libNote;app.view='library';app.note=await call('note',app.selected);await render();
+      e.preventDefault();libraryState.search='';app.selected=el.dataset.libNote;app.view='library';app.note=await call('note',app.selected);await render();
    }));return;
  }
  if(app.tab==='Markdown'){const pre=document.createElement('pre');pre.className='note-markdown';pre.textContent=n.content;box.append(pre);return;}
@@ -96,7 +108,7 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
  box.innerHTML=html;wireFiles();}
 function fileRow(icon,title,detail,cta,kind,i){return `<div class="resource-row"><span class="resource-icon">${icon}</span><span class="resource-text"><strong>${escapeHTML(title)}</strong><small>${escapeHTML(detail)}</small></span><button class="row-open" data-file-kind="${kind}" data-file-idx="${i}">${cta} ↗</button></div>`;}
 function wireFiles(){document.querySelectorAll('[data-file-kind]').forEach(el=>el.addEventListener('click',async()=>{const kind=el.dataset.fileKind,media=app.note?.media?.[kind]?.[Number(el.dataset.fileIdx)];if(media)await call(kind==='video_links'?'open_video_link':'open_attachment',kind==='video_links'?media.url:media.stored);}));}
-function wireRelations(){document.querySelectorAll('[data-related]').forEach(el=>el.addEventListener('click',async()=>{app.selected=app.note.related[Number(el.dataset.related)].id;app.view='library';await render();}));}
+function wireRelations(){document.querySelectorAll('[data-related]').forEach(el=>el.addEventListener('click',async()=>{libraryState.search='';app.selected=app.note.related[Number(el.dataset.related)].id;app.view='library';await render();}));}
 function detail(title,icon,body){return `<section class="detail-card"><h3><span class="mini-icon">${icon}</span>${escapeHTML(title)}</h3><div class="detail-body">${body}</div></section>`;}
 function detailRow(icon,caption,action,idx){return `<button class="detail-row" data-action="${action}" data-idx="${idx}"><span class="detail-icon">${icon}</span><span class="detail-title">${escapeHTML(caption)}</span><span class="detail-muted">↗</span></button>`;}
 function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.innerHTML=detail('Obsidian','◆',empty('Aguardando conexão com sua biblioteca.'));return;}
@@ -119,17 +131,17 @@ function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.inne
   const action=button.dataset.action,i=Number(button.dataset.idx);
   if(['video','transcript','video_links'].includes(action)){
    const m=n.media[action][i];if(m)await call(action==='video_links'?'open_video_link':'open_attachment',action==='video_links'?m.url:m.stored);return;}
-  const related=n.related.filter(x=>x.section===action)[i];if(related){app.selected=related.id;app.view='library';await render();}
+  const related=n.related.filter(x=>x.section===action)[i];if(related){libraryState.search='';app.selected=related.id;app.view='library';await render();}
  }));}
 async function renderOverlay(){$('library-workspace').classList.add('hidden');const el=$('overlay-screen');el.classList.remove('hidden');$('list-panel').classList.add('hidden');$('note-panel').classList.add('hidden');$('details-panel').classList.add('hidden');
  if(app.view==='teacher'){renderTeacher(el);return;}
  if(app.view==='settings'){
   el.innerHTML=`<div class="wide-header"><h2>Ajustes</h2><p>O cofre do Obsidian é a fonte principal. O TRAMA não cria outra biblioteca.</p></div>
   <div class="settings-grid"><div class="setting-block"><h3>Atualizações do TRAMA</h3>
-    <p>Versão atual: <strong>2.0.0</strong>. Quando houver um canal oficial publicado no GitHub, você poderá verificar e abrir a versão nova sem ZIP.</p>
+    <p><strong>Versão instalada: 2.0.1.</strong> Para atualizar: clique em Verificar, depois em Baixar e confirme a instalação. Você não precisa reinstalar Python nem baixar arquivos ZIP.</p>
     <button id="check-updates">Verificar atualizações</button>
-    <p id="update-message" class="setting-status">O canal oficial ainda não foi publicado.</p>
-    <button id="install-update" class="hidden">Baixar atualização verificada</button>
+    <p id="update-message" class="setting-status">Clique em “Verificar atualizações” para consultar o GitHub.</p>
+    <button id="install-update" class="hidden">Baixar e instalar nova versão</button>
     <button id="open-update" class="hidden">Ver detalhes no GitHub</button>
     </div><div class="setting-block"><h3>Biblioteca do Obsidian</h3>
     <p>Selecione a pasta original do seu Obsidian. Ela continua acessível mesmo sem o TRAMA.</p>
@@ -145,7 +157,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     <label for="ai-key">Chave de API (não será exibida depois)</label>
     <input type="password" id="ai-key" placeholder="Cole sua chave aqui" autocomplete="off" spellcheck="false"/>
     <label class="free-confirm"><input id="ai-free" type="checkbox"/> Confirmei que a chave é de uma conta/projeto Free sem faturamento.</label>
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><button id="save-ai">Salvar chave</button><button id="remove-ai">Remover chave</button></div>
+    <div class="ai-key-actions"><button id="save-ai">Salvar chave</button><button id="remove-ai">Remover chave</button></div>
     <p id="ai-status" class="setting-status">Consultando configuração…</p>
     <div class="ai-diagnostic">
       <h3>Testar inteligência artificial</h3>
@@ -222,12 +234,15 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
   await renderStatus();return;
  }
  if(app.view==='home'){
-  el.innerHTML=`<div class="wide-header"><h2>Seu conhecimento, organizado.</h2><p>Um lugar para conectar aulas, pessoas, materiais, conhecimentos e projetos sem substituir o Obsidian.</p></div><div class="settings-grid"><div class="setting-block"><h3>Minhas aulas</h3><p>Links das gravações, contexto do Classroom, transcrições, pessoas e projetos relacionados.</p><button id="home-lessons">Abrir Aulas</button></div><div class="setting-block"><h3>Minha biblioteca</h3><p>Os arquivos Markdown reais do Obsidian, acessíveis no mesmo cofre.</p><button id="home-library">Abrir Biblioteca</button></div></div>`;
-  el.querySelector('#home-lessons').addEventListener('click',()=>setView('lessons'));el.querySelector('#home-library').addEventListener('click',()=>setView('library'));return;
+  el.innerHTML=`<div class="wide-header"><h2>Seu conhecimento, organizado.</h2><p>Um lugar para conectar aulas, pessoas, materiais, conhecimentos e projetos sem substituir o Obsidian.</p></div><div class="settings-grid"><div class="setting-block"><h3>1. Conectar Obsidian</h3><p>Escolha seu cofre em Ajustes. As notas continuam locais e acessíveis mesmo sem o TRAMA.</p><button id="home-settings">Conectar meu cofre</button></div><div class="setting-block"><h3>2. Organizar minhas aulas</h3><p>Adicione transcrições, prints, links e códigos para criar notas e materiais de revisão.</p><button id="home-lessons">Ver minhas aulas</button></div><div class="setting-block"><h3>3. Estudar com IA Professor</h3><p>Peça explicações, desafios ou ajuda com código usando suas notas, sem modificar o cofre.</p><button id="home-teacher">Abrir IA Professor</button></div><div class="setting-block"><h3>Biblioteca e backup</h3><p>Revise as notas e, antes de atualizar, crie uma cópia em Ajustes.</p><button id="home-library">Abrir biblioteca</button></div></div>`;
+  el.querySelector('#home-settings').addEventListener('click',()=>setView('settings'));
+  el.querySelector('#home-teacher').addEventListener('click',()=>setView('teacher'));
+  el.querySelector('#home-lessons').addEventListener('click',()=>setView('lessons'));
+  el.querySelector('#home-library').addEventListener('click',()=>setView('library'));return;
  }
  const graph=await call('graph');const nodes=graph?.nodes||[],edges=graph?.edges||[];
  el.innerHTML=`<div class="wide-header"><h2>Grafo de conexões</h2><p>${nodes.length} notas e ${edges.length} links reais entre arquivos do Obsidian.</p></div><div class="graph-box" id="graph-box"><svg id="graph-svg" viewBox="0 0 1000 700" aria-label="Grafo das notas"></svg></div>`;
- if(!nodes.length){el.querySelector('.graph-box').innerHTML='<p class="empty-text" style="padding:25px">Seu grafo será construído quando suas notas tiverem links internos [[...]].</p>';return;}
+ if(!nodes.length){el.querySelector('.graph-box').innerHTML='<p class="empty-text" class="graph-empty">Seu grafo será construído quando suas notas tiverem links internos [[...]].</p>';return;}
  const svg=$('graph-svg'),ns='http://www.w3.org/2000/svg';const clusters={'01-Meu-Conhecimento':[-240,-90],'02-Minhas-Aulas':[200,-70],'03-Meus-Projetos':[0,180],'00-Inicio':[0,-220]};const counts={};
  const pos=nodes.map(n=>{const i=counts[n.section]||0;counts[n.section]=i+1;const a=i*2.399,r=65+16*Math.sqrt(i),c=clusters[n.section]||[0,0];return [500+c[0]+Math.cos(a)*r,350+c[1]+Math.sin(a)*r];});
  for(const [a,b] of edges){const edge=document.createElementNS(ns,'line');edge.setAttribute('x1',pos[a][0]);edge.setAttribute('y1',pos[a][1]);edge.setAttribute('x2',pos[b][0]);edge.setAttribute('y2',pos[b][1]);svg.appendChild(edge);}
@@ -333,7 +348,15 @@ function bind(){document.querySelectorAll('.nav-item').forEach(el=>el.addEventLi
    if(event.key==='F11'){event.preventDefault();toggleFullscreen();}
    else if(event.key==='Escape' && !$('classroom-dialog').open && !$('auto-dialog').open && window.__tramaFullscreen){event.preventDefault();toggleFullscreen();}
  });
- $('search-all').addEventListener('keydown',async e=>{if(e.key==='Enter'){app.filter=e.target.value.trim();libraryState.search=app.filter;app.view='library';await render();}});
+ async function runGlobalSearch(){
+   app.filter=$('search-all').value.trim();libraryState.search=app.filter;
+   app.view='library';renderNavigation();await render();
+ }
+ $('search-all').addEventListener('keydown',async e=>{if(e.key==='Enter'){e.preventDefault();await runGlobalSearch();}});
+ $('btn-search-all').addEventListener('click',runGlobalSearch);
+ document.querySelectorAll('[data-list-filter]').forEach(btn=>btn.addEventListener('click',async()=>{
+   app.listFilter=btn.dataset.listFilter;await render();
+ }));
  $('list-search').addEventListener('input',async e=>{app.filter=e.target.value.trim();await render();});}
 async function start(){bridge=window.pywebview?.api||window.__TRAMA_API__||null;bind();if(!bridge){notify('Abra pelo aplicativo TRAMA no Windows.');return;}await refresh();}
 if(window.pywebview?.api||window.__TRAMA_API__){start();}else{window.addEventListener('pywebviewready',start,{once:true});}

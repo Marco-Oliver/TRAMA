@@ -13,7 +13,7 @@ import re
 import zipfile
 from pathlib import Path
 from urllib.parse import urlsplit
-from xml.etree import ElementTree
+from defusedxml import ElementTree
 
 from .ai import BudgetStopped, NoFreeProvider, ProviderError
 from .classroom import lesson_number, normalize_context

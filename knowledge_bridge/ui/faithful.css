@@ -155,3 +155,22 @@ button,input{font-family:inherit}
 .lib-file-row.is-overview.selected{background:#cde7d7}
 .lib-external-link{display:inline;border:0;background:transparent;color:#116eae;text-decoration:underline;cursor:pointer;padding:0;max-width:100%;overflow-wrap:anywhere;white-space:normal;font:inherit;text-align:left}
 .lib-external-link:hover{text-decoration-thickness:2px}
+
+/* Compact native window: never cut navigation labels in 850px layouts. */
+@media(max-width:980px){
+ .navigation{width:135px;padding-left:4px;padding-right:4px}
+ .nav-item{font-size:12px;gap:6px;padding:9px 6px;justify-content:flex-start;white-space:nowrap}
+ .nav-ic{width:21px;height:21px;flex:none}
+ .list-panel{width:220px}
+ .details-panel{display:none}
+ .tabs{overflow-x:auto;scrollbar-width:thin;scrollbar-color:#bacdbd transparent}
+ .tab{flex:none;font-size:10px;padding:0 8px}
+}
+
+/* Final width audit: readable nav labels at normal and compact sizes. */
+.navigation{width:169px}
+.nav-item{font-family:'Roboto Condensed','Segoe UI',sans-serif;font-size:13px;gap:7px;padding:9px 6px;white-space:nowrap}
+@media(max-width:980px){
+ .navigation{width:145px}
+ .nav-item{font-size:12px;gap:5px;padding:9px 5px}
+}

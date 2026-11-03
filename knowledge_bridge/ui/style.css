@@ -123,3 +123,58 @@
 #teacher-submit{background:#2d714b;color:#fff;border:1px solid #296541;border-radius:4px;padding:10px 16px;font-weight:700;min-width:129px}
 #teacher-submit:disabled{opacity:.5;cursor:wait}
 @media(max-width:940px){.teacher-header{flex-direction:column}.teacher-controls{align-items:flex-start;flex-direction:column-reverse}.teacher-user{max-width:95%}}
+
+/* Revisão de usabilidade: navegação clara, ações clicáveis e foco visível. */
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,
+[tabindex]:focus-visible{outline:2px solid #1c754f;outline-offset:2px}
+button:not(:disabled):hover{filter:brightness(.98)}
+.search-wrap #btn-search-all{flex:none;border:0;background:#e2efe5;color:#1b5838;font-size:11px;font-weight:700;border-radius:4px;padding:7px 9px;min-width:54px}
+.search-wrap #btn-search-all:hover{background:#cce6d3}
+.list-filters button:not(:disabled){cursor:pointer}
+.list-filters button:focus-visible{outline-offset:-2px}
+.navigation{overflow-y:auto}
+.teacher-area{width:100%;max-width:980px}
+.teacher-form textarea:focus-visible{outline-offset:0}
+.teacher-log{scrollbar-gutter:stable;overflow-x:hidden}
+.teacher-ref{white-space:normal;max-width:100%;line-height:1.45}
+.teacher-form button{min-height:37px}
+@media(max-width:1150px){
+ .details-panel{width:235px}
+ .toolbar{padding:0 8px}
+ .toolbar .chrome-btn{font-size:11px}
+ .navigation{width:130px}
+}
+@media(max-width:980px){
+ .details-panel{display:none}
+ .navigation{width:63px;padding:10px 4px}
+ .nav-item{font-size:0;gap:0;justify-content:center;min-height:45px}
+ .nav-ic{width:23px;height:23px}
+ .list-panel{width:225px}
+ .note-panel{min-width:0}
+ .toolbar-connect,.tool-separator{display:none}
+ .toolbar .chrome-btn{max-width:140px;overflow:hidden;text-overflow:ellipsis}
+ .status-center{max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@media(max-width:700px){
+ .toolbar{gap:3px}
+ .toolbar-brand-name{display:none}
+ .toolbar .chrome-btn{font-size:0;padding:5px;min-width:36px}
+ .toolbar .toolbar-icon{display:inline-block}
+ .toolbar .chrome-btn svg{width:20px}
+ .navigation{width:52px}
+ .list-panel{width:190px}
+ .list-heading{padding:12px 7px}
+ .list-heading h2{font-size:13px}
+ .list-filters{margin:6px 5px}
+ .list-filters button{font-size:10px}
+ .overlay-screen{padding:14px}
+ .teacher-header h2{font-size:19px}
+ .teacher-log{max-height:43vh}
+ .teacher-form{padding:10px}
+ .teacher-modes button{font-size:11px;padding:7px}
+ .status-version{font-size:9px}
+}
+
+/* CSS for settings and graph controls (CSP-compliant) */
+.ai-key-actions{display:flex;gap:8px;flex-wrap:wrap}
+.graph-empty{padding:25px}

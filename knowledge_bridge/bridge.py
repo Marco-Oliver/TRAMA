@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sqlite3
+import stat
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,7 @@ from .secure_keys import KeyVault, PROVIDERS
 from .ai import FreeAIRouter, ALLOWED, ProviderError, NoFreeProvider, BudgetStopped
 from .diagnostic import run_ai_diagnostic, format_diagnostic_report, MissingTestSources
 from .vault_index import VaultIndex
+from .code_intel import redact_sensitive
 from .gui_legacy import DATA_HOME, SETTINGS_FILE, CONFIG_FILE
 
 ALLOWED_ATTACHMENTS={'.txt','.md','.mp4','.mkv','.mov','.webm','.png','.jpg','.jpeg','.webp','.pdf','.docx'}
@@ -68,6 +70,34 @@ class Bridge:
         path=self._vault()
         return VaultIndex(path) if path else None
 
+    @staticmethod
+    def _safe_classroom_record(vault, stored):
+        """Only read bounded, non-symlink Classroom JSON inside the vault."""
+        if (not isinstance(stored,str) or not stored or len(stored)>700 or
+                '\\' in stored or Path(stored).is_absolute() or
+                any(part in ('.','..') for part in stored.split('/'))):
+            return None
+        path=vault/stored
+        rel=Path(stored)
+        try:
+            if any((vault/Path(*rel.parts[:i])).is_symlink()
+                   for i in range(1,len(rel.parts)+1)):
+                return None
+            if not path.resolve().is_relative_to(vault.resolve()):
+                return None
+            flags=os.O_RDONLY | getattr(os,'O_BINARY',0) | getattr(os,'O_NOFOLLOW',0)
+            with os.fdopen(os.open(path,flags),'rb') as source:
+                stat_info=os.fstat(source.fileno())
+                if not stat.S_ISREG(stat_info.st_mode) or stat_info.st_size>2_000_000:
+                    return None
+                payload=source.read(2_000_001)
+            if len(payload)>2_000_000:
+                return None
+            result=json.loads(payload.decode('utf-8-sig'))
+            return result if isinstance(result,dict) else None
+        except (OSError,ValueError,UnicodeError,TypeError):
+            return None
+
     def _stats(self,path):
         output={'transcriptions':0,'videos':0,'repositories':0,'notes':0,'materials':0,'classrooms':0}
         db=path/'.base-conhecimento'/'estado.sqlite3'
@@ -82,11 +112,10 @@ class Bridge:
                 output['repositories']=con.execute('SELECT COUNT(*) FROM repositories').fetchone()[0]
                 for (stored,) in con.execute("SELECT stored_path FROM sources WHERE kind='classroom'"):
                     try:
-                        file=(path/stored).resolve()
-                        if not file.is_relative_to(path):
-                            continue
-                        rows=json.loads(file.read_text(encoding='utf-8')).get('videos',[])
-                        output['videos'] += sum(1 for entry in rows if isinstance(entry,dict) and self._valid_video_url(entry.get('url')))
+                        record=self._safe_classroom_record(path,stored)
+                        rows=record.get('videos',[]) if record else []
+                        if isinstance(rows,list):
+                            output['videos'] += sum(1 for entry in rows[:100] if isinstance(entry,dict) and self._valid_video_url(entry.get('url')))
                     except (OSError,ValueError,UnicodeError,AttributeError,TypeError):
                         continue
         except (sqlite3.Error,OSError):pass
@@ -134,11 +163,13 @@ class Bridge:
                         out[kind].append({'label':label,'stored':stored,'video_id':video or ''})
                     elif kind == 'classroom' and stored:
                         try:
-                            source_file=(idx.vault/stored).resolve()
-                            if not source_file.is_relative_to(idx.vault):
+                            item=self._safe_classroom_record(idx.vault,stored)
+                            rows=item.get('videos',[]) if item else []
+                            if not isinstance(rows,list):
                                 continue
-                            item=json.loads(source_file.read_text(encoding='utf-8'))
-                            for entry in item.get('videos',[])[:30]:
+                            for entry in rows[:30]:
+                                if not isinstance(entry,dict):
+                                    continue
                                 url=entry.get('url','')
                                 if self._valid_video_url(url):
                                     out['video_links'].append({'label':str(entry.get('titulo','Gravação'))[:160], 'url':url})
@@ -574,11 +605,15 @@ class Bridge:
 
     def open_update_page(self, address):
         """Abre a página oficial somente após escolha explícita do usuário."""
-        from urllib.parse import urlparse
+        from .update_service import version_tuple
         repo=self._release_repo()
-        prefix=f'https://github.com/{repo}/releases/' if repo else ''
-        if not prefix or not isinstance(address,str) or not address.startswith(prefix):
-            return {'ok':False, 'message':'Não existe um canal oficial de atualizações configurado.'}
+        prefix=f'https://github.com/{repo}/releases/tag/' if repo else ''
+        # Exact version-tag route: reject path traversal, query fragments,
+        # spoofed release pages and malformed/untrusted browser URLs.
+        if (not prefix or not isinstance(address,str) or
+                not address.startswith(prefix) or
+                not version_tuple(address[len(prefix):])):
+            return {'ok':False, 'message':'Página de atualização não reconhecida.'}
         webbrowser.open(address)
         return {'ok':True}
 
@@ -618,9 +653,10 @@ class Bridge:
                     {'question': question[:600], 'answer': result['answer'][:1000]})
                 self._teacher_history = self._teacher_history[-5:]
             return result
-        except (OSError, ValueError, TypeError, NoFreeProvider, BudgetStopped,
-                ProviderError, RuntimeError) as exc:
-            return {'ok': False, 'message': str(exc)[:200]}
+        except (ValueError, TypeError, NoFreeProvider, BudgetStopped, ProviderError) as exc:
+            return {'ok': False, 'message': redact_sensitive(str(exc)[:200])}
+        except (OSError, RuntimeError):
+            return {'ok': False, 'message': 'Falha local ao consultar as aulas. Tente novamente.'}
         except Exception:
             # No raw model output or user content in error messages.
             return {'ok': False, 'message': 'O Professor não conseguiu consultar as notas; tente novamente.'}
@@ -734,28 +770,36 @@ class Bridge:
         if not vault:return {'ok':False,'message':'Configure o cofre primeiro.'}
         if not self._write_lock.acquire(blocking=False):return {'ok':False,'message':'Já existe um processamento em andamento.'}
         logs=[]
-        app=self._make_application(vault,log=lambda text:logs.append(str(text)))
+        app=None
         try:
+            app=self._make_application(vault,log=lambda text:logs.append(redact_sensitive(str(text))[:600]))
             app.process()
-        except Exception as exc:
-            return {'ok':False,'message':type(exc).__name__+': '+str(exc)[:150]}
+        except Exception:
+            # Exceptions from files or network may contain local paths or tokens.
+            return {'ok':False,'message':'Não foi possível processar os materiais. Consulte as fontes locais.'}
         finally:
-            app.close()
-            self._write_lock.release()
+            try:
+                if app is not None:app.close()
+            finally:
+                self._write_lock.release()
         return {'ok':True,'logs':logs[-8:]}
 
     def add_repo(self,url):
         if not self._vault():return {'ok':False,'message':'Configure o cofre primeiro.'}
         if not isinstance(url,str) or not url.strip() or len(url)>1000:return {'ok':False,'message':'URL inválida'}
         if not self._write_lock.acquire(blocking=False):return {'ok':False,'message':'Já existe um processamento em andamento.'}
-        app=Application(self._vault(),CONFIG_FILE,log=lambda _s:None)
+        app=None
         try:
+            app=Application(self._vault(),CONFIG_FILE,log=lambda _s:None)
             app.add_repo(url.strip())
             return {'ok':True}
-        except Exception as exc:return {'ok':False,'message':str(exc)[:200]}
+        except Exception:
+            return {'ok':False,'message':'Não foi possível adicionar o repositório. Confira o endereço e tente novamente.'}
         finally:
-            app.close()
-            self._write_lock.release()
+            try:
+                if app is not None:app.close()
+            finally:
+                self._write_lock.release()
 
     def toggle_favorite(self, note_id):
         idx=self._index()
@@ -801,12 +845,20 @@ class Bridge:
     @staticmethod
     def _valid_video_url(url):
         from urllib.parse import urlsplit
-        if not isinstance(url,str) or len(url)>1700 or any(c.isspace() for c in url):
+        if (not isinstance(url,str) or len(url)>1700 or
+                any(ord(c)<32 or ord(c)==127 for c in url) or
+                any(c.isspace() for c in url) or
+                any(c in url for c in ('<','>','\\'))):
             return False
-        parts=urlsplit(url)
-        return (parts.scheme in ('http','https') and bool(parts.netloc) and
-                parts.username is None and parts.password is None and
-                not any(c in url for c in ('<','>','\\')))
+        try:
+            parts=urlsplit(url)
+            # hostname and port properties can throw for malformed URLs.
+            port=parts.port
+            return (parts.scheme in ('http','https') and bool(parts.hostname) and
+                    parts.username is None and parts.password is None and
+                    (port is None or port>0))
+        except ValueError:
+            return False
 
     def open_video_link(self,url):
         """Apenas URLs cadastradas pelo usuário; não aceita protocolos arbitrários."""
@@ -820,16 +872,13 @@ class Bridge:
         try:
             with closing(sqlite3.connect(f'file:{quote(db.as_posix())}?mode=ro',uri=True,timeout=2)) as con:
                 for (stored,) in con.execute("SELECT stored_path FROM sources WHERE kind='classroom'"):
-                    source=(vault/stored).resolve()
-                    if not source.is_relative_to(vault):
-                        continue
-                    try:
-                        record=json.loads(source.read_text(encoding='utf-8'))
-                        if any(isinstance(row,dict) and row.get('url') == url for row in record.get('videos',[])[:30]):
-                            allowed=True
-                            break
-                    except (OSError,ValueError,UnicodeError,AttributeError,TypeError):
-                        continue
+                    record=self._safe_classroom_record(vault,stored)
+                    rows=record.get('videos',[]) if record else []
+                    if isinstance(rows,list) and any(
+                            isinstance(row,dict) and row.get('url') == url
+                            for row in rows[:30]):
+                        allowed=True
+                        break
         except (OSError,sqlite3.Error):
             return {'ok':False,'message':'Não foi possível verificar o link do vídeo.'}
         if not allowed:
@@ -837,10 +886,32 @@ class Bridge:
         return {'ok':bool(webbrowser.open(url))}
 
     def open_attachment(self,stored):
+        """Open only media imported into this vault's SQLite catalog.
+
+        The JS bridge must never become an arbitrary local file opener.
+        """
         vault=self._vault()
-        if vault is None or not isinstance(stored,str) or len(stored)>700:return {'ok':False}
+        if (vault is None or not isinstance(stored,str) or not stored or
+                len(stored)>700 or '\\' in stored or
+                any(p in ('.','..') for p in stored.split('/'))):
+            return {'ok':False}
         path=(vault/stored).resolve()
-        if not path.is_relative_to(vault) or not path.is_file() or path.suffix.lower() not in ALLOWED_ATTACHMENTS:
+        if (not path.is_relative_to(vault) or not path.is_file() or
+                path.suffix.lower() not in ALLOWED_ATTACHMENTS):
+            return {'ok':False}
+        db=vault/'.base-conhecimento'/'estado.sqlite3'
+        if not db.is_file():
+            return {'ok':False}
+        try:
+            with closing(sqlite3.connect(
+                    f'file:{quote(db.as_posix())}?mode=ro',uri=True,timeout=2)) as con:
+                registered=con.execute(
+                    "SELECT 1 FROM sources WHERE stored_path=? "
+                    "AND kind IN ('video','transcript','material') LIMIT 1",
+                    (stored,)).fetchone()
+            if not registered:
+                return {'ok':False}
+        except (sqlite3.Error,OSError,ValueError):
             return {'ok':False}
         try:
             if sys.platform=='win32':os.startfile(str(path))
@@ -848,7 +919,8 @@ class Bridge:
                 import subprocess
                 subprocess.Popen(['open' if sys.platform=='darwin' else 'xdg-open',str(path)])
             return {'ok':True}
-        except OSError:return {'ok':False}
+        except OSError:
+            return {'ok':False}
 
 
 
@@ -1001,13 +1073,28 @@ def load_local_ui():
     html=(base/'index.html').read_text(encoding='utf-8')
     substitutions=(('style.css','style.css'),('library.css','library.css'),
                    ('classic.css','classic.css'),('faithful.css','faithful.css'))
+    # The packaged window requires inline local assets. Keep a strict CSP
+    # with exact SHA-256 hashes of the bundled CSS and JS, instead of removing
+    # the policy and allowing any injected script to execute.
     html=re.sub(r'<meta http-equiv="Content-Security-Policy"[^>]*>', '', html)
+    styles=[];scripts=[]
+    def content_hash(source):
+        digest=hashlib.sha256(source.encode('utf-8')).digest()
+        return "'sha256-" + base64.b64encode(digest).decode('ascii') + "'"
     for href,filename in substitutions:
         css=(base/filename).read_text(encoding='utf-8')
+        styles.append(content_hash(css))
         html=html.replace(f'<link rel="stylesheet" href="{href}">','<style>'+css+'</style>')
     for script in ('library.js','app.js','teacher.js'):
         js=(base/script).read_text(encoding='utf-8')
+        scripts.append(content_hash(js))
         html=html.replace(f'<script src="{script}"></script>','<script>'+js+'</script>')
+    csp=("default-src 'none'; style-src " + " ".join(styles) +
+         "; script-src " + " ".join(scripts) +
+         "; img-src data:; connect-src 'none'; font-src 'none'; " +
+         "base-uri 'none'; form-action 'none'")
+    html=html.replace('</head>', '<meta http-equiv="Content-Security-Policy" content="' +
+                      csp + '">\n</head>')
     return html
 
 def start_webview():

@@ -28,13 +28,26 @@ class DistributionContractTests(unittest.TestCase):
         for marker in ('--self-test', 'unins000.exe', 'ci-retention-sentinel.txt', 'Start-Process'):
             self.assertIn(marker, smoke)
 
+    def test_version_bump_and_upgrade_validation(self):
+        from knowledge_bridge.update_service import VERSION
+        self.assertEqual(VERSION, '2.0.1')
+        iss=(ROOT/'TRAMA_Instalador.iss').read_text(encoding='utf-8')
+        self.assertIn('MyAppVersion "2.0.1"',iss)
+        js=(ROOT/'knowledge_bridge/ui/app.js').read_text(encoding='utf-8')
+        self.assertIn('Versão instalada: 2.0.1.',js)
+        script=(ROOT/'tools/windows_upgrade_smoke.ps1').read_text(encoding='utf-8')
+        self.assertIn('gh release download v2.0.0',script)
+        self.assertIn('api_keys.dpapi.json',script)
+        pipeline=(ROOT/'.github/workflows/full-quality-audit.yml').read_text(encoding='utf-8')
+        self.assertIn('windows_upgrade_smoke.ps1',pipeline)
+
     def test_readme_has_real_screenshots_and_official_download_link(self):
         readme = (ROOT / 'README.md').read_text(encoding='utf-8')
         for name in ('mapa-evolucao.png','biblioteca.png'):
             self.assertIn('docs/screenshots/' + name, readme)
             self.assertGreater((ROOT / 'docs/screenshots' / name).stat().st_size, 10000)
         self.assertIn('releases/latest/download/TRAMA_Setup.exe', readme)
-        self.assertIn('a versão 1.9.0 já foi publicada', readme)
+        self.assertIn('Última versão', readme)
         self.assertNotIn('primeira publicação do GitHub Actions', readme)
 
 if __name__ == '__main__': unittest.main()

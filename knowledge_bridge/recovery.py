@@ -21,6 +21,29 @@ MAX_BYTES = 12 * 1024**3
 DB_FILE = ".base-conhecimento/estado.sqlite3"
 MANIFEST = "TRAMA-BACKUP-MANIFEST.json"
 
+# Windows treats some names as devices or aliases. Never restore these from a
+# ZIP even on Linux, since the backup may later be restored to Windows.
+_WINDOWS_DEVICES = {"CON", "PRN", "AUX", "NUL"} | {
+    f"{prefix}{i}" for prefix in ("COM", "LPT") for i in range(1, 10)
+}
+
+
+def _safe_archive_name(name: str) -> bool:
+    if not isinstance(name,str) or not name or len(name)>900:
+        return False
+    if any(ord(char)<32 or ord(char)==127 for char in name):
+        return False
+    pure=PurePosixPath(name)
+    if (pure.is_absolute() or ".." in pure.parts or "\\" in name or
+            ":" in name or not pure.parts or
+            any(part in ("", ".") for part in pure.parts)):
+        return False
+    for part in pure.parts:
+        if (part.rstrip(" .") != part or len(part)>240 or
+                part.split(".",1)[0].upper() in _WINDOWS_DEVICES):
+            return False
+    return True
+
 
 def _hash_stream(stream):
     digest = hashlib.sha256()
@@ -123,7 +146,9 @@ def restore_backup(archive_path: Path, destination_vault: Path) -> dict:
     try:
         with zipfile.ZipFile(archive_path) as archive:
             names = archive.namelist()
-            if len(names) != len(set(names)) or MANIFEST not in names:
+            if (len(names) != len(set(names)) or
+                    len(names) != len({n.casefold() for n in names}) or
+                    MANIFEST not in names):
                 raise ValueError("Manifesto ausente ou nomes duplicados no ZIP.")
             if archive.getinfo(MANIFEST).file_size > 16 * 1024 * 1024:
                 raise ValueError("Manifesto excede tamanho máximo permitido.")
@@ -143,14 +168,20 @@ def restore_backup(archive_path: Path, destination_vault: Path) -> dict:
                     for item in entries.values()) or
                     sum(item["size"] for item in entries.values()) > MAX_BYTES):
                 raise ValueError("Manifesto inválido ou maior que o limite permitido.")
+            # Reject oversized restoration if disk space cannot hold the
+            # declared uncompressed data. Keep 32 MiB for filesystem metadata.
+            needed=sum(item["size"] for item in entries.values())
+            if shutil.disk_usage(destination_vault.parent).free < needed+32*1024*1024:
+                raise ValueError("Espaço em disco insuficiente para restaurar o backup.")
             for info in archive.infolist():
                 name = info.filename
                 if name == MANIFEST:
                     continue
-                pure = PurePosixPath(name)
-                if (pure.is_absolute() or ".." in pure.parts or "\\" in name or
-                        ":" in name or not pure.parts or any(part in ("", ".") for part in pure.parts)):
+                if not _safe_archive_name(name):
                     raise ValueError("Caminho inseguro no ZIP: " + name)
+                if (info.file_size > 8*1024*1024 and
+                        info.file_size > max(1, info.compress_size)*1000):
+                    raise ValueError("Taxa de compressão suspeita no backup.")
                 if stat.S_IFMT(info.external_attr >> 16) == stat.S_IFLNK:
                     raise ValueError("Backup contém atalho simbólico.")
                 target = (stage / name).resolve()

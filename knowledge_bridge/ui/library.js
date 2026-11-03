@@ -18,11 +18,29 @@ const libPretty=folder=>{
 const libHumanTitle=n=>n.kind==='visao_geral'?'Visão geral da aula':n.title.replace(/^Aula-\d+\s+[—-]\s+/i,'');
 
 function libFindLink(raw,source){
- const basic=String(raw||'').split('|')[0].split('#')[0].replaceAll('\\','/').replace(/\.md$/i,'').trim().toLowerCase();
- if(!basic||basic.includes('..'))return null;
- const notes=libNotes();const selfDir=libParts(source||'').slice(0,-1).join('/').toLowerCase();
- const matches=notes.filter(x=>x.id.toLowerCase().replace(/\.md$/,'')===basic||x.id.toLowerCase().replace(/\.md$/,'').endsWith('/'+basic)||x.id.toLowerCase().split('/').at(-1).replace(/\.md$/,'')===basic||x.title.toLowerCase()===basic);
- return matches.find(x=>x.id.toLowerCase().startsWith(selfDir+'/'))||matches[0]||null;
+ // Never guess which document the user wanted when multiple lessons share
+ // "00-Visao-geral.md" or a generic note name.
+ const basic=String(raw||'').split('|')[0].split('#')[0]
+  .replaceAll('\\','/').replace(/\.md$/i,'').trim().toLowerCase();
+ if(!basic||basic.startsWith('/')||basic.split('/').includes('..'))return null;
+ const notes=libNotes();
+ const normalized=n=>n.id.toLowerCase().replace(/\.md$/,'');
+ const currentDir=libParts(source||'').slice(0,-1).join('/').toLowerCase();
+ const exact=notes.filter(n=>normalized(n)===basic);
+ if(exact.length===1)return exact[0];
+ if(exact.length>1)return null;
+ if(basic.includes('/')){
+  const suffix=notes.filter(n=>normalized(n).endsWith('/'+basic));
+  return suffix.length===1?suffix[0]:null;
+ }
+ const matches=notes.filter(n=>normalized(n).split('/').at(-1)===basic||
+                                  n.title.toLowerCase()===basic);
+ if(currentDir){
+  const same=matches.filter(n=>normalized(n).startsWith(currentDir+'/'));
+  if(same.length===1)return same[0];
+  if(same.length>1)return null;
+ }
+ return matches.length===1?matches[0]:null;
 }
 function libWiki(content,source){
  let safe=libE(content);
@@ -90,10 +108,10 @@ function libTreeMarkup(notes){
    const selected=app.selected?.startsWith(child.path.slice(1)+'/');
    const alwaysOpen=(depth===0&&!['00-Inicio','90-Sistema'].includes(name))||(depth===1&&['Área de Estudos','2026 - 2º Semestre'].includes(name))||(libPretty(name)==='Programação'&&depth===2);
    const expanded=!!(libraryState.search||libraryState.expanded.has(child.path)||alwaysOpen||selected);
-   result+=`<div class="lib-directory"><button class="lib-folder-row" style="padding-left:${6+depth*14}px" data-lib-folder="${libE(child.path)}" aria-expanded="${expanded?'true':'false'}"><span class="lib-chevron ${expanded?'expanded':''}">▶</span><span class="lib-folder-icon ${depth===0?'top':''}" aria-hidden="true"></span><strong>${libE(libPretty(name))}</strong></button><div class="lib-children ${expanded?'':'hidden'}">${levelHTML(child,depth+1)}</div></div>`;
+   result+=`<div class="lib-directory"><button class="lib-folder-row tree-indent-folder depth-${Math.min(depth,12)}" data-lib-folder="${libE(child.path)}" aria-expanded="${expanded?'true':'false'}"><span class="lib-chevron ${expanded?'expanded':''}">▶</span><span class="lib-folder-icon ${depth===0?'top':''}" aria-hidden="true"></span><strong>${libE(libPretty(name))}</strong></button><div class="lib-children ${expanded?'':'hidden'}">${levelHTML(child,depth+1)}</div></div>`;
   }
   for(const n of node.notes.sort((a,b)=>(a.kind==='visao_geral'?-1:b.kind==='visao_geral'?1:0)||a.title.localeCompare(b.title,'pt-BR',{numeric:true}))){
-   result+=`<button class="lib-file-row ${n.kind==='visao_geral'?'is-overview':''} ${n.id===app.selected?'selected':''}" style="padding-left:${22+depth*14}px" data-lib-note="${libE(n.id)}"><span class="lib-file-icon" aria-hidden="true"></span><span class="file-label">${libE(libHumanTitle(n))}</span></button>`;
+   result+=`<button class="lib-file-row ${n.kind==='visao_geral'?'is-overview':''} ${n.id===app.selected?'selected':''} tree-indent-file depth-${Math.min(depth,12)}" data-depth="${Math.min(depth,12)}" data-lib-note="${libE(n.id)}"><span class="lib-file-icon" aria-hidden="true"></span><span class="file-label">${libE(libHumanTitle(n))}</span></button>`;
   }
   return result;
  }
@@ -110,7 +128,7 @@ function libMetaPanel(n){const data=app.snapshot,stats=data?.stats||{};const sta
  const quickLink=(x)=>`<button class="lib-link" data-lib-note="${libE(x.target.id)}">${libIcon('file','link-icon')}${libE(x.label)}</button>`;
  let html=card('Ligação com Obsidian','<span class="lib-obs-icon small"></span>',[
   stat('Vault:',status,libIcon('check','green-icon')),stat('Notas indexadas:',String(stats.notes||0),libIcon('file')),stat('Última leitura:',(data?.scanned_at||'Ao atualizar a biblioteca'),libIcon('clock'),true),stat('Caminho do vault:',(data?.vault||'Não selecionada').replace(/\\/g,'/'),libIcon('folder'),true),
-  '<div style="display:flex;justify-content:end;margin-top:8px"><button class="lib-side-button" style="width:auto" data-lib-action="settings">⚙ Configurar conexão</button></div>'
+  '<div class="lib-config-action"><button class="lib-side-button lib-compact-button" data-lib-action="settings">⚙ Configurar conexão</button></div>'
  ].join(''));
  html+=card('Ações da Nota',libIcon('file','heading-icon'),action('Abrir nota no Obsidian','arrow','open')+action('Revelar arquivo no Explorer','folder','reveal')+action('Copiar link interno [[...]]','link','copy')+action('Adicionar aos favoritos','star','favorite')+action('Ver histórico de versões','clock','history'));
  html+=card('Links e Referências',libIcon('link','heading-icon'),`<div class="lib-meta-caption">Links desta nota (${uniqLinks.length})</div>${uniqLinks.length?uniqLinks.map(quickLink).join(''):'<p class="lib-empty-message">Nenhum link para outra nota.</p>'}`);
@@ -123,7 +141,7 @@ function libCenterPanel(n){if(!n||n.error)return '<div class="lib-empty-message"
  const source=(libNotes().find(x=>x.id===n.id)||{});
  const star=libraryState.favorites.has(n.id)?'★':'☆';
  const code=`<div class="lib-tab-strip"><div class="lib-open-tab"><span class="lib-obs-icon small" aria-label="Obsidian"></span><span class="lib-tab-text">${libE(n.title)}</span><button class="lib-tab-close" data-lib-action="close" title="Voltar à Biblioteca">×</button></div><button class="lib-tab-add" data-lib-action="new" title="Abrir o Obsidian">+</button></div>`;
- const content=`<div class="lib-note-scroll"><div class="lib-breadcrumb">${crumbs.map((c,i)=>`${i?'<b>›</b>':''}<span>${libE(c)}</span>`).join('')}</div><div style="display:flex;align-items:start;gap:8px"><h1 class="lib-title" style="flex:1">${libE(n.title)}</h1><button class="lib-tab-add" style="flex:none;border:0;background:none;color:#e8a329" data-lib-action="favorite" title="Marcar como favorita">${star}</button></div><div class="lib-note-meta"><span class="lib-obs-icon small" aria-label="Obsidian"></span> Origem: <span class="origin">Obsidian Vault</span> <span>│</span> <span>▤ Nota do Obsidian</span> <span>│</span><span>◷ Editado em ${libE(n.updated)}</span></div>${libRenderMarkdown(n.content,n.id,n.title)}</div>`;
+ const content=`<div class="lib-note-scroll"><div class="lib-breadcrumb">${crumbs.map((c,i)=>`${i?'<b>›</b>':''}<span>${libE(c)}</span>`).join('')}</div><div class="lib-heading-row"><h1 class="lib-title lib-title-grow">${libE(n.title)}</h1><button class="lib-tab-add lib-favorite-star" data-lib-action="favorite" title="Marcar como favorita">${star}</button></div><div class="lib-note-meta"><span class="lib-obs-icon small" aria-label="Obsidian"></span> Origem: <span class="origin">Obsidian Vault</span> <span>│</span> <span>▤ Nota do Obsidian</span> <span>│</span><span>◷ Editado em ${libE(n.updated)}</span></div>${libRenderMarkdown(n.content,n.id,n.title)}</div>`;
  return code+content;
 }
 function libWire(){const root=$('library-workspace');
@@ -177,7 +195,7 @@ function libWire(){const root=$('library-workspace');
   if(a==='history')notify('O histórico de alterações fica no Obsidian (Recuperação de arquivos, se habilitada).');
   if(a==='close'){libraryState.allowEmpty=true;app.selected=null;app.note=null;await renderLibraryView();}
   if(a==='new')await call('open_obsidian');
-  if(a==='favorite'&&app.note){const r=await call('toggle_favorite',app.note.id);if(r?.ok){libraryState.favorites=new Set(r.favorites);await renderLibraryView();}else notify('Não foi possível salvar o favorito.');}
+  if(a==='favorite'&&app.note){const r=await call('toggle_favorite',app.note.id);if(r?.ok){libraryState.favorites=new Set(r.favorites||[]);if(app.snapshot)app.snapshot.favorites=[...libraryState.favorites];await renderLibraryView();}else notify('Não foi possível salvar o favorito.');}
  };
  root.oninput=(event)=>{
   const search=event.target.closest('#lib-folder-search');if(!search)return;
@@ -190,11 +208,16 @@ function libWire(){const root=$('library-workspace');
 async function renderLibraryView(){
  if(!app.snapshot)return;
  const root=$('library-workspace');$('overlay-screen').classList.add('hidden');$('list-panel').classList.add('hidden');$('note-panel').classList.add('hidden');$('details-panel').classList.add('hidden');root.classList.remove('hidden');
- const notes=libNotes();if(!notes.some(n=>n.id===app.selected)&&app.selected!==null)app.selected=notes[0]?.id||null;
- if(app.selected)app.note=await call('note',app.selected);
- if(!app.selected&&notes.length&&!libraryState.allowEmpty){app.selected=notes[0].id;app.note=await call('note',app.selected);}
+ const notes=libNotes();
  const visibleNotes=notes.filter(n=>libraryState.showTechnical||!['00-Inicio','90-Sistema'].includes(n.section));
  const treeNotes=libraryState.search?visibleNotes.filter(n=>(n.id+' '+n.title).toLowerCase().includes(libraryState.search.toLowerCase())):visibleNotes;
+ if(libraryState.search){
+   // A global search must not show an unrelated previously-selected note.
+   if(!treeNotes.some(n=>n.id===app.selected))app.selected=treeNotes[0]?.id||null;
+ }else if(!notes.some(n=>n.id===app.selected)){
+   app.selected=!libraryState.allowEmpty?notes[0]?.id||null:null;
+ }
+ app.note=app.selected?await call('note',app.selected):null;
  root.innerHTML=`<section class="lib-tree-panel"><div class="lib-tree-head"><span class="lib-obs-icon" aria-label="Obsidian"></span><div><strong>Biblioteca do Obsidian</strong><small>As mesmas notas do seu cofre, organizadas para estudar.</small></div></div><div class="lib-tree-tools"><button data-lib-action="organize" title="Atualizar organização sem gastar API">↻ Organizar aulas</button><button data-lib-action="atlas" title="Ver conceitos, fontes e retomadas">⌁ Minha evolução</button><button data-lib-action="technical" title="Mostrar ou ocultar pastas internas, sem mover arquivos">${libraryState.showTechnical?"Ocultar técnicas":"Pastas técnicas"}</button></div><div class="lib-search"><span>⌕</span><input id="lib-folder-search" aria-label="Buscar pastas e notas" placeholder="Buscar pastas e notas..."></div><div class="lib-tree-scroll" id="lib-tree-content">${libTreeMarkup(treeNotes)}</div></section><section class="lib-note-panel">${libCenterPanel(app.note)}</section><aside class="lib-right-panel">${app.note&&!app.note.error?libMetaPanel(app.note):''}</aside>`;
  libWire();
 }

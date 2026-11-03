@@ -67,6 +67,20 @@ def redact_sensitive(text: str) -> str:
     scanner can promise to catch every possible private credential.
     """
     marker = "[SEGREDO-OCULTO]"
+    # Suppress credentials and personal identifiers before sending excerpts to
+    # an external model. This is best-effort redaction, not a DLP guarantee.
+    text = re.sub(
+        r"(?is)-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----.*?"
+        r"-----END (?:[A-Z0-9 ]+ )?PRIVATE KEY-----", marker, text)
+    text = re.sub(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}\b",
+                  marker, text)
+    text = re.sub(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
+                  "[EMAIL-OCULTO]", text)
+    text = re.sub(r"(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)",
+                  "[DOCUMENTO-OCULTO]", text)
+    text = re.sub(r"""(?i)https?://[^\s<>()"'?]+\?[^\s<>()"']+""",
+                  lambda match: match.group(0).split("?", 1)[0] + "?[PARAMETROS-OCULTOS]",
+                  text)
     # Recognizable token formats, including credentials embedded inside text.
     # Match long enough tokens to minimize redaction of ordinary code examples.
     for pattern in (

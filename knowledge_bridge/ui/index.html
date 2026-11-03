@@ -38,25 +38,25 @@
     <button type="button" id="btn-obsidian" class="chrome-btn"><span class="toolbar-icon obsidian-tool"><svg viewBox="0 0 24 28"><path d="M11 1 20 8l3 13-12 7L1 20 3 8z" fill="#6938bd"/><path d="M11 1 12 11 3 8z" fill="#c0a4ff"/><path d="M12 11 23 21 20 8z" fill="#7f49e0"/><path d="M12 11 11 28 23 21z" fill="#4f1e9f"/><path d="M3 8 12 11 11 28 1 20z" fill="#8a51e1"/></svg></span> Abrir Obsidian</button>
     <button type="button" id="btn-fullscreen" class="small-tool" title="Tela cheia (F11); Esc sai da tela cheia" aria-label="Alternar tela cheia">⛶</button>
     <span class="tool-separator"></span>
-    <div class="search-wrap"><svg class="ui-svg"><use href="#ic-search"/></svg><input id="search-all" placeholder="Buscar nas notas do Obsidian..." aria-label="Buscar notas"></div>
+    <div class="search-wrap"><svg class="ui-svg"><use href="#ic-search"/></svg><input id="search-all" placeholder="Buscar nas notas do Obsidian..." aria-label="Buscar notas"><button type="button" id="btn-search-all" title="Pesquisar na biblioteca" aria-label="Pesquisar">Buscar</button></div>
     <div class="toolbar-connect"><svg class="ui-svg check"><use href="#ic-check"/></svg><span id="connect-state">Selecione o cofre do Obsidian</span></div><button id="btn-refresh" class="small-tool" title="Atualizar"><svg class="ui-svg"><use href="#ic-refresh"/></svg></button>
     <button id="btn-settings" class="small-tool" title="Configurações"><svg class="ui-svg"><use href="#ic-gear"/></svg></button>
   </div>
   <div class="main">
     <nav class="navigation" aria-label="Navegação">
-      <button class="nav-item" data-view="home"><svg class="ui-svg nav-ic"><use href="#ic-home"/></svg> Início</button>
-      <button class="nav-item active" data-view="lessons"><svg class="ui-svg nav-ic"><use href="#ic-video"/></svg> Aulas</button>
-      <button class="nav-item" data-view="knowledge"><svg class="ui-svg nav-ic"><use href="#ic-network"/></svg> Conhecimento</button>
-      <button class="nav-item" data-view="projects"><svg class="ui-svg nav-ic"><use href="#ic-folder"/></svg> Projetos</button>
-      <button class="nav-item" data-view="library"><svg class="ui-svg nav-ic"><use href="#ic-book"/></svg> Biblioteca</button>
-      <button class="nav-item" data-view="teacher"><svg class="ui-svg nav-ic"><use href="#ic-book"/></svg> IA Professor</button>
+      <button class="nav-item" title="Início" aria-label="Início" data-view="home"><svg class="ui-svg nav-ic"><use href="#ic-home"/></svg> Início</button>
+      <button class="nav-item active" title="Aulas" aria-label="Aulas" data-view="lessons"><svg class="ui-svg nav-ic"><use href="#ic-video"/></svg> Aulas</button>
+      <button class="nav-item" title="Conhecimento" aria-label="Conhecimento" data-view="knowledge"><svg class="ui-svg nav-ic"><use href="#ic-network"/></svg> Conhecimento</button>
+      <button class="nav-item" title="Projetos" aria-label="Projetos" data-view="projects"><svg class="ui-svg nav-ic"><use href="#ic-folder"/></svg> Projetos</button>
+      <button class="nav-item" title="Biblioteca" aria-label="Biblioteca" data-view="library"><svg class="ui-svg nav-ic"><use href="#ic-book"/></svg> Biblioteca</button>
+      <button class="nav-item" title="IA Professor" aria-label="IA Professor" data-view="teacher"><svg class="ui-svg nav-ic"><use href="#ic-star"/></svg> IA Professor</button>
       <div class="nav-split"></div>
-      <button class="nav-item" data-view="settings"><svg class="ui-svg nav-ic"><use href="#ic-gear"/></svg> Ajustes</button>
+      <button class="nav-item" title="Ajustes" aria-label="Ajustes" data-view="settings"><svg class="ui-svg nav-ic"><use href="#ic-gear"/></svg> Ajustes</button>
 
     </nav>
     <section class="list-panel" id="list-panel">
-      <div class="list-heading"><h2 id="list-title">Minhas Aulas</h2><button type="button" id="btn-context" title="Correção manual opcional; a importação automática é pelo botão Importar e organizar" aria-label="Registrar contexto da aula">Corrigir</button><button id="btn-list-add" title="Importar arquivo ou projeto">+</button></div>
-      <div class="list-filters"><button class="active">Todas</button><button disabled>Recentes</button><button disabled>Favoritas</button></div>
+      <div class="list-heading"><h2 id="list-title">Minhas Aulas</h2><button type="button" id="btn-context" title="Registrar informações e links da aula manualmente" aria-label="Registrar contexto da aula">Contexto</button><button id="btn-list-add" title="Importar arquivo ou projeto">+</button></div>
+      <div class="list-filters" aria-label="Filtrar lista"><button type="button" data-list-filter="all" class="active">Todas</button><button type="button" data-list-filter="recent">Recentes</button><button type="button" data-list-filter="favorites">Favoritas</button></div>
       <div class="local-search"><span>⌕</span><input id="list-search" placeholder="Buscar aulas..."></div>
       <div class="items-scroll" id="items"></div>
     </section>
@@ -69,7 +69,7 @@
     <section class="library-workspace hidden" id="library-workspace" aria-label="Biblioteca do Obsidian"></section>
     <section class="overlay-screen hidden" id="overlay-screen"></section>
   </div>
-  <footer class="statusbar"><span class="status-counts" id="status-counts">TRAMA v1.9</span><span class="status-center" id="status-message">Pronto para organizar seus materiais</span><span class="status-version">TRAMA v1.9 <span class="status-divider">│</span> Obsidian conectado</span></footer>
+  <footer class="statusbar"><span class="status-counts" id="status-counts">Biblioteca</span><span class="status-center" id="status-message">Pronto para organizar seus materiais</span><span class="status-version">TRAMA v2.0.1 <span class="status-divider">│</span> Obsidian conectado</span></footer>
 </div>
 <dialog id="auto-dialog" class="context-dialog auto-dialog" aria-labelledby="auto-title">
   <div class="dialog-header"><h2 id="auto-title">Preparar importação em lote</h2><button type="button" id="auto-close" aria-label="Fechar">×</button></div>

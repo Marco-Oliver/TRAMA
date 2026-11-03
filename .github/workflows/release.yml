@@ -51,7 +51,12 @@ jobs:
         shell: pwsh
         run: |
           $exe = (Resolve-Path '.\dist\TRAMA\TRAMA.exe').Path
-          $process = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -Wait
+          $process = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru
+          if (-not $process.WaitForExit(90000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw 'Autoteste excedeu 90 segundos'
+          }
+          $process.Refresh()
           if ($process.ExitCode -ne 0) {
             Write-Output "TRAMA.exe saiu com código $($process.ExitCode)"
             $logs = @((Join-Path $env:LOCALAPPDATA 'TRAMA\logs\inicializacao.log'), (Join-Path $env:USERPROFILE 'inicializacao-trama.log'))
@@ -69,7 +74,7 @@ jobs:
       - name: Instalar, reinstalar e desinstalar no Windows real de CI
         shell: pwsh
         run: ./tools/windows_installer_smoke.ps1
-      - name: Testar atualização 1.9.0 para 2.0.0 mantendo cofre
+      - name: Testar atualização 2.0.0 para 2.0.1 mantendo cofre
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

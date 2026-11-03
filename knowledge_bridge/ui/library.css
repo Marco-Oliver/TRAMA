@@ -82,3 +82,36 @@
 .lib-small-tabs button.active{background:#579377;color:#fff;font-weight:650}
 @media(max-width:1180px){.library-workspace{grid-template-columns:255px minmax(320px,1fr) 265px}.lib-title{font-size:23px}.lib-right-panel{padding:9px 7px}.lib-tree-head strong{font-size:14px}}
 @media(max-width:920px){.library-workspace{grid-template-columns:225px minmax(330px,1fr)}.lib-right-panel{display:none}}
+
+/* CSP-compatible indentation and controls (no inline style attributes). */
+.lib-folder-row.depth-0{padding-left:6px}
+.lib-file-row.depth-0{padding-left:22px}
+.lib-folder-row.depth-1{padding-left:20px}
+.lib-file-row.depth-1{padding-left:36px}
+.lib-folder-row.depth-2{padding-left:34px}
+.lib-file-row.depth-2{padding-left:50px}
+.lib-folder-row.depth-3{padding-left:48px}
+.lib-file-row.depth-3{padding-left:64px}
+.lib-folder-row.depth-4{padding-left:62px}
+.lib-file-row.depth-4{padding-left:78px}
+.lib-folder-row.depth-5{padding-left:76px}
+.lib-file-row.depth-5{padding-left:92px}
+.lib-folder-row.depth-6{padding-left:90px}
+.lib-file-row.depth-6{padding-left:106px}
+.lib-folder-row.depth-7{padding-left:104px}
+.lib-file-row.depth-7{padding-left:120px}
+.lib-folder-row.depth-8{padding-left:118px}
+.lib-file-row.depth-8{padding-left:134px}
+.lib-folder-row.depth-9{padding-left:132px}
+.lib-file-row.depth-9{padding-left:148px}
+.lib-folder-row.depth-10{padding-left:146px}
+.lib-file-row.depth-10{padding-left:162px}
+.lib-folder-row.depth-11{padding-left:160px}
+.lib-file-row.depth-11{padding-left:176px}
+.lib-folder-row.depth-12{padding-left:174px}
+.lib-file-row.depth-12{padding-left:190px}
+.lib-config-action{display:flex;justify-content:flex-end;margin-top:8px}
+.lib-side-button.lib-compact-button{width:auto}
+.lib-heading-row{display:flex;align-items:flex-start;gap:8px}
+.lib-title.lib-title-grow{flex:1;min-width:0}
+.lib-tab-add.lib-favorite-star{flex:none;border:0;background:transparent;color:#e8a329}

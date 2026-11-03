@@ -1,6 +1,6 @@
 # TRAMA — Como o sistema funciona
 
-**Estado documentado:** 31 de outubro de 2026  
+**Estado documentado:** 2 de novembro de 2026  
 **Versão pública atual:** 2.0.0 (Windows), publicada em 31/10/2026. **Versão anterior:** 1.9.0. [Instalador e SHA-256](https://github.com/Marco-Oliver/TRAMA/releases/tag/v2.0.0)  
 **Projeto:** [GitHub — TRAMA](https://github.com/Marco-Oliver/TRAMA)
 
@@ -315,3 +315,200 @@ Um explorador de arquivos dos repositórios dentro do TRAMA e, no futuro, uma ve
 ---
 
 **Resumo:** o TRAMA automatiza a transformação de materiais de estudo em um Obsidian organizado. A biblioteca deve continuar acessível, compreensível e útil para o estudante independentemente do próprio TRAMA. Este documento pode ser atualizado conforme as funcionalidades do sistema evoluírem.
+
+## 11. Revisão de qualidade após o lançamento 2.0.0
+
+Esta seção descreve o funcionamento da **revisão ainda não publicada**, guardada na branch
+[`fix/quality-personas-ui-security-20261031`](https://github.com/Marco-Oliver/TRAMA/tree/fix/quality-personas-ui-security-20261031).
+A versão pública permanece **2.0.0** até a revisão ser integrada e uma nova distribuição ser aprovada.
+
+### 11.1 Estudo com a IA Professor
+
+O Professor é um recurso opcional de **leitura do Obsidian**. Na revisão, ele continua com os três modos:
+explicação/revisão, desafios progressivos e revisão de código colado. O Python escolhe trechos
+das aulas, conceitos e projetos; uma IA externa produz a explicação. A consulta só acontece
+com consentimento para enviar dados ao provedor, sem executar código ou modificar o cofre.
+
+A seleção de fontes foi reforçada para **não enviar a pasta de anotações pessoais à API**
+e para **não escolher aulas aleatórias quando um desafio cita um assunto ausente**.
+Perguntas e respostas antigas utilizadas como contexto recebem novamente a ocultação
+de credenciais antes do envio. Esses filtros reduzem o risco, mas não substituem a revisão
+do material pelo próprio estudante.
+
+A IA pode interpretar uma nota incorretamente ou citar um documento sem provar a conclusão.
+As referências identificam notas consultadas, não uma garantia de veracidade. As
+conversas persistem somente na memória da janela e podem ser limpas com "Nova conversa".
+
+### 11.2 Navegação e aparência
+
+A interface da revisão mantém a aparência de aplicativo Windows compacto, com seções claras:
+Início, Aulas, Conhecimento, Projetos, Biblioteca, IA Professor e Ajustes.
+
+- A página Início orienta a sequência **conectar cofre → importar materiais → estudar**.
+- A busca principal tem botão **Buscar** e abre a Biblioteca com a consulta.
+- A lista de aulas tem filtros funcionais **Todas**, **Recentes** e **Favoritas**;
+  favoritos marcados na biblioteca refletem na lista.
+- Links internos `[[nota]]` com títulos repetidos **não são direcionados arbitrariamente
+  para outra aula**: o link ambíguo permanece sem destino até haver referência específica.
+- A árvore de pastas e controles utilizam classes CSS compatíveis com a política
+  de segurança do aplicativo. Os estilos não requerem liberar CSS inline.
+- A interface possui rótulos de navegação e foco visível para teclado, além de
+  ajustes para janelas de tamanhos diferentes.
+- A aba IA Professor exibe fontes consultadas para abertura na biblioteca;
+  mostra claramente quando consentimento, código ou conteúdo de aula estão ausentes.
+
+### 11.3 Instalar e atualizar
+
+Para uso normal no Windows, não é necessário Python nem terminal:
+baixa-se o `TRAMA_Setup.exe` da página oficial do GitHub e instala-se pelo assistente.
+
+Em **Ajustes → Verificar atualizações**, o usuário consulta uma nova versão.
+Quando disponível, **Baixar e instalar nova versão** baixa a distribuição oficial,
+verifica seu SHA-256 e pergunta antes de iniciar o instalador. Não há atualização silenciosa.
+É recomendável usar **Criar backup local (.zip)** antes de migrar. **Restaurar backup**
+usa uma pasta nova e não sobrescreve o cofre aberto.
+
+O instalador ainda **não tem assinatura digital**. O aviso de editor desconhecido no
+Windows é esperado, mas o usuário deve confirmar a origem e o SHA-256 antes de executar.
+O ZIP de backup não é criptografado; mantenha-o em local privado.
+
+### 11.4 Qualidade e testes
+
+A revisão contém cenários com alunos fictícios de C#, Angular, revisão de código,
+desafios, conteúdo ausente, tentativas de instruções maliciosas, proteção de segredos
+em histórico e validação de citações. Os modelos nesses testes são **simulados**:
+avaliam o comportamento do sistema, não a qualidade pedagógica de um Gemini real.
+
+A validação automatizada também executa a bateria de `unittest` em Linux e Windows,
+cenários adversariais, auditoria de arquivos, navegador automatizado com telas e botões
+e o ciclo de compilação, instalação, reinstalação e desinstalação do Windows.
+
+**Limite de aceitação:** mesmo que o aplicativo passe nesses testes,
+a qualidade das explicações com aulas reais e o acabamento visual no Windows do
+estudante exigem avaliação manual. Não apresentar resposta simulada como certificação
+pedagógica nem prometer ausência total de bugs ou vulnerabilidades.
+
+
+## 12. Segurança adicional — revisão após a v2.0.0
+
+Esta revisão **ainda não integra o instalador público**. O código fica em
+[`fix/security-hardening-20261102`](https://github.com/Marco-Oliver/TRAMA/tree/fix/security-hardening-20261102),
+sobre a auditoria de interface e automação anterior.
+
+### Proteção de arquivos e atualização
+
+- Abrir um anexo pelo aplicativo exige que o arquivo esteja **dentro do cofre** e que seu
+  caminho esteja registrado no catálogo SQLite como vídeo, material ou transcrição. Um
+  arquivo arbitrário do cofre não pode ser aberto só porque possui extensão aceita.
+- Páginas de atualização abrem exclusivamente endereços canônicos de releases por
+  versão do repositório configurado. URLs manipuladas ou malformadas são recusadas.
+- Links externos cadastrados são validados antes da abertura, incluindo rejeição de
+  caracteres de controle e credenciais no endereço.
+- Backups ZIP são extraídos somente em pasta nova e recebem inspeção adicional de
+  nomes reservados no Windows, duplicações de caminho e compressão suspeita, além
+  de verificar o espaço disponível e o SHA-256 de cada arquivo.
+
+### Como a segurança é testada
+
+Os testes incluem tentativas de abrir arquivos privados não cadastrados, links com rotas
+maliciosas, endereços de vídeo malformados, arquivos ZIP com nomes especiais do Windows
+e respostas de IA contendo HTML perigoso. Nada disso é executado deliberadamente;
+os testes conferem se o aplicativo rejeita ou exibe o material como texto.
+
+O GitHub Actions também executa verificações de dependências e análise estática.
+**Não há garantia de ausência total de vulnerabilidades**. As chamadas para modelos
+externos podem revelar o contexto autorizado ao provedor, mesmo quando não contêm
+credenciais óbvias; o próprio aluno deve selecionar fontes adequadas.
+
+**Status de distribuição:** ainda não publicado; a v2.0.0 permanece como última
+versão estável enquanto a revisão aguarda testes automatizados e avaliação manual.
+
+### 12.1 Cobertura visual contra falsos resultados
+
+A auditoria visual foi reforçada após inspecionar as capturas geradas: o simulador de API
+do navegador continha uma referência não definida, mas a interface tratava a exceção
+como aviso e o teste anterior passava apesar de a nota ficar vazia. O simulador foi
+corrigido e agora **o teste falha se a nota não aparecer ou se houver aviso de erro**
+no aplicativo. A busca global deve selecionar uma nota correspondente ao filtro,
+e o botão Recentes ordena corretamente as datas reais em formato DD/MM/AAAA.
+As verificações são executadas tanto no arquivo HTML de desenvolvimento quanto
+no HTML empacotado na janela Windows. Elas não substituem testes manuais com dados reais.
+
+
+### 12.2 Navegação em janelas compactas
+
+Na janela de aproximadamente 800–980 px, o menu mantém rótulos legíveis e os
+conteúdos permanecem disponíveis. Os botões de abas podem rolar horizontalmente.
+Os testes visuais incluem uma verificação de que o texto "Conhecimento" não fica
+cortado pelos limites do botão, além dos controles e conteúdos já validados.
+
+
+### 12.3 Política de segurança da janela instalada
+
+O aplicativo Windows reúne CSS e JS locais no HTML embutido, mas não precisa deixar
+a janela sem política de segurança. A montagem passou a incluir uma **Content Security
+Policy restritiva** com hashes SHA-256 para os estilos e scripts próprios do TRAMA,
+bloqueando scripts externos e inline não autorizados e conexões de rede diretas da
+página. A interface continua usando sua API local permitida. Os testes cobrem
+tanto a janela empacotada quanto a página de desenvolvimento, incluindo tentativas
+de injetar HTML malicioso por respostas da IA.
+
+Essa proteção é uma barreira adicional, não garantia contra qualquer exploração do
+WebView ou de componentes nativos; por isso o usuário continua responsável por
+evitar materiais ou links suspeitos e o código deve manter suas validações de entrada.
+
+
+### 11.5 Endurecimento de privacidade e execução dos testes
+
+- A consulta da IA Professor agora indexa **somente** as três pastas de ensino
+  (conhecimento, aulas e projetos). Notas pessoais e anexos não são abertos
+  durante a busca.
+- Links simbólicos encontrados em qualquer componente do caminho Markdown
+  são recusados, e a leitura usa descritor de arquivo com verificação do
+  tipo/tamanho e `O_NOFOLLOW` onde o sistema operacional oferece suporte.
+- O contexto enviado ao provedor não inclui nomes nem caminhos locais das
+  notas: apenas identificadores anônimos `F1`, `F2` e trechos selecionados.
+- A ocultação de dados foi ampliada para emails, CPF formatado, JWTs,
+  blocos de chave privada e parâmetros de URLs. Parágrafos que tentam dar
+  ordens à IA são omitidos do contexto.
+- Respostas e avisos devolvidos pela IA são novamente filtrados antes
+  de aparecer na interface. Nenhum filtro de padrões consegue garantir
+  sigilo absoluto; somente conteúdo apropriado deve ser autorizado para envio.
+- Erros de atualização, importação e consulta do Professor não apresentam
+  exceções brutas contendo caminhos locais, URLs privadas ou tokens.
+- Em cada alteração do código a integração executa somente a bateria
+  de segurança e regressão no Linux. A compilação e teste completo do
+  Windows/navegador ficam disponíveis em execução **manual** da auditoria.
+  O autoteste nativo do instalador tem limite explícito de 90 segundos.
+
+**Limite adicional:** a flag `O_NOFOLLOW` e a verificação de caminhos
+reduzem ataques com links simbólicos, mas não equivalem a uma sandbox completa
+contra outro programa com permissões do usuário modificando arquivos ao mesmo
+tempo. Qualidade com modelos de IA reais e assinatura de executáveis também
+exigem validação posterior.
+
+### 11.6 Proteção complementar do Classroom e robustez
+
+Os JSONs de materiais associados ao Classroom são limitados a 2 MB, lidos
+apenas dentro do cofre, com bloqueio de links simbólicos e validação de
+estrutura. Referências do catálogo SQLite não dão acesso indiscriminado ao
+disco do usuário. O aplicativo libera seus bloqueios de processamento mesmo
+que a inicialização da aplicação ou seu fechamento falhem.
+
+Mensagens de exceção de rede continuam genéricas para não revelar tokens ou
+URLs privadas; quando a assinatura SHA-256 do instalador diverge, a mensagem
+de integridade é específica e não revela dados internos.
+
+
+### 11.7 Reforço do acesso à IA e documentos Word
+
+As requisições à API são feitas somente para hosts oficiais de
+Gemini/Groq/OpenRouter, com HTTPS, sem redirecionamentos e resposta de até 2 MB.
+Isso impede que um redirecionamento envie a chave ou os trechos da aula a
+destinos diferentes. O DOCX usa o parser defusedxml para recusar entidades
+XML hostis, com teste que garante que documentos normais continuam legíveis.
+
+
+### 13. Candidata v2.0.1 — não publicada
+
+A versão de manutenção 2.0.1 inclui as correções de segurança, privacidade do Professor, importação e navegação. A candidata exige testes completos em Windows, Linux, navegador e atualização do instalador oficial v2.0.0 para a nova versão. O teste de migração verifica notas manuais, SQLite, preferências e um arquivo sintético de credenciais. Nenhuma chave real é enviada ao GitHub.

@@ -54,6 +54,22 @@ class BridgeTests(unittest.TestCase):
             self.assertTrue(second['ok'])
             self.assertNotIn(note,second['favorites'])
 
+    def test_process_failure_does_not_leave_application_locked(self):
+        with patch.object(self.bridge,'_make_application',
+                          side_effect=RuntimeError('token=private-error-value')):
+            response=self.bridge.process(True)
+        self.assertFalse(response['ok'])
+        self.assertNotIn('private-error-value',response['message'])
+        self.assertFalse(self.bridge._write_lock.locked())
+
+    def test_repository_init_failure_does_not_leave_application_locked(self):
+        with patch('knowledge_bridge.bridge.Application',
+                   side_effect=RuntimeError('password=private-error-value')):
+            response=self.bridge.add_repo('https://github.com/example/public')
+        self.assertFalse(response['ok'])
+        self.assertNotIn('private-error-value',response['message'])
+        self.assertFalse(self.bridge._write_lock.locked())
+
     def test_graph_has_real_connections(self):
         result=self.bridge.graph()
         self.assertEqual(len(result['nodes']),2)

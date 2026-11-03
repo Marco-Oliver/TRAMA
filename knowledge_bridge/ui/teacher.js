@@ -8,6 +8,8 @@ function teacherClearVisual(el){
  el.append(r);
 }
 function teacherOpenSource(source){
+ // Open exactly the cited note, not a leftover unrelated library filter.
+ libraryState.search='';
  app.selected=source.id;
  setView('library');
 }
