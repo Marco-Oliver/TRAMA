@@ -159,6 +159,14 @@ class Store:
         return self.conn.execute(
             "SELECT * FROM uncertainties ORDER BY source_id, id").fetchall()
 
+    def uncertainties_for_source(self, source_id: str):
+        """Return only open/reviewable questions for this original transcript."""
+        return self.conn.execute(
+            "SELECT * FROM uncertainties WHERE source_id=? "
+            "AND status != 'ARQUIVADA_FONTE_ALTERADA' ORDER BY id",
+            (source_id,)
+        ).fetchall()
+
     def uncertainty_events(self, uncertainty_id: str):
         return self.conn.execute(
             "SELECT * FROM uncertainty_events WHERE uncertainty_id=? ORDER BY id",
