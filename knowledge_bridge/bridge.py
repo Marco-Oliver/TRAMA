@@ -630,7 +630,7 @@ class Bridge:
         if db.is_symlink() or db.parent.is_symlink() or not db.is_file():
             return {'ok':False,'message':'Catálogo de fontes indisponível.'}
         try:
-            with closing(sqlite3.connect(f'file:{quote(db.as_posix(),safe="/")}?mode=ro',uri=True,timeout=2)) as con:
+            with closing(sqlite3.connect(db.as_uri()+'?mode=ro',uri=True,timeout=2)) as con:
                 row=con.execute(
                     "SELECT digest FROM sources WHERE kind='transcript' AND stored_path=? LIMIT 1",
                     (stored,)
