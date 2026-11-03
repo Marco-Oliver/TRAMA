@@ -14,7 +14,6 @@ import re
 import sqlite3
 import stat
 import unicodedata
-from urllib.parse import quote
 
 from .content import timed_lines
 from .code_intel import redact_sensitive
@@ -140,7 +139,7 @@ def attach_transcript_evidence(vault: Path, sources: list[dict],
         return sources
     try:
         with closing(sqlite3.connect(
-            f"file:{quote(db.as_posix())}?mode=ro", uri=True, timeout=1
+            db.as_uri() + "?mode=ro", uri=True, timeout=1
         )) as connection:
             rows = connection.execute(
                 "SELECT id,lesson,stored_path,digest,label FROM sources "
