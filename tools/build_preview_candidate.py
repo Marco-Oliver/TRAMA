@@ -10,8 +10,8 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PREVIEW_LABEL = "TRAMA Preview 2.1 (teste)"
-PREVIEW_DATA_FOLDER = "TRAMA-Preview-PR4"
+PREVIEW_LABEL = "TRAMA v2.2.0 — Preview de teste"
+PREVIEW_DATA_FOLDER = "TRAMA-Preview"
 
 
 def replace_exact(path: Path, old: str, new: str, *, count: int = 1):
@@ -24,13 +24,12 @@ def replace_exact(path: Path, old: str, new: str, *, count: int = 1):
 
 def prepare():
     gui = ROOT / "knowledge_bridge" / "gui_legacy.py"
-    replace_exact(
-        gui,
-        'DATA_HOME = (Path(os.environ["LOCALAPPDATA"]) / "TRAMA" '
-        'if os.environ.get("LOCALAPPDATA") else Path.home() / ".trama")',
-        'DATA_HOME = (Path(os.environ["LOCALAPPDATA"]) / "TRAMA-Preview-PR4" '
-        'if os.environ.get("LOCALAPPDATA") else Path.home() / ".trama-preview-pr4")',
-    )
+    # Bundled marker selects LocalAppData/TRAMA-Preview. The normal checkout
+    # and stable installer keep using LocalAppData/TRAMA unchanged.
+    marker = ROOT / "assets" / "trama-preview.marker"
+    marker.write_text("TRAMA_PREVIEW_ISOLATED_V1" + chr(10), encoding="utf-8")
+    if "_storage_namespace(APP_ROOT)" not in gui.read_text(encoding="utf-8"):
+        raise RuntimeError("QA source no longer supports isolated preview storage")
     replace_exact(
         gui,
         'OLD_DATA_HOME = (Path(os.environ["LOCALAPPDATA"]) / "NEXO" '
@@ -52,17 +51,18 @@ def prepare():
     replace_exact(
         ROOT / "knowledge_bridge" / "ui" / "app.js",
         "Versão instalada: 2.1.0.",
-        "Versão experimental: TRAMA Preview 2.1.",
+        "Versão experimental: TRAMA Preview v2.2.0.",
     )
     iss = (ROOT / "TRAMA_Instalador.iss").read_text(encoding="utf-8")
     changes = [
         ('#define MyAppName "TRAMA"', '#define MyAppName "TRAMA Preview"'),
-        ('#define MyAppVersion "2.1.0"', '#define MyAppVersion "2.1.0-preview"'),
+        ('#define MyAppVersion "2.1.0"', '#define MyAppVersion "2.2.0-preview"'),
         ("AppId={{9819EDB4-FC18-4D9E-99F6-8CB6D9914407}",
-         "AppId={{7BFC6C0A-8574-48E2-A496-A0B0E030FCAF}"),
+         "AppId={{ACF2B65E-BC0C-4FF9-9A47-05323162EB96}"),
         (r"DefaultDirName={localappdata}\Programs\TRAMA",
          r"DefaultDirName={localappdata}\Programs\TRAMA Preview"),
         ("DefaultGroupName=TRAMA", "DefaultGroupName=TRAMA Preview"),
+        ("UsePreviousAppDir=yes", "UsePreviousAppDir=no"),
         ("OutputBaseFilename=TRAMA_Setup", "OutputBaseFilename=TRAMA_Preview_Setup"),
         (r'Name: "{autoprograms}\TRAMA";', r'Name: "{autoprograms}\TRAMA Preview";'),
         (r'Name: "{autodesktop}\TRAMA";', r'Name: "{autodesktop}\TRAMA Preview";'),
@@ -74,10 +74,10 @@ def prepare():
     if "TRAMA_Instalador.iss" in iss:
         raise RuntimeError("Preview script accidentally references stable setup")
     (ROOT / "TRAMA_Preview_Instalador.iss").write_text(iss, encoding="utf-8")
-    assert "TRAMA-Preview-PR4" in gui.read_text(encoding="utf-8")
-    assert "TRAMA Preview" in iss and "7BFC6C0A" in iss
+    assert marker.is_file() and "_storage_namespace" in gui.read_text(encoding="utf-8")
+    assert "TRAMA Preview" in iss and "ACF2B65E" in iss and "UsePreviousAppDir=no" in iss
     assert json.loads(release_channel.read_text(encoding="utf-8")) == {"github_repo": ""}
-    print("PASS: isolated app data, app ID, folder, shortcuts, release channel and preview label")
+    print("PASS: isolated v2.2 QA data, AppId, install folder, shortcuts, updates and version label")
 
 
 if __name__ == "__main__":
