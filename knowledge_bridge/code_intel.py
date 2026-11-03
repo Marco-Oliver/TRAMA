@@ -119,7 +119,10 @@ def _snippet(lines: list[str], lineno: int, before=2, after=3) -> str:
 def index_repository(root: Path, paths: list[str], history: list[dict] | None = None) -> dict:
     """Deterministically index actual source definitions, code excerpts, docs, history."""
     files: list[dict] = []
-    evidence: list[dict] = []
+    # Keep evidence from different concepts and files, instead of filling
+    # the whole budget from repeated generic symbols near the repository root.
+    # All candidates remain local and the final output is still bounded.
+    evidence_by_concept: dict[str, list[dict]] = {term: [] for term in CONCEPTS}
     docs: list[dict] = []
     techs: set[str] = set()
     type_for_ext = {".cs": "C#", ".ts": "TypeScript", ".tsx": "React/TSX", ".js": "JavaScript",
@@ -139,18 +142,32 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
             excerpt = "\n".join(x for x in lines if x.strip())[:650]
             if excerpt:
                 docs.append({"path": rel, "excerpt": redact_sensitive(excerpt)})
-        if path.suffix.lower() not in SOURCE_EXTS or len(evidence) >= MAX_EVIDENCE:
+        if path.suffix.lower() not in SOURCE_EXTS:
             continue
+        hits_in_file: dict[str, int] = {}
         for lineno, line in enumerate(lines, 1):
-            if len(evidence) >= MAX_EVIDENCE:
-                break
             for concept, (pattern, _) in CONCEPTS.items():
-                if re.search(pattern, line, flags=re.I):
-                    evidence.append({"concept": concept, "path": rel, "line": lineno,
-                                     "snippet": _snippet(lines, lineno),
-                                     "line_text": redact_sensitive(line.strip()[:200])})
-                    if len(evidence) >= MAX_EVIDENCE:
-                        break
+                bucket=evidence_by_concept[concept]
+                if (len(bucket)>=MAX_EVIDENCE or
+                        hits_in_file.get(concept,0)>=2):
+                    continue
+                if re.search(pattern,line,flags=re.I):
+                    bucket.append({"concept":concept,"path":rel,"line":lineno,
+                                   "snippet":_snippet(lines,lineno),
+                                   "line_text":redact_sensitive(line.strip()[:200])})
+                    hits_in_file[concept]=hits_in_file.get(concept,0)+1
+    evidence=[]
+    for round_number in range(MAX_EVIDENCE):
+        added=False
+        for concept in CONCEPTS:
+            bucket=evidence_by_concept[concept]
+            if round_number<len(bucket):
+                evidence.append(bucket[round_number])
+                added=True
+                if len(evidence)>=MAX_EVIDENCE:
+                    break
+        if not added or len(evidence)>=MAX_EVIDENCE:
+            break
     return {"files": files, "total_files": len(files), "technologies": sorted(techs),
             "evidence": evidence, "documentation": docs, "history": (history or [])[:80],
             "collaboration": len({h.get('author_email','').casefold() for h in (history or []) if h.get('author_email')}) > 1}
