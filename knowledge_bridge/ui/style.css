@@ -245,3 +245,17 @@ button:not(:disabled):hover{filter:brightness(.98)}
 .trama-diff-added{background:#e2f1e5;color:#195d36;}
 .trama-diff-removed{background:#fbebdf;color:#874b2b;}
 .trama-diff-line{color:#4b594c;}
+
+/* Keep proposal actions available even when the optional right panel is hidden. */
+.lib-proposal-hint{margin:0 0 15px;padding:11px 13px;border:1px solid #d4c49e;
+ border-left:4px solid #b88a48;border-radius:5px;background:#fff9ee;
+ font-size:13px;line-height:1.55;color:#5c452c;}
+.lib-proposal-hint strong{display:inline;color:#6f4b24;}
+.lib-proposal-hint button,.lib-proposal-compare{border:1px solid #c6a976;
+ background:#fffaf1;color:#805121;border-radius:5px;padding:7px 10px;
+ font:600 12px 'Segoe UI',Arial,sans-serif;cursor:pointer;}
+.lib-proposal-compare{margin-left:6px;white-space:normal;}
+@media(max-width:930px){
+ .lib-heading-row{flex-wrap:wrap;gap:7px;}
+ .lib-proposal-compare{order:3;}
+}
