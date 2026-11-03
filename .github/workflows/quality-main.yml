@@ -80,3 +80,20 @@ jobs:
           $exe = (Resolve-Path '.\\dist\\TRAMA\\TRAMA.exe').Path
           $run = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -Wait
           if ($run.ExitCode -ne 0) { throw "TRAMA.exe saiu com erro: $($run.ExitCode)" }
+      - name: Compilar instalador QA sem publicar ou alterar o instalador oficial
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $compiler = 'C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe'
+          if (-not (Test-Path $compiler)) { throw 'Inno Setup não encontrado' }
+          $source = Get-Content -Raw -LiteralPath 'TRAMA_Instalador.iss'
+          $candidate = $source.Replace('#define MyAppVersion "2.1.0"', '#define MyAppVersion "2.2.0"')
+          if ($candidate -eq $source) { throw 'Versão oficial esperada não encontrada' }
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'TRAMA_Instalador_QA.iss'), $candidate)
+          & $compiler 'TRAMA_Instalador_QA.iss'
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path 'release\\TRAMA_Setup.exe')) {
+            throw 'Falha ao gerar instalador de teste'
+          }
+      - name: Instalar, reinstalar e desinstalar sem perder arquivos locais
+        shell: pwsh
+        run: ./tools/windows_installer_smoke.ps1
