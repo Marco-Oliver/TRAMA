@@ -295,6 +295,35 @@ class IncrementalAutomationFoundationsTests(unittest.TestCase):
 
 
 
+class StorageMetricsTests(unittest.TestCase):
+    def test_usage_reports_local_categories_without_reading_files(self):
+        from knowledge_bridge.bridge import Bridge
+        with tempfile.TemporaryDirectory(prefix="trama-v220-storage-") as folder:
+            base=Path(folder)
+            vault=base/"Cofre"
+            files={
+                "02-Minhas-Aulas/Aula-001/00-Visao-geral.md":b"note",
+                "99-Anexos/Transcricoes-Originais/aula.txt":b"raw" * 3,
+                ".base-conhecimento/repos/projeto/app.cs":b"code" * 4,
+                ".base-conhecimento/estado.sqlite3":b"db",
+                "outros/cache.dat":b"abc",
+            }
+            for relative,payload in files.items():
+                dest=vault/relative
+                dest.parent.mkdir(parents=True,exist_ok=True)
+                dest.write_bytes(payload)
+            bridge=Bridge()
+            bridge.settings={"vault":str(vault)}
+            report=bridge.vault_disk_usage()
+            self.assertTrue(report["ok"])
+            self.assertEqual(report["files"],len(files))
+            self.assertEqual(report["total_bytes"],sum(len(data) for data in files.values()))
+            self.assertEqual(report["categories"]["repositories"],16)
+            self.assertEqual(report["categories"]["notes"],4)
+            self.assertEqual(report["categories"]["attachments"],9)
+            self.assertFalse(report["partial"])
+
+
 class SummaryQualityRegressionTests(unittest.TestCase):
     def test_short_summary_is_flagged_for_long_transcript_without_another_api_call(self):
         from knowledge_bridge.pipeline import Application
