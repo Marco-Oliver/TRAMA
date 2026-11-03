@@ -221,3 +221,15 @@ button:not(:disabled):hover{filter:brightness(.98)}
  .trama-action-dialog form,.trama-confirm-body{padding:15px 17px;}
  .trama-action-dialog .dialog-actions{flex-wrap:wrap;}
 }
+
+/* 2.2: Markdown code citations from the indexed GitHub revision. */
+.lib-code-link{display:inline;vertical-align:baseline;padding:1px 3px;
+  border:0;border-bottom:1px solid #2d7451;border-radius:2px;
+  background:#edf5ef;color:#225b3c;font:inherit;line-height:inherit;
+  white-space:normal;overflow-wrap:anywhere;text-align:left;cursor:pointer;}
+.lib-code-link:hover,.lib-code-link:focus-visible{
+  background:#dceee1;color:#12472d;text-decoration:underline;}
+.lib-code-link code{font-size:.95em;color:inherit;background:transparent;
+  padding:0;white-space:normal;overflow-wrap:anywhere;}
+.lib-md p,.lib-md li{overflow-wrap:anywhere;}
+.lib-md pre,.teacher-markdown .lib-md pre{max-width:100%;overflow-x:auto;}
