@@ -48,7 +48,9 @@ const libPretty=folder=>{
   if(lesson)return 'Aula '+lesson[1].padStart(3,'0');
   return x.replaceAll('-',' ');
 };
-const libHumanTitle=n=>n.kind==='visao_geral'?'Visão geral da aula':n.title.replace(/^Aula-\d+\s+[—-]\s+/i,'');
+const libIsProposal=id=>/\.PROPOSTA(?:-\d+)?\.md$/i.test(String(id||''));
+const libHumanTitle=n=>libIsProposal(n.id)?'Proposta de atualização · '+n.title:
+  n.kind==='visao_geral'?'Visão geral da aula':n.title.replace(/^Aula-\d+\s+[—-]\s+/i,'');
 
 function libFindLink(raw,source){
  // Never guess which document the user wanted when multiple lessons share
@@ -152,7 +154,7 @@ function libTreeMarkup(notes){
   for(const n of node.notes.sort((a,b)=>(a.kind==='visao_geral'?-1:b.kind==='visao_geral'?1:0)||a.title.localeCompare(b.title,'pt-BR',{numeric:true}))){
    const match=libraryState.searchResolved===libraryState.search&&libraryState.searchResults?.find(hit=>hit.id===n.id);
    const excerpt=match?.in_content&&match.snippet?'<small class="lib-match-excerpt">'+libE(match.snippet)+'</small>':'';
-   result+=`<button class="lib-file-row ${excerpt?'lib-search-hit':''} ${n.kind==='visao_geral'?'is-overview':''} ${n.id===app.selected?'selected':''} tree-indent-file depth-${Math.min(depth,12)}" data-depth="${Math.min(depth,12)}" data-lib-note="${libE(n.id)}"><span class="lib-file-icon" aria-hidden="true"></span><span class="file-label">${libE(libHumanTitle(n))}${excerpt}</span></button>`;
+   result+=`<button class="lib-file-row ${libIsProposal(n.id)?'lib-proposal':''} ${excerpt?'lib-search-hit':''} ${n.kind==='visao_geral'?'is-overview':''} ${n.id===app.selected?'selected':''} tree-indent-file depth-${Math.min(depth,12)}" data-depth="${Math.min(depth,12)}" data-lib-note="${libE(n.id)}"><span class="lib-file-icon" aria-hidden="true"></span><span class="file-label">${libE(libHumanTitle(n))}${excerpt}</span></button>`;
   }
   return result;
  }
@@ -171,7 +173,16 @@ function libMetaPanel(n){const data=app.snapshot,stats=data?.stats||{};const sta
   stat('Vault:',status,libIcon('check','green-icon')),stat('Notas indexadas:',String(stats.notes||0),libIcon('file')),stat('Última leitura:',(data?.scanned_at||'Ao atualizar a biblioteca'),libIcon('clock'),true),stat('Caminho do vault:',(data?.vault||'Não selecionada').replace(/\\/g,'/'),libIcon('folder'),true),
   '<div class="lib-config-action"><button class="lib-side-button lib-compact-button" data-lib-action="settings">⚙ Configurar conexão</button></div>'
  ].join(''));
- html+=card('Ações da Nota',libIcon('file','heading-icon'),action('Abrir nota no Obsidian','arrow','open')+action('Revelar arquivo no Explorer','folder','reveal')+action('Copiar link interno [[...]]','link','copy')+action('Adicionar aos favoritos','star','favorite')+action('Ver histórico de versões','clock','history'));
+ html+=card('Ações da Nota',libIcon('file','heading-icon'),action('Abrir nota no Obsidian','arrow','open')+action('Revelar arquivo no Explorer','folder','reveal')+action('Copiar link interno [[...]]','link','copy')+action(libraryState.favorites.has(n.id)?'Remover dos favoritos':'Adicionar aos favoritos','star','favorite')+(libIsProposal(n.id)?action('Comparar com a nota original','file','compare'):'')+action('Como recuperar versões','clock','history'));
+ if(!libIsProposal(n.id)){
+  const base=n.id.replace(/\.md$/i,'');
+  const proposals=libNotes().filter(p=>libIsProposal(p.id)&&p.id.startsWith(base+'.PROPOSTA'));
+  if(proposals.length){
+   const rows=proposals.slice(0,12).map(p=>'<button class="lib-link" data-lib-note="'+libE(p.id)+'">'+libIcon('file','link-icon')+libE(libHumanTitle(p))+'</button>').join('');
+   html+=card('Propostas de atualização',libIcon('file','heading-icon'),
+    '<p class="lib-meta-caption">A edição original foi preservada. Confira antes de aceitar qualquer alteração.</p>'+rows);
+  }
+ }
  html+=card('Links e Referências',libIcon('link','heading-icon'),`<div class="lib-meta-caption">Links desta nota (${uniqLinks.length})</div>${uniqLinks.length?uniqLinks.map(quickLink).join(''):'<p class="lib-empty-message">Nenhum link para outra nota.</p>'}`);
  html+=card('Notas Relacionadas',libIcon('file','heading-icon'),`<div class="lib-small-tabs"><button data-lib-relatedtab="content" class="${libraryState.relatedTab==='content'?'active':''}">Por conteúdo (${related.length})</button><button data-lib-relatedtab="tags" class="${libraryState.relatedTab==='tags'?'active':''}">Por tags (${taggedRelated.length})</button></div>${relatedShown.length?relatedShown.map(x=>quickLink({target:x,label:x.title})).join(''):'<p class="lib-empty-message">Nenhuma relação confirmada.</p>'}`);
  html+=`<div class="lib-graph-entry"><button class="lib-side-button" data-lib-action="graph">${libIcon('network','action-icon')} <span>Visualizar grafo de conexões</span> ${libIcon('arrow','action-end')}</button></div>`;
