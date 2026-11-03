@@ -193,7 +193,16 @@ function libCenterPanel(n){if(!n||n.error)return '<div class="lib-empty-message"
  const source=(libNotes().find(x=>x.id===n.id)||{});
  const star=libraryState.favorites.has(n.id)?'★':'☆';
  const code=`<div class="lib-tab-strip"><div class="lib-open-tab"><span class="lib-obs-icon small" aria-label="Obsidian"></span><span class="lib-tab-text">${libE(n.title)}</span><button class="lib-tab-close" data-lib-action="close" title="Voltar à Biblioteca">×</button></div><button class="lib-tab-add" data-lib-action="new" title="Abrir o Obsidian">+</button></div>`;
- const content=`<div class="lib-note-scroll"><div class="lib-breadcrumb">${crumbs.map((c,i)=>`${i?'<b>›</b>':''}<span>${libE(c)}</span>`).join('')}</div><div class="lib-heading-row"><h1 class="lib-title lib-title-grow">${libE(n.title)}</h1><button class="lib-tab-add lib-favorite-star" data-lib-action="favorite" title="Marcar como favorita">${star}</button></div><div class="lib-note-meta"><span class="lib-obs-icon small" aria-label="Obsidian"></span> Origem: <span class="origin">Obsidian Vault</span> <span>│</span> <span>▤ Nota do Obsidian</span> <span>│</span><span>◷ Editado em ${libE(n.updated)}</span></div>${libRenderMarkdown(n.content,n.id,n.title)}</div>`;
+ const proposalButton=libIsProposal(n.id)?
+  '<button type="button" class="lib-proposal-compare" data-lib-action="compare">Comparar com a nota original</button>':'';
+ const pendingProposals=libIsProposal(n.id)?[]:libNotes().filter(p=>libIsProposal(p.id)&&
+   p.id.startsWith(n.id.replace(/\.md$/i,'')+'.PROPOSTA'));
+ const proposalHint=pendingProposals.length?
+  '<div class="lib-proposal-hint"><strong>Atualização disponível para revisão.</strong> Sua nota original foi preservada. '+
+    '<button type="button" data-lib-note="'+libE(pendingProposals[0].id)+'">Ver proposta</button>'+
+    (pendingProposals.length>1?' (+'+(pendingProposals.length-1)+' outras)':'')+
+   '</div>':'';
+ const content=`<div class="lib-note-scroll"><div class="lib-breadcrumb">${crumbs.map((c,i)=>`${i?'<b>›</b>':''}<span>${libE(c)}</span>`).join('')}</div><div class="lib-heading-row"><h1 class="lib-title lib-title-grow">${libE(n.title)}</h1><button class="lib-tab-add lib-favorite-star" data-lib-action="favorite" title="Marcar como favorita">${star}</button>${proposalButton}</div>${proposalHint}<div class="lib-note-meta"><span class="lib-obs-icon small" aria-label="Obsidian"></span> Origem: <span class="origin">Obsidian Vault</span> <span>│</span> <span>▤ Nota do Obsidian</span> <span>│</span><span>◷ Editado em ${libE(n.updated)}</span></div>${libRenderMarkdown(n.content,n.id,n.title)}</div>`;
  return code+content;
 }
 function libWire(){const root=$('library-workspace');
