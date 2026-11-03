@@ -88,6 +88,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -117,3 +119,9 @@ jobs:
       - name: Testar instalação reinstalação e desinstalação
         shell: pwsh
         run: ./tools/windows_installer_smoke.ps1
+
+      - name: Validar upgrade real da v2.0.0 para candidata v2.0.1
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./tools/windows_upgrade_smoke.ps1

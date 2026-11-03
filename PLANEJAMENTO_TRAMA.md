@@ -507,3 +507,8 @@ Gemini/Groq/OpenRouter, com HTTPS, sem redirecionamentos e resposta de até 2 MB
 Isso impede que um redirecionamento envie a chave ou os trechos da aula a
 destinos diferentes. O DOCX usa o parser defusedxml para recusar entidades
 XML hostis, com teste que garante que documentos normais continuam legíveis.
+
+
+### 13. Candidata v2.0.1 — não publicada
+
+A versão de manutenção 2.0.1 inclui as correções de segurança, privacidade do Professor, importação e navegação. A candidata exige testes completos em Windows, Linux, navegador e atualização do instalador oficial v2.0.0 para a nova versão. O teste de migração verifica notas manuais, SQLite, preferências e um arquivo sintético de credenciais. Nenhuma chave real é enviada ao GitHub.

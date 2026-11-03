@@ -172,3 +172,8 @@ Veja os workflows na pasta [`.github/workflows`](.github/workflows).
 <sub>Feito para estudar melhor, mantendo seu material no Obsidian e seu controle sobre dados e atualizações.</sub>
 
 </div>
+
+
+### Correções de manutenção — 2.0.1
+
+A candidata 2.0.1 reforça a privacidade da IA Professor, impede destinos não autorizados para as APIs, endurece a leitura de documentos e corrige falhas de importação e navegação. O instalador mantém a mesma identidade da versão 2.0.0 para permitir atualização no Windows sem substituir o cofre. Veja a versão publicada no link **Última versão** do topo.

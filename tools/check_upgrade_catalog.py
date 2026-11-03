@@ -1,4 +1,4 @@
-"""Validate real v1.9.0 SQLite catalog after v2.0.0 opens it."""
+"""Validate SQLite catalog after upgrading an official 2.0.0 vault to 2.0.1."""
 from __future__ import annotations
 import sqlite3
 import sys
@@ -15,4 +15,4 @@ try:
     ).fetchone()[0] == 1
 finally:
     connection.close()
-print("PASS: SQLite v1.9.0 permanece íntegro e recebeu a tabela da v2.0.0")
+print("PASS: SQLite atualizado permanece íntegro, com fontes e tabela de dúvidas")
