@@ -274,6 +274,45 @@ class EvidenceNavigationRegressionTests(unittest.TestCase):
             finally:
                 app.close()
 
+    def test_hand_edited_source_points_to_proposed_anchor_not_a_broken_note(self):
+        from knowledge_bridge.content import concept_slug
+        from knowledge_bridge.memory_atlas import note_for
+        with tempfile.TemporaryDirectory(prefix="trama-protected-timed-note-") as folder:
+            base = Path(folder)
+            raw = "[0:11] SDK significa Software Development Kit.\n"
+            label = "SDK (Software Development Kit)"
+            app, source, original = self._create(
+                base, raw, [{"nome": label,
+                             "explicacao": "Termo explicado, revisar.", "tempo": ""}]
+            )
+            try:
+                vault = app.store.vault
+                source_note = vault / note_for(source)
+                source_note.write_text(
+                    "# Minha nota pessoal da aula\n\nTexto escrito por mim.\n",
+                    encoding="utf-8"
+                )
+                app.publisher.rebuild()
+                self.assertEqual(source_note.read_text(encoding="utf-8"),
+                                 "# Minha nota pessoal da aula\n\nTexto escrito por mim.\n")
+                proposals = sorted(source_note.parent.glob(
+                    source_note.stem + ".PROPOSTA*.md"))
+                self.assertEqual(len(proposals), 1)
+                self.assertIn("^min-0-11",
+                              proposals[0].read_text(encoding="utf-8"))
+                concept = (vault/"01-Meu-Conhecimento/Conceitos"/
+                           (concept_slug(label)+".md")).read_text(encoding="utf-8")
+                target = proposals[0].relative_to(vault).with_suffix("").as_posix()
+                self.assertIn(target+"#^min-0-11|0:11", concept)
+                self.assertIn("proposta de atualização", concept)
+                self.assertNotIn(
+                    source_note.relative_to(vault).with_suffix("").as_posix()+
+                    "#^min-0-11|0:11", concept
+                )
+                self.assertEqual(original.read_text(encoding="utf-8"), raw)
+            finally:
+                app.close()
+
     def test_transcript_quote_escapes_markup(self):
         from knowledge_bridge.content import concept_slug
         with tempfile.TemporaryDirectory(prefix="trama-safe-evidence-") as folder:
