@@ -257,7 +257,11 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     <p>Crie uma cópia do cofre antes de migrar ou atualizar. O ZIP não é criptografado e não é enviado a um servidor.</p>
     <button id="backup-vault">Criar backup local (.zip)</button>
     <button id="restore-vault">Restaurar backup em nova pasta</button>
-    <p id="backup-message" class="setting-status" aria-live="polite">Nenhum backup iniciado.</p></div>
+    <p id="backup-message" class="setting-status" aria-live="polite">Nenhum backup iniciado.</p>
+    <h3>Espaço utilizado pelo cofre</h3>
+    <p>Consulte o tamanho das notas, transcrições, materiais e repositórios. O TRAMA apenas lê os tamanhos dos arquivos.</p>
+    <button type="button" id="check-storage">Calcular espaço utilizado</button>
+    <p id="storage-report" class="setting-status" aria-live="polite">Nenhum cálculo realizado.</p></div>
   <div class="setting-block"><h3>IA gratuita · chaves protegidas</h3>
     <p>Escolha uma conta Free <strong>sem faturamento</strong>. Chaves são protegidas pelo Windows (DPAPI). Modelos pagos não são selecionados.</p>
     <label for="ai-provider">Provedor</label><select id="ai-provider"><option value="gemini">Google Gemini API Free</option><option value="groq">GroqCloud Free</option><option value="openrouter">OpenRouter free</option></select>
@@ -319,6 +323,28 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     try{const r=await call('restore_vault',true);
       status.textContent=r?.message||'Backup não restaurado.';}
     finally{button.disabled=false;}
+  });
+  el.querySelector('#check-storage').addEventListener('click',async()=>{
+    const button=el.querySelector('#check-storage'),report=el.querySelector('#storage-report');
+    button.disabled=true;report.textContent='Calculando espaço local…';
+    const formatBytes=value=>{
+      if(!Number.isFinite(value))return '—';
+      if(value>=1024*1024*1024)return (value/(1024*1024*1024)).toFixed(2)+' GB';
+      if(value>=1024*1024)return (value/(1024*1024)).toFixed(1)+' MB';
+      return Math.max(0,Math.round(value/1024))+' KB';
+    };
+    try{
+      const result=await call('vault_disk_usage');
+      if(!result?.ok){report.textContent=result?.message||'Não foi possível consultar o cofre.';return;}
+      const c=result.categories||{};
+      report.textContent='Total: '+formatBytes(result.total_bytes)+
+        ' · Notas: '+formatBytes(c.notes)+
+        ' · Anexos: '+formatBytes(c.attachments)+
+        ' · GitHub: '+formatBytes(c.repositories)+
+        ' · Índices: '+formatBytes(c.catalog)+
+        ' · Outros: '+formatBytes(c.other)+
+        (result.partial?' · Estimativa parcial: limite de arquivos atingido.':'');
+    }finally{button.disabled=false;}
   });
   const renderStatus=async()=>{
     const r=await call('ai_status');const p=el.querySelector('#ai-status');if(!p)return;
