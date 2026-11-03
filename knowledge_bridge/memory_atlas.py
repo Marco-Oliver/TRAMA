@@ -48,7 +48,13 @@ def literal_technical_mention(label: str, source: str) -> str:
     normalized_source = " " + norm(source) + " "
     for candidate in candidates:
         needle = norm(candidate)
-        if len(needle) >= 3 and " " + needle + " " in normalized_source:
+        if needle == "c" and candidate.strip().casefold() == "c":
+            # C is a real programming-language name, but must not match
+            # C#, C++, variable names or words just containing the letter.
+            if re.search(r"(?<![A-Za-z0-9_+#])c(?![A-Za-z0-9_+#])",
+                         source, flags=re.I):
+                return candidate
+        elif len(needle) >= 3 and " " + needle + " " in normalized_source:
             return candidate
     return ""
 
