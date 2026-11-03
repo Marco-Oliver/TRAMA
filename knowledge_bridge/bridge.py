@@ -205,6 +205,49 @@ class Bridge:
             'related':[{'id':n.relative,'title':n.title,'section':n.section,'tags':self._tags(n)} for n in related],
         }
 
+    def search_notes(self, query, limit=80):
+        """Search the actual Markdown text in the selected Obsidian vault.
+
+        Read-only, local and bounded. Never sends vault text to an AI provider;
+        return only short matched excerpts, not a dump of every note.
+        """
+        if (not isinstance(query,str) or len(query)>120 or
+                any(ord(c)<32 or ord(c)==127 for c in query)):
+            return {'ok':False,'message':'Pesquisa inválida. Use até 120 caracteres.'}
+        q=query.strip().casefold()
+        if len(q)<2:
+            return {'ok':True,'matches':[],'total':0}
+        if type(limit) is not int or limit<1 or limit>100:
+            return {'ok':False,'message':'Limite de pesquisa inválido.'}
+        idx=self._index()
+        if not idx:
+            return {'ok':False,'message':'Conecte primeiro seu cofre do Obsidian.'}
+        results=[]
+        total=0
+        for note in idx.notes:
+            path_hit=q in note.relative.casefold() or q in note.title.casefold()
+            content_fold=note.content.casefold()
+            where=content_fold.find(q)
+            if not path_hit and where<0:
+                continue
+            total+=1
+            if len(results)>=limit:
+                continue
+            snippet=''
+            if where>=0:
+                left=max(0,where-65)
+                right=min(len(note.content),where+len(q)+105)
+                snippet=' '.join(note.content[left:right].split())[:220]
+                if left: snippet='…'+snippet
+                if right<len(note.content): snippet+='…'
+            results.append({'id':note.relative,'title':note.title,
+                            'section':note.section,'snippet':snippet,
+                            'in_content':where>=0})
+        results.sort(key=lambda item:(not item['in_content'],
+                                     item['title'].casefold(),item['id'].casefold()))
+        return {'ok':True,'matches':results,'total':total,
+                'truncated':total>limit}
+
     def graph(self):
         idx=self._index()
         if not idx:return {'nodes':[],'edges':[]}
@@ -1109,6 +1152,9 @@ class PublicApi:
 
     def graph(self):
         return self._bridge.graph()
+
+    def search_notes(self, query, limit=80):
+        return self._bridge.search_notes(query, limit)
 
     def audit_note(self, note_id):
         return self._bridge.audit_note(note_id)
