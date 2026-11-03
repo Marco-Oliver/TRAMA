@@ -105,7 +105,16 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
    box.innerHTML=`<div class="note-source-banner">Visualização da mesma nota Markdown do Obsidian. Para ver edições recentes, clique em Atualizar.</div>${libRenderMarkdown(n.content,n.id,n.title)}`;
    box.querySelectorAll('[data-lib-note]').forEach(el=>el.addEventListener('click',async(e)=>{
       e.preventDefault();libraryState.search='';app.selected=el.dataset.libNote;app.view='library';app.note=await call('note',app.selected);await render();
-   }));return;
+   }));
+   box.querySelectorAll('[data-lib-code]').forEach(link=>link.addEventListener('click',async()=>{
+     const result=await call('open_code_link',link.dataset.libCode);
+     if(!result?.ok)notify(result?.message||'Não foi possível abrir esta referência.');
+   }));
+   box.querySelectorAll('[data-lib-external]').forEach(link=>link.addEventListener('click',async()=>{
+     const result=await call('open_video_link',link.dataset.libExternal);
+     if(!result?.ok)notify(result?.message||'Abra este material diretamente no Obsidian.');
+   }));
+   return;
  }
  if(app.tab==='Markdown'){const pre=document.createElement('pre');pre.className='note-markdown';pre.textContent=n.content;box.append(pre);return;}
 
