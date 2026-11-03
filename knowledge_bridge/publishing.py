@@ -445,6 +445,13 @@ class Publisher:
         body = [head, f"# {Path(src['label']).stem}", "", "## Resumo da aula"]
         if analysis:
             body.append(analysis.get("resumo") or "*Resumo da aula ainda incompleto; confira a transcrição original.*")
+            warnings=[w for w in analysis.get("qualidade_pendente",[])
+                      if isinstance(w,str) and w.strip()][:8]
+            if warnings:
+                body += ["", "## Qualidade da síntese — revisar", "",
+                         "> A fonte original foi preservada. Estes avisos são verificações locais "
+                         "e não exigem outra chamada à IA."]
+                body += [f"- {_escape_md(w)}" for w in warnings]
             if concepts:
                 body += ["", "## Conceitos identificados pela IA (conferir na fonte)", "",
                          "> Os nomes e explicações abaixo são interpretações da transcrição. "
