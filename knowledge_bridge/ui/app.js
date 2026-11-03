@@ -180,9 +180,10 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
  }
  if(app.tab==='Relacionados'){box.innerHTML=card('Conhecimentos relacionados',n.related.length?n.related.map((x,i)=>`<button class="simplelink" data-related="${i}">↗ &nbsp; ${escapeHTML(x.title)}</button>`).join(''):empty('Ainda não existem conexões confirmadas entre esta nota e outras.'));wireRelations();return;}
  let html=card('Resumo da aula',paragraphs(n.summary),'summary');
+ const lessonPending=n.state==='aguardando_ia' ||
+   (n.kind==='visao_geral' && n.content.includes('**Pendente:**'));
  if(n.lesson && (n.kind==='aula' || (n.kind==='visao_geral' && (n.media?.transcript||[]).length))){
-   const pending=n.state==='aguardando_ia' ||
-      (n.kind==='visao_geral' && n.content.includes('**Pendente:**'));
+   const pending=lessonPending;
    html+=card(pending?'Resumo pendente':'Revisar análise da aula',
      '<p>'+(pending?
        'A transcrição está salva, mas o resumo por IA ainda não foi gerado.':
@@ -198,12 +199,23 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
  box.innerHTML=html;wireFiles();
  const update=box.querySelector('#refresh-this-lesson');
  if(update)update.addEventListener('click',async()=>{
-   if(!app.aiConsent && !await askTramaConfirm('Reanalisar aula',`O TRAMA vai reanalisar somente ${n.lesson} com a API configurada. A operação pode consumir sua cota gratuita.`,`Reanalisar aula`))return;
+   const action=lessonPending?'Gerar resumos pendentes':'Refazer análise completa';
+   if(!app.aiConsent && !await askTramaConfirm(action,
+     lessonPending?`Apenas as gravações e trechos pendentes de ${n.lesson} serão enviados à API. Os resumos existentes serão reaproveitados.`:
+     `Esta ação refaz os resumos de ${n.lesson} e volta a consumir a cota da API. As fontes e notas editadas permanecem protegidas.`,action))return;
    update.disabled=true;update.textContent='Processando esta aula…';
    try{
-     const result=await call('process_lesson',n.lesson,true);
-     if(!result?.ok){notify(result?.message||'Análise pendente.',8000);return;}
-     notify('Aula reanalisada. Verifique as novas notas no Obsidian.',7000);
+     const result=await call('process_lesson',n.lesson,true,!lessonPending);
+     if(!result?.ok){
+       let status=box.querySelector('#lesson-ai-feedback');
+       if(!status){status=document.createElement('p');status.id='lesson-ai-feedback';
+         status.className='trama-ai-feedback';status.setAttribute('role','status');
+         update.insertAdjacentElement('afterend',status);}
+       status.textContent=result?.message||'Análise pendente. Confira o diagnóstico em Ajustes.';
+       notify('Análise pausada. Consulte a explicação nesta tela.',8000);
+       return;
+     }
+     notify(lessonPending?'Resumos pendentes concluídos.':'Aula reanalisada. As notas foram atualizadas.',7000);
      await refresh();
    }finally{update.disabled=false;}
  });}
