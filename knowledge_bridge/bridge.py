@@ -130,6 +130,50 @@ class Bridge:
         except (sqlite3.Error,OSError):pass
         return output
 
+    def vault_disk_usage(self):
+        """Summarize local storage by category without reading source content."""
+        vault=self._vault()
+        if vault is None:
+            return {'ok':False,'message':'Conecte o Obsidian para consultar o espaço usado.'}
+        totals={'notes':0,'attachments':0,'repositories':0,'catalog':0,'other':0}
+        scanned=0
+        capped=False
+        try:
+            for root,dirs,files in os.walk(vault,followlinks=False):
+                root=Path(root)
+                dirs[:]=[name for name in dirs
+                         if not (root/name).is_symlink()]
+                for name in files:
+                    file=root/name
+                    if file.is_symlink() or not file.is_file():
+                        continue
+                    try:
+                        size=file.stat().st_size
+                    except OSError:
+                        continue
+                    parts=file.relative_to(vault).parts
+                    if len(parts)>=2 and parts[0]=='.base-conhecimento' and parts[1]=='repos':
+                        category='repositories'
+                    elif parts[0]=='99-Anexos':
+                        category='attachments'
+                    elif parts[0]=='.base-conhecimento':
+                        category='catalog'
+                    elif file.suffix.lower()=='.md':
+                        category='notes'
+                    else:
+                        category='other'
+                    totals[category]+=size
+                    scanned+=1
+                    if scanned>=120000:
+                        capped=True
+                        break
+                if capped:
+                    break
+        except OSError:
+            return {'ok':False,'message':'Não foi possível conferir o tamanho do cofre.'}
+        return {'ok':True,'total_bytes':sum(totals.values()),'categories':totals,
+                'files':scanned,'partial':capped}
+
     def snapshot(self):
         idx=self._index()
         if not idx:
@@ -1236,6 +1280,9 @@ class PublicApi:
 
     def snapshot(self):
         return self._bridge.snapshot()
+
+    def vault_disk_usage(self):
+        return self._bridge.vault_disk_usage()
 
     def note(self, note_id):
         return self._bridge.note(note_id)
