@@ -304,11 +304,11 @@ class LocalPreferencesRegressionTests(unittest.TestCase):
             vault=base/"Obsidian"
             (vault/"01-Meu-Conhecimento").mkdir(parents=True)
             (vault/"01-Meu-Conhecimento"/"POO.md").write_text(
-                "# Orientação a Objetos\\nConteúdo local.",encoding="utf-8")
+                "# Orientação a Objetos\nConteúdo local.",encoding="utf-8")
             data=base/"settings"
             settings_file=data/"settings.json"
-            with patch("knowledge_bridge.bridge.DATA_HOME",data), \\
-                 patch("knowledge_bridge.bridge.SETTINGS_FILE",settings_file):
+            with (patch("knowledge_bridge.bridge.DATA_HOME",data),
+                  patch("knowledge_bridge.bridge.SETTINGS_FILE",settings_file)):
                 original=Bridge()
                 original.settings={"vault":str(vault),"favorites":[]}
                 chosen="01-Meu-Conhecimento/POO.md"
@@ -345,13 +345,13 @@ class FairCodeEvidenceTests(unittest.TestCase):
                 file=root/name
                 file.parent.mkdir(parents=True,exist_ok=True)
                 file.write_text(
-                    "\\n".join(f"class Example{j:02d} {{}}" for j in range(12)),
+                    "\n".join(f"class Example{j:02d} {{}}" for j in range(12)),
                     encoding="utf-8"
                 )
                 paths.append(name)
             rare="src/zz-final-polling.ts"
             (root/rare).write_text(
-                "import { exhaustMap } from 'rxjs/operators';\\n"
+                "import { exhaustMap } from 'rxjs/operators';\n"
                 "source.pipe(exhaustMap(() => request()));",
                 encoding="utf-8"
             )
