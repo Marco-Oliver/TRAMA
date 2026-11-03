@@ -69,6 +69,10 @@ function teacherDrawMessages(){
   }
   log.append(wrap);
  }
+ log.querySelectorAll('[data-lib-code]').forEach(link=>link.addEventListener('click',async()=>{
+  const result=await call('open_code_link',link.dataset.libCode);
+  if(!result?.ok)$('teacher-feedback').textContent=result?.message||'Referência de código não indexada.';
+ }));
  log.scrollTop=log.scrollHeight;
 }
 function renderTeacher(el){
