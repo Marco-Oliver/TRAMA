@@ -226,7 +226,9 @@ try{
     await page.locator('#library-workspace').waitFor({state:'visible'});
     await page.locator('.lib-title').getByText('Hello World em C#').waitFor();
     await assertNoUiError('teacher cited source');
-    await page.locator('[data-lib-note="01-Meu-Conhecimento/Conceitos/console.md"]').first().click();
+    // Previous content-search filter may still be active; select Console explicitly.
+    await page.locator('#lib-folder-search').fill('Console');
+    await page.locator('#lib-tree-content [data-lib-note="01-Meu-Conhecimento/Conceitos/console.md"]').click();
     await page.getByText('Propostas de atualização').waitFor();
     await page.locator('[data-lib-note="01-Meu-Conhecimento/Conceitos/console.PROPOSTA.md"]').first().click();
     await page.locator('[data-lib-action="compare"]').click();
