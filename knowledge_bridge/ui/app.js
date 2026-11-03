@@ -444,7 +444,8 @@ async function pasteAutoImage(event){
 async function runAutoImport(){
  const feedback=$('auto-feedback');
  if(!app.aiConsent && !$('auto-consent').checked){feedback.textContent='Marque a autorização antes de processar o lote.';return;}
- const links=$('auto-links').value;
+ const links=[$('auto-links').value,$('auto-repos').value]
+   .map(value=>value.trim()).filter(Boolean).join('\n');
  const button=$('auto-start'),add=$('auto-add-files'),clear=$('auto-clear');
  button.disabled=true;add.disabled=true;clear.disabled=true;
  feedback.textContent='Processando toda a fila de uma vez. Mantenha a janela aberta…';
@@ -455,7 +456,7 @@ async function runAutoImport(){
    feedback.textContent=`Concluído: ${result.files||0} arquivo(s) novo(s), ${result.visual_analyzed||0} imagem(ns) analisada(s), ${(result.lessons||[]).length} aula(s), ${result.repositories||0} repositório(s), ${result.calls||0} chamada(s) à IA. `+
     (pend.length?`Pendências (${pend.length}): ${pend.slice(0,4).join(' | ')}`:'Sem pendências de associação.')+
     (errors.length?` Erros: ${errors.slice(0,2).join(' | ')}`:'');
-   if(!result.queue_retained){$('auto-links').value='';await updateAutoQueue(await call('staged_items'));}
+   if(!result.queue_retained){$('auto-links').value='';$('auto-repos').value='';await updateAutoQueue(await call('staged_items'));}
    await refresh();notify('Lote processado. Veja o resultado no Obsidian.',7000);
  }finally{button.disabled=false;add.disabled=false;clear.disabled=false;}
 }
