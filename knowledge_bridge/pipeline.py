@@ -183,7 +183,7 @@ class Application:
         # Resolve direct category conflicts deterministically rather than
         # publishing a name as a programming concept or technical question.
         def normalized_name(value):
-            return re.sub(r"\\s+", " ", str(value).casefold().strip(' \\t\\r\\n.,:;!?\\\"\\u201c\\u201d')).strip()
+            return re.sub(r"\s+", " ", str(value).casefold().strip(' \t\r\n.,:;!?"“”')).strip()
         known_names = {
             normalized_name(value) for value in clean["nomes_a_conferir"]
         } | {
