@@ -49,6 +49,12 @@ function libWiki(content,source){
  safe=safe.replace(/&lt;(https?:\/\/[^\s&<>]{5,400})&gt;/g,(_,url)=>
   `<button type="button" class="lib-external-link" data-lib-external="${libE(url)}">${libE(url)}</button>`);
 
+ // Markdown references to immutable, indexed GitHub code are clickable.
+ // The native bridge validates the repository, SHA, path and actual evidence
+ // before opening a browser; arbitrary URLs embedded in notes stay inert.
+ safe=safe.replace(/\[([^\]\n]{1,180})\]\((https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/blob\/[a-fA-F0-9]{40}\/[^\s<>"')]{1,700}#L\d{1,8})\)/g,(_,label,url)=>
+  `<button type="button" class="lib-code-link" data-lib-code="${url}">${label}</button>`);
+
  safe=safe.replace(/\[\[([^\]\n]+)\]\]/g,(_,inner)=>{
   const raw=inner.replaceAll('&amp;','&').replaceAll('&lt;','<').replaceAll('&gt;','>');
   const n=libFindLink(raw,source);const caption=raw.split('|').at(-1);
@@ -149,6 +155,13 @@ function libWire(){const root=$('library-workspace');
  root.onclick=async (event)=>{
   const note=event.target.closest('[data-lib-note]');
   if(note){event.preventDefault();await libChooseNote(note.dataset.libNote);return;}
+  const code=event.target.closest('[data-lib-code]');
+  if(code){
+    event.preventDefault();
+    const result=await call('open_code_link',code.dataset.libCode);
+    if(!result?.ok)notify(result?.message||'Esta referência de código não está indexada.');
+    return;
+  }
   const ext=event.target.closest('[data-lib-external]');
   if(ext){event.preventDefault();const r=await call('open_video_link',ext.dataset.libExternal);if(!r?.ok)notify('Link salvo na nota. Abra-o pelo Obsidian para acessar o material.');return;}
   const folder=event.target.closest('[data-lib-folder]');
