@@ -58,7 +58,12 @@ jobs:
         shell: pwsh
         run: |
           $exe = (Resolve-Path '.\dist\TRAMA\TRAMA.exe').Path
-          $result = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -Wait
+          $result = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru
+          if (-not $result.WaitForExit(90000)) {
+            Stop-Process -Id $result.Id -Force -ErrorAction SilentlyContinue
+            throw 'Exe self-test exceeded 90 seconds'
+          }
+          $result.Refresh()
           if ($result.ExitCode -ne 0) { throw 'Exe self-test failed' }
       - name: Instalador local
         shell: pwsh

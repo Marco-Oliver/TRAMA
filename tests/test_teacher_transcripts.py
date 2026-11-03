@@ -57,7 +57,7 @@ class TranscriptGroundingTests(unittest.TestCase):
             "[0:24] O comando não ficou legível na transcrição.\n"
         )
         self.stored.write_text(raw, encoding="utf-8")
-        self.digest = hashlib.sha256(raw.encode()).hexdigest()
+        self.digest = hashlib.sha256(self.stored.read_bytes()).hexdigest()
         db = Store(self.vault)
         db.upsert_source({
             "id": "source-002", "original_path": "/synthetic/aula-002.txt",
