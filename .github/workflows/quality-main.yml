@@ -97,3 +97,38 @@ jobs:
       - name: Instalar, reinstalar e desinstalar sem perder arquivos locais
         shell: pwsh
         run: ./tools/windows_installer_smoke.ps1
+
+  v220-browser:
+    name: TRAMA 2.2 - interface real no Chromium (sem publicar)
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/v2.2.0-automation-foundations'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Instalar navegador de teste
+        run: |
+          npm install --no-save --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+      - name: Testar interface, entrada GitHub, busca e consentimento
+        run: node tests/ui_smoke.mjs
+      - name: Criar HTML que o executavel embute
+        run: |
+          python -c "from pathlib import Path; from knowledge_bridge.bridge import load_local_ui; p=Path('ui-smoke-artifacts/native-bundle.html'); p.parent.mkdir(exist_ok=True); p.write_text(load_local_ui(),encoding='utf-8')"
+      - name: Repetir os testes no HTML empacotado
+        env:
+          TRAMA_BUNDLED_HTML: ui-smoke-artifacts/native-bundle.html
+        run: node tests/ui_smoke.mjs
+      - name: Anexar capturas da UI aos resultados (nao publica release)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trama-v220-ui-screenshots
+          path: ui-smoke-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
