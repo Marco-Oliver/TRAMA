@@ -63,7 +63,7 @@ class Bridge:
         try:
             with os.fdopen(fd,'w',encoding='utf-8') as out:
                 json.dump(self.settings,out,indent=2,ensure_ascii=False)
-                out.write('\\n')
+                out.write(chr(10))
             os.replace(temp,SETTINGS_FILE)
         finally:
             if os.path.exists(temp):
