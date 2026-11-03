@@ -259,7 +259,28 @@ function libWire(){const root=$('library-workspace');
   if(a==='refresh')await refresh();
   if(a==='settings')await setView('settings');
   if(a==='graph')await setView('graph');
-  if(a==='history')notify('O histórico de alterações fica no Obsidian (Recuperação de arquivos, se habilitada).');
+  if(a==='compare'&&app.note){
+   const result=await call('compare_proposal',app.note.id);
+   if(!result?.ok){notify(result?.message||'Não foi possível comparar.');return;}
+   const dialog=$('trama-diff-dialog'), area=$('trama-diff-content');
+   area.replaceChildren();
+   for(const line of (result.diff||'Sem diferenças de texto.').split(String.fromCharCode(10))){
+    const item=document.createElement('div'); item.textContent=line;
+    item.className=line.startsWith('+')?'trama-diff-added':line.startsWith('-')?'trama-diff-removed':'trama-diff-line';
+    area.append(item);
+   }
+   if(result.truncated){const notice=document.createElement('p');
+    notice.textContent='Comparação limitada aos primeiros 500 registros.';area.append(notice);}
+   const close=()=>{if(dialog.open)dialog.close();};
+   $('trama-diff-close').onclick=close;$('trama-diff-dismiss').onclick=close;
+   if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
+   return;
+  }
+  if(a==='history'){
+   if(await askTramaConfirm('Versões anteriores',
+       'Quando você edita uma nota, o TRAMA preserva o original e cria propostas. Para recuperar versões mais antigas, utilize Recuperação de arquivos no Obsidian (se habilitado). Abrir esta nota?',
+       'Abrir no Obsidian')&&app.note)await call('open_note',app.note.id);
+  }
   if(a==='close'){libraryState.allowEmpty=true;app.selected=null;app.note=null;await renderLibraryView();}
   if(a==='new')await call('open_obsidian');
   if(a==='favorite'&&app.note){const r=await call('toggle_favorite',app.note.id);if(r?.ok){libraryState.favorites=new Set(r.favorites||[]);if(app.snapshot)app.snapshot.favorites=[...libraryState.favorites];await renderLibraryView();}else notify('Não foi possível salvar o favorito.');}
