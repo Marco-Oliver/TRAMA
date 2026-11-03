@@ -18,6 +18,19 @@ from knowledge_bridge.recovery import (
 )
 
 
+class PreviewIsolationTests(unittest.TestCase):
+    def test_preview_marker_selects_a_separate_data_namespace(self):
+        from knowledge_bridge.gui_legacy import _storage_namespace
+        with tempfile.TemporaryDirectory(prefix="trama-v220-preview-isolation-") as folder:
+            root=Path(folder)
+            (root/"assets").mkdir()
+            self.assertEqual(_storage_namespace(root),"TRAMA")
+            (root/"assets"/"trama-preview.marker").write_text("TRAMA_PREVIEW_ISOLATED_V1",
+                                                           encoding="utf-8")
+            self.assertEqual(_storage_namespace(root),"TRAMA-Preview")
+            self.assertFalse((root/"assets"/"trama-stable.marker").exists())
+
+
 class ObsidianLessonPublicationQualityTests(unittest.TestCase):
     def test_overview_does_not_silently_cut_summary_and_projects_show_classes(self):
         from knowledge_bridge.pipeline import Application
