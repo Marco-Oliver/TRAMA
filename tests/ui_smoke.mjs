@@ -138,9 +138,11 @@ try{
     const technical=sidebarCards.filter({has:page.locator('h3', {hasText:'Conhecimentos técnicos'})});
     const people=sidebarCards.filter({has:page.locator('h3', {hasText:'Pessoas citadas'})});
     const recordings=sidebarCards.filter({has:page.locator('h3', {hasText:'Gravações e notas desta aula'})});
-    await technical.getByText('Console').waitFor();
-    await people.getByText('Alec').waitFor();
-    await recordings.getByText('Gravação V01').waitFor();
+    // The right panel intentionally collapses at 800 px. Validate that its
+    // relationships remain correctly categorized in the DOM at both sizes.
+    await technical.getByText('Console').waitFor({state:'attached'});
+    await people.getByText('Alec').waitFor({state:'attached'});
+    await recordings.getByText('Gravação V01').waitFor({state:'attached'});
     if((await technical.innerText()).includes('Alec')||
        (await people.innerText()).includes('Console'))
       throw Error('People mixed with technical knowledge in the right panel');
