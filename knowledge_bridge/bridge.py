@@ -720,10 +720,16 @@ class Bridge:
         """
         if type(allowed) is not bool:
             return {'ok':False,'message':'Escolha ativar ou desativar a autorização.'}
+        previous = self.settings.get('ai_processing_consent', None)
         self.settings['ai_processing_consent'] = allowed
         try:
             self._save()
         except OSError:
+            # Do not authorize outbound operations in RAM after a failed save.
+            if previous is None:
+                self.settings.pop('ai_processing_consent', None)
+            else:
+                self.settings['ai_processing_consent'] = previous
             return {'ok':False,'message':'Não foi possível salvar a preferência no Windows.'}
         return {'ok':True,'processing_consent':allowed,
                 'message':'Envio autorizado para operações iniciadas por você.' if allowed
