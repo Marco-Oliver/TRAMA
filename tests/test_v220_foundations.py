@@ -295,6 +295,49 @@ class IncrementalAutomationFoundationsTests(unittest.TestCase):
 
 
 
+class SummaryQualityRegressionTests(unittest.TestCase):
+    def test_short_summary_is_flagged_for_long_transcript_without_another_api_call(self):
+        from knowledge_bridge.pipeline import Application
+        raw="Uma transcrição de aula técnica com vários exemplos. " * 50
+        cleaned=Application._clean_result(
+            {"tipo_aula":"tecnica","resumo":"Explicação breve."},raw
+        )
+        self.assertTrue(cleaned["qualidade_pendente"])
+        brief=Application._clean_result(
+            {"tipo_aula":"apresentacao","resumo":"Apresentação da turma."},
+            "Apresentação curta."
+        )
+        self.assertFalse(brief["qualidade_pendente"])
+
+    def test_sparse_note_hides_empty_fields_but_preserves_uncertainties(self):
+        from knowledge_bridge.pipeline import Application
+        with tempfile.TemporaryDirectory(prefix="trama-v220-quality-") as folder:
+            base=Path(folder)
+            app=Application(base/"Obsidian",base/"no-key.env",log=lambda _:None)
+            try:
+                file=base/"Aula-009-V01.txt"
+                file.write_text("[0:01] O professor falou sobre o tema.",encoding="utf-8")
+                app.add_file(file)
+                src=app.store.sources("transcript")[0]
+                app.store.save_analysis(src["id"],src["digest"],"fake","offline",{
+                    "resumo":"O professor explicou o conteúdo da aula.",
+                    "tipo_aula":"tecnica",
+                    "conceitos":[],"exemplos":[],"pessoas":[],"atividades":[],
+                    "ferramentas":[],"marcos":[],"duvidas":[],
+                    "qualidade_pendente":["A conferir com a transcrição."]
+                })
+                app.publisher.rebuild()
+                folder=app.store.vault/"02-Minhas-Aulas"/"Aula-009"
+                note=next(p for p in folder.glob("*.md") if p.name!="00-Visao-geral.md")
+                written=note.read_text(encoding="utf-8")
+                self.assertIn("## Qualidade da síntese",written)
+                self.assertIn("A conferir com a transcrição.",written)
+                self.assertNotIn("## Pessoas citadas e papéis",written)
+                self.assertNotIn("## Exemplos mencionados",written)
+            finally:
+                app.close()
+
+
 class LocalPreferencesRegressionTests(unittest.TestCase):
     def test_favorite_survives_restart_and_failed_write_keeps_previous_state(self):
         from unittest.mock import patch
