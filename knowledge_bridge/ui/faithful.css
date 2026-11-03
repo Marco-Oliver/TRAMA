@@ -205,3 +205,21 @@ button,input{font-family:inherit}
  .overlay-screen.teacher-overlay{padding:9px;}
  .teacher-overlay .teacher-form{max-height:53%;}
 }
+
+/* 2.2 visual QA: keep both the question and the code area on screen at 800px.
+   The chat is the scrollable surface; the composition area stays compact. */
+.teacher-overlay .teacher-form{max-height:57%;min-height:0;scrollbar-gutter:stable;}
+.teacher-overlay #teacher-question{height:58px;min-height:50px;}
+.teacher-overlay #teacher-code{height:78px;min-height:66px;max-height:95px;}
+.teacher-overlay .teacher-log{min-height:100px;}
+.teacher-overlay .teacher-form label{line-height:1.3;}
+/* A toast must never cover the send button or the input area on compact screens. */
+.toast{top:69px;bottom:auto;}
+@media(max-width:900px){
+ .teacher-overlay .teacher-area{gap:7px;}
+ .teacher-overlay .teacher-form{max-height:61%;padding:9px;}
+ .teacher-overlay #teacher-code{height:65px;min-height:60px;}
+ .teacher-overlay .teacher-header{padding-bottom:5px;}
+ .teacher-overlay .teacher-modes button{padding:5px 8px;}
+ .toast{top:64px;right:10px;bottom:auto;}
+}
