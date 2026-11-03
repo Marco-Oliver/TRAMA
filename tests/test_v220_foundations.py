@@ -123,6 +123,53 @@ class DesktopExperienceFoundationsTests(unittest.TestCase):
 
 
 
+class VerifiedCodeNavigationTests(unittest.TestCase):
+    def test_only_provenance_checked_github_line_is_opened(self):
+        from unittest.mock import patch
+        from knowledge_bridge.bridge import Bridge
+        from knowledge_bridge.store import Store
+
+        with tempfile.TemporaryDirectory(prefix="trama-v220-code-links-") as folder:
+            vault = Path(folder) / "Obsidian"
+            catalog = Store(vault)
+            sha = "a" * 40
+            repo_url = "https://github.com/unit/example"
+            catalog.save_repo(
+                repo_url, "example", sha,
+                {"evidence": [{"path": "src/sample.cs", "line": 17}],
+                 "files": [{"path": "src/sample.cs", "size": 99}]},
+                "INDEXED",
+            )
+            catalog.close()
+            bridge = Bridge()
+            bridge.settings = {"vault": str(vault)}
+            valid = f"{repo_url}/blob/{sha}/src/sample.cs#L17"
+            invalid = [
+                "javascript:alert(1)",
+                f"https://github.com/other/example/blob/{sha}/src/sample.cs#L17",
+                f"{repo_url}/blob/{'b' * 40}/src/sample.cs#L17",
+                f"{repo_url}/blob/{sha}/src/sample.cs#L18",
+                f"{repo_url}/blob/{sha}/src/../secret.cs#L17",
+                f"{repo_url}/blob/{sha}/src/%2e%2e/secret.cs#L17",
+                f"{repo_url}/blob/{sha}/src/sample.cs?token=secret#L17",
+                f"https://github.com@evil.test/unit/example/blob/{sha}/src/sample.cs#L17",
+            ]
+            with patch("knowledge_bridge.bridge.webbrowser.open",
+                       return_value=True) as opener:
+                for address in invalid:
+                    self.assertFalse(bridge.open_code_link(address)["ok"], address)
+                opener.assert_not_called()
+                self.assertTrue(bridge.open_code_link(valid)["ok"])
+                opener.assert_called_once_with(valid)
+
+    def test_desktop_renders_code_citations_as_safe_controls(self):
+        from knowledge_bridge.bridge import load_local_ui
+        html = load_local_ui()
+        self.assertIn('data-lib-code', html)
+        self.assertIn("call('open_code_link'", html)
+        self.assertNotIn('window.open(', html)
+
+
 class TargetedFollowUpKnowledgeTests(unittest.TestCase):
     def test_later_evidence_enriches_only_the_question_from_aula_031(self):
         from knowledge_bridge.pipeline import Application
