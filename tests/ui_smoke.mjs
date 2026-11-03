@@ -184,6 +184,13 @@ try{
     await page.locator('#lib-tree-content .lib-file-row').first().waitFor();
     if(!((await page.locator('#lib-tree-content').innerText()).includes('terminal')))
       throw Error('Full-text search did not show an excerpt from the note');
+    if(width<=800){
+      const nowrap=await page.evaluate(()=>{
+        const label=document.querySelector('#lib-tree-content .lib-file-row .file-label');
+        return label?getComputedStyle(label).whiteSpace:'missing';
+      });
+      if(nowrap!=='normal')throw Error('Library note labels must wrap at 800px, found '+nowrap);
+    }
     await page.screenshot({path:path.join(screenshots,`${prefix}library-${width}.png`),fullPage:true});
     await page.locator('.nav-item[data-view="teacher"]').click();
     await page.getByRole('heading',{name:/IA Professor/}).waitFor();
