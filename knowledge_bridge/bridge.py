@@ -57,8 +57,17 @@ class Bridge:
         except (OSError,ValueError):return {}
 
     def _save(self):
+        """Replace local settings atomically; avoid partial JSON after interruption."""
         DATA_HOME.mkdir(parents=True,exist_ok=True)
-        SETTINGS_FILE.write_text(json.dumps(self.settings,indent=2,ensure_ascii=False),encoding='utf-8')
+        fd,temp=tempfile.mkstemp(prefix='.trama-settings-',suffix='.tmp',dir=DATA_HOME)
+        try:
+            with os.fdopen(fd,'w',encoding='utf-8') as out:
+                json.dump(self.settings,out,indent=2,ensure_ascii=False)
+                out.write('\\n')
+            os.replace(temp,SETTINGS_FILE)
+        finally:
+            if os.path.exists(temp):
+                os.unlink(temp)
 
     def _vault(self):
         raw=self.settings.get('vault','')
@@ -936,15 +945,25 @@ class Bridge:
 
     def toggle_favorite(self, note_id):
         idx=self._index()
-        if not idx or not isinstance(note_id,str) or note_id.lower() not in idx.by_relative:
+        if not idx or not isinstance(note_id,str):
             return {'ok':False,'message':'Nota inválida'}
-        favorites=set(self.settings.get('favorites',[]))
-        if note_id in favorites:
-            favorites.remove(note_id)
+        selected=idx.by_relative.get(note_id.casefold())
+        if selected is None:
+            return {'ok':False,'message':'Nota não encontrada neste cofre.'}
+        canonical=selected.relative
+        previous=list(self.settings.get('favorites',[]))
+        favorites={p for p in previous if isinstance(p,str)}
+        old={p for p in favorites if p.casefold()==canonical.casefold()}
+        if old:
+            favorites.difference_update(old)
         else:
-            favorites.add(note_id)
+            favorites.add(canonical)
         self.settings['favorites']=sorted(favorites)[:200]
-        self._save()
+        try:
+            self._save()
+        except OSError:
+            self.settings['favorites']=previous
+            return {'ok':False,'message':'Não foi possível salvar o favorito no Windows.'}
         return {'ok':True,'favorites':self.settings['favorites']}
 
     def copy_note_link(self, note_id):
