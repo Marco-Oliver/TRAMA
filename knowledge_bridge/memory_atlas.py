@@ -89,9 +89,10 @@ def make_atlas(store, max_concepts: int = 2000) -> dict:
             if key not in concepts and len(concepts)>=max_concepts:continue
             stamp = str(row.get('tempo','')).strip('[]')
             exists = bool(stamp and stamp in timestamps)
-            literal = (' '+key+' ') in (' '+raw_norm+' ')
+            literal=bool(literal_technical_mention(name,raw))
             excerpt_norm=norm(timestamps.get(stamp,'')) if exists else ''
-            at_anchor=exists and (' '+key+' ') in (' '+excerpt_norm+' ')
+            at_anchor=exists and bool(literal_technical_mention(
+                name,timestamps.get(stamp,'')))
             confidence = ('termo encontrado no horário citado' if at_anchor else
                 'horário existe; termo encontrado em outro trecho' if exists and literal else
                 'horário existe; relação sem termo literal no trecho' if exists else
