@@ -708,8 +708,26 @@ class Bridge:
     def ai_status(self):
         return {"configured":self._key_vault.configured(),
                 "confirmed_free":self.settings.get('confirmed_free',False),
+                "processing_consent":self.settings.get('ai_processing_consent',False) is True,
                 "request_limit":12,
                 "disclaimer":"Ative apenas projetos sem faturamento e contas Free. O TRAMA não consegue garantir o tipo de conta externamente."}
+
+    def set_ai_processing_consent(self, allowed):
+        """Optional persisted consent; revocable without deleting keys or notes.
+
+        The UI must still let users work locally without an API. This setting
+        authorizes only API operations that the user explicitly starts.
+        """
+        if type(allowed) is not bool:
+            return {'ok':False,'message':'Escolha ativar ou desativar a autorização.'}
+        self.settings['ai_processing_consent'] = allowed
+        try:
+            self._save()
+        except OSError:
+            return {'ok':False,'message':'Não foi possível salvar a preferência no Windows.'}
+        return {'ok':True,'processing_consent':allowed,
+                'message':'Envio autorizado para operações iniciadas por você.' if allowed
+                          else 'Autorização revogada. Suas notas e chaves foram preservadas.'}
 
     def save_ai_key(self,provider,key,free_confirmed=False):
         if provider not in PROVIDERS:
@@ -1125,6 +1143,9 @@ class PublicApi:
 
     def ai_status(self):
         return self._bridge.ai_status()
+
+    def set_ai_processing_consent(self, allowed):
+        return self._bridge.set_ai_processing_consent(allowed)
 
     def save_ai_key(self, provider, key, free_confirmed=False):
         return self._bridge.save_ai_key(provider,key,free_confirmed)
