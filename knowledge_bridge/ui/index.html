@@ -73,7 +73,7 @@
 </div>
 <dialog id="auto-dialog" class="context-dialog auto-dialog" aria-labelledby="auto-title">
   <div class="dialog-header"><h2 id="auto-title">Preparar importação em lote</h2><button type="button" id="auto-close" aria-label="Fechar">×</button></div>
-  <p>Primeiro junte transcrições, prints, documentos e links. <strong>Nada será enviado ao Gemini ou gravado no Obsidian antes de clicar em Processar tudo.</strong></p>
+  <p>Junte transcrições, documentos, imagens e links. <strong>O TRAMA só organiza e envia materiais à API configurada depois de você clicar em Processar tudo.</strong></p>
   <div id="auto-paste-zone" class="auto-paste-zone" tabindex="0" aria-label="Cole seu print aqui com Control V">
     <strong>▧ Cole seu print aqui com Ctrl + V</strong>
     <span>Cole uma captura de tela ou imagem diretamente aqui.</span>
@@ -82,11 +82,15 @@
     <button type="button" id="auto-add-files">+ Adicionar arquivos</button><button type="button" id="auto-clear">Limpar fila</button>
   </div>
   <ul id="auto-queue" class="auto-queue" aria-label="Arquivos na fila"><li>Adicione arquivos ou cole um print para começar.</li></ul>
-  <label for="auto-links">Links para processar com o lote (um por linha)</label>
+  <label for="auto-links">Gravações e materiais online (um link por linha)</label>
   <textarea id="auto-links" rows="4" maxlength="20000" spellcheck="false" placeholder="Aula 01 | V01 - Apresentação | https://drive.google.com/file/d/...
 Aula 01 | V02 - Metodologia | https://drive.google.com/file/d/...
 https://academiadoprogramador-fullstack.github.io/docs/inicio/"></textarea>
-  <small><strong>Vários vídeos da mesma aula?</strong> Use "Aula 01 | Nome do vídeo | URL". O TRAMA mantém V01, V02 e V03 sob a Aula 01 quando as fontes confirmam. Se houver conflito, marca para revisão.</small>
+  <small>Para vincular várias gravações à mesma aula: Aula 01 | V02 - Tema | URL. Links não são baixados automaticamente.</small>
+  <label for="auto-repos">Repositórios GitHub relacionados</label>
+  <textarea id="auto-repos" rows="2" maxlength="10000" spellcheck="false"
+    placeholder="https://github.com/academiadoprogramador-fullstack/projeto-exemplo.git"></textarea>
+  <small>Um repositório por linha. O TRAMA procura evidências de código para relacionar com as aulas, sem executar projetos.</small>
   <label class="auto-consent" id="auto-consent-row"><input type="checkbox" id="auto-consent"/>
   Autorizo enviar os materiais à API gratuita configurada <strong>somente ao clicar em Processar tudo.</strong></label>
   <p id="auto-consent-info" class="trama-consent-info hidden">Envio autorizado nos Ajustes. O processamento só acontece quando você clicar em Processar tudo.</p>
