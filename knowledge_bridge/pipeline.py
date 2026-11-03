@@ -15,7 +15,7 @@ from .content import chunks, file_hash, lesson_identity, slug, concept_slug, tim
 from .code_intel import index_repository, match_lesson_to_repository, find_code_line
 from .publishing import Publisher
 from .store import Store
-from .memory_atlas import related_prior
+from .memory_atlas import related_prior, norm
 from .classroom import save_classroom_record
 
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm"}
@@ -200,6 +200,27 @@ class Application:
                 doubt for doubt in clean["duvidas"]
                 if normalized_name(doubt) not in known_names
             ]
+        # A model's concept label is not an observed lesson fact unless its
+        # name appears literally in the ORIGINAL transcript. Names suggested
+        # from a code repository may be useful hypotheses, but must never
+        # turn into confirmed concept pages by mere model assertion.
+        normalized_source=norm(raw_text)
+        grounded=[]
+        unverified=[]
+        for concept in clean["conceitos"]:
+            label=concept.get("nome","").strip()
+            normalized_label=norm(label)
+            if (normalized_label and
+                    re.search(r"(?<!\\w)"+re.escape(normalized_label)+r"(?!\\w)",
+                              normalized_source)):
+                grounded.append(concept)
+            else:
+                unverified.append({
+                    "nome":label,
+                    "motivo":"Nome não encontrado literalmente na transcrição original.",
+                })
+        clean["conceitos"]=grounded
+        clean["conceitos_a_conferir"]=unverified[:12]
         # A shallow or empty summary is not silently promoted as complete
         # knowledge. Do not spend a second paid/free call automatically:
         # preserve the original and mark the deficiency for later review.
@@ -269,7 +290,8 @@ class Application:
                          "\n\n".join(f"**Trecho {i+1}:** {x['resumo']}" for i,x in enumerate(all_results))),
                         "tipo_aula": "indefinida", "pessoas": [], "atividades": [],
                         "ferramentas": [], "marcos": [], "conceitos": [],
-                        "exemplos": [], "duvidas": [], "nomes_a_conferir": []}
+                        "exemplos": [], "duvidas": [], "nomes_a_conferir": [],
+                        "conceitos_a_conferir": []}
             # Preserve different explanations/timestamps from distinct parts of
             # the same recording. A concept may be introduced and then applied.
             known = set()
@@ -293,6 +315,9 @@ class Application:
                 combined["exemplos"].extend(result.get("exemplos", []))
                 combined["duvidas"].extend(result.get("duvidas", []))
                 combined["nomes_a_conferir"].extend(result.get("nomes_a_conferir", []))
+                for caution in result.get("conceitos_a_conferir", []):
+                    if caution not in combined["conceitos_a_conferir"]:
+                        combined["conceitos_a_conferir"].append(caution)
             combined['_context_revision']=context_digest
             # Preserve warnings from each analyzed segment for the published note.
             combined['qualidade_pendente']=list(dict.fromkeys(
