@@ -93,6 +93,8 @@ try{
     if((await page.locator('#note-content').innerText()).includes('Suas notas aparecerão'))
       throw Error('Lesson notes were not loaded into the interface');
     await assertNoUiError('lessons');
+    // The lessons workspace opens in 'Nota completa'; the action belongs to 'Resumo'.
+    await page.locator('#note-tabs .tab').getByText('Resumo',{exact:true}).click();
     // Reanalysis must never reach the bridge without the user's confirmation.
     const refresh=page.locator('#refresh-this-lesson');
     await refresh.waitFor();
