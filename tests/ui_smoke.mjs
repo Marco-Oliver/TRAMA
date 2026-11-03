@@ -30,7 +30,7 @@ const notes = [
 const makeBridge=({notes})=>{
  // Playwright serializes this function into the page. Never reference
  // Node-side closures from the injected fake bridge.
- const baseNote=n=>({...n,media:{video:[],video_links:[],transcript:[],materials:[]},related:[]});
+ const baseNote=n=>({...n,media:{video:[],video_links:[],transcript:n.lesson==='Aula-001'?[{label:'Aula 001.txt',stored:'99-Anexos/Transcricoes-Originais/aula001.txt'}]:[],materials:[]},related:[]});
  window.__TRAMA_API__=({
   snapshot: async()=>({connected:true,vault:'C:\\TRAMA-Teste\\Cofre',notes,stats:{notes:3,videos:2,transcriptions:2,materials:0,repositories:1},favorites:[notes[0].id]}),
   note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n.lesson==='Aula-001'?{...n,kind:'aula',state:'aguardando_ia',summary:'Pendente: resumo não gerado.'}:n):{error:'Nota não encontrada'};},
@@ -39,6 +39,13 @@ const makeBridge=({notes})=>{
     window.__tramaLessonRefreshCalls=(window.__tramaLessonRefreshCalls||0)+1;
     return confirmed && lesson==='Aula-001' ? {ok:true,message:'Análise simulada'} : {ok:false,message:'Confirmação obrigatória'};
   },
+  search_transcript: async (stored,query)=>{
+    window.__tramaTranscriptSearchCalls=(window.__tramaTranscriptSearchCalls||0)+1;
+    return stored==='99-Anexos/Transcricoes-Originais/aula001.txt' && query==='terminal'
+      ? {ok:true,excerpt:'[0:09] Comando no terminal <img src=x onerror="window.__tramaXss=true">',times:['0:09']}
+      : {ok:true,excerpt:'',times:[]};
+  },
+  open_attachment: async()=>({ok:true}),
   ai_status: async()=>({configured:{gemini:true},confirmed_free:true}),
   check_updates: async()=>({ok:true,available:false,message:'Você já está na versão mais recente.'}),
   teacher_ask: async (question, mode, code, confirmed)=>confirmed?({
@@ -115,6 +122,21 @@ try{
     await refresh.click();
     await page.waitForFunction(()=>window.__tramaLessonRefreshCalls===1);
     await assertNoUiError('lesson reanalysis');
+
+    // The transcript-search feature is local-only and must render untrusted
+    // transcript text as text rather than executable HTML.
+    await page.locator('#note-tabs .tab').filter({hasText:/^Transcrição$/}).click();
+    await page.locator('#transcript-query').fill('terminal');
+    await page.locator('#transcript-search').click();
+    const excerpt=page.locator('.transcript-find-excerpt');
+    await excerpt.waitFor();
+    if(!(await excerpt.textContent()).includes('[0:09]'))
+      throw Error('Transcript search lost the original timestamp');
+    if(await page.evaluate(()=>Boolean(window.__tramaXss ||
+         document.querySelector('#transcript-search-results img'))))
+      throw Error('Untrusted transcript snippet executed HTML');
+    if((await page.evaluate(()=>window.__tramaTranscriptSearchCalls||0))!==1)
+      throw Error('Transcript search did not use the local bridge exactly once');
 
     await page.locator('[data-list-filter="favorites"]').click();
     if(await page.locator('.lesson-row').count()!==1)throw Error('Favorites filter did not work');
