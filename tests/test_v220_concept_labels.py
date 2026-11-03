@@ -313,6 +313,59 @@ class EvidenceNavigationRegressionTests(unittest.TestCase):
             finally:
                 app.close()
 
+    def test_audit_recognizes_literal_abbreviations_and_recovered_times(self):
+        from knowledge_bridge.audit import audit_lesson
+        with tempfile.TemporaryDirectory(prefix="trama-audit-real-label-") as folder:
+            raw=("[0:01] Instalamos o SDK do .NET.\n"
+                 "[0:02] O LTS tem suporte estendido.\n"
+                 "[0:03] Execute dotnet --version.\n")
+            concepts=[
+                {"nome":"SDK (Software Development Kit)",
+                 "explicacao":"Kit de ferramentas.", "tempo":""},
+                {"nome":"LTS (Long-Term Support)",
+                 "explicacao":"Suporte longo.", "tempo":"0:02"},
+                {"nome":"Comando dotnet --version",
+                 "explicacao":"Versão do SDK.", "tempo":""},
+            ]
+            app,src,original=self._create(Path(folder),raw,concepts)
+            try:
+                report=audit_lesson(app.store.vault,"Aula-002")
+                self.assertTrue(report["ok"],report)
+                self.assertEqual(report["contagens"]["horarios_validos"],1)
+                self.assertEqual(report["contagens"]["horarios_recuperados_txt"],2)
+                self.assertEqual(report["contagens"]["referencias_duvidosas"],0)
+                self.assertFalse(any("sem menção literal" in line.lower()
+                                     for line in report["pendencias"]))
+            finally:
+                app.close()
+
+    def test_atlas_prefers_source_evidence_over_wrong_model_time(self):
+        from knowledge_bridge.memory_atlas import make_atlas
+        with tempfile.TemporaryDirectory(prefix="trama-atlas-duplicate-time-") as folder:
+            raw=("[0:01] Apresentação de ferramentas antes da aula.\n"
+                 "[0:01] O LTS é uma versão de suporte estendido.\n"
+                 "[0:05] SDK é uma sigla do kit de desenvolvimento.\n")
+            concepts=[
+                {"nome":"LTS (Long-Term Support)",
+                 "explicacao":"Suporte de longo prazo.", "tempo":"0:01"},
+                {"nome":"SDK (Software Development Kit)",
+                 "explicacao":"Kit de desenvolvimento.", "tempo":"0:01"},
+            ]
+            app,_,_=self._create(Path(folder),raw,concepts)
+            try:
+                atlas=make_atlas(app.store)
+                records={c["name"]:c["mentions"][0] for c in atlas["concepts"]}
+                lts=records["LTS (Long-Term Support)"]
+                sdk=records["SDK (Software Development Kit)"]
+                self.assertEqual(lts["timestamp"],"0:01")
+                self.assertIn("LTS",lts["excerpt"])
+                self.assertIn("repetido",lts["confidence"])
+                self.assertEqual(sdk["timestamp"],"0:05")
+                self.assertIn("SDK",sdk["excerpt"])
+                self.assertIn("horário da IA não confirma",sdk["confidence"])
+            finally:
+                app.close()
+
     def test_transcript_quote_escapes_markup(self):
         from knowledge_bridge.content import concept_slug
         with tempfile.TemporaryDirectory(prefix="trama-safe-evidence-") as folder:
