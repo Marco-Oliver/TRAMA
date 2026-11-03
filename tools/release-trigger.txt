@@ -1,1 +1,1 @@
-Publish TRAMA 2.0.0 after merging validated 3-priority release candidate. Windows/Linux regressions passed; v1.9.0-to-v2.0.0 upgrade passed on Windows CI. 2026-10-31.
+Publish TRAMA v2.0.1 after PR #2 merged to main. Full audit 41567998065 passed: Windows/Linux regression 167 tests each, 10 adversarial each, browser UI smoke, Windows install/reinstall/uninstall and official v2.0.0 to v2.0.1 upgrade preserving synthetic vault, preferences and fake keys. Publish only through the release workflow; preserve v2.0.0. 2026-11-03.
