@@ -97,6 +97,13 @@ jobs:
       - name: Instalar, reinstalar e desinstalar sem perder arquivos locais
         shell: pwsh
         run: ./tools/windows_installer_smoke.ps1
+      - name: Anexar instalador QA somente apos testes Windows aprovados
+        uses: actions/upload-artifact@v4
+        with:
+          name: TRAMA-v220-PR-Preview-NAO-RELEASE
+          path: release/TRAMA_Setup.exe
+          if-no-files-found: error
+          retention-days: 7
 
   v220-browser:
     name: TRAMA 2.2 - interface real no Chromium (sem publicar)
