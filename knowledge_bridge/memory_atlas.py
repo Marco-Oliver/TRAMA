@@ -20,6 +20,39 @@ def norm(value: object) -> str:
     return re.sub(r'[^a-z0-9]+', ' ', txt).strip()
 
 
+def literal_technical_mention(label: str, source: str) -> str:
+    """Return an actually present rendering of a technical name, or empty.
+
+    The model may label 'SDK (Software Development Kit)' when speech only says
+    'SDK', or 'Comando dotnet --version' when speech says 'dotnet --version'.
+    Both are literal terms, but expanding their explanations remains an
+    unverified interpretation. This intentionally does NOT fuzzy-correct
+    'exaust map' to 'exhaustMap' or infer a concept from source code alone.
+    """
+    if not isinstance(label, str) or not isinstance(source, str):
+        return ""
+    label = label.strip()[:120]
+    if not label:
+        return ""
+    candidates = [label]
+    parenthesized = re.fullmatch(r"(.{2,75}?)\s+\(([^()]{3,65})\)", label)
+    if parenthesized:
+        candidates.append(parenthesized.group(1).strip())
+    for candidate in tuple(candidates):
+        short = re.sub(
+            r"^(?:comando|operador|função|funcao|método|metodo|classe)\s+",
+            "", candidate, flags=re.I
+        ).strip()
+        if short != candidate:
+            candidates.append(short)
+    normalized_source = " " + norm(source) + " "
+    for candidate in candidates:
+        needle = norm(candidate)
+        if len(needle) >= 3 and " " + needle + " " in normalized_source:
+            return candidate
+    return ""
+
+
 def safe(value: object, limit: int = 300) -> str:
     return str(value).replace('\n', ' ').replace('\r', ' ').replace('|', '\\|')[:limit].strip()
 
