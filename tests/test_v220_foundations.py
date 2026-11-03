@@ -107,6 +107,10 @@ class DesktopExperienceFoundationsTests(unittest.TestCase):
             self.assertFalse(bridge.ai_status()["processing_consent"])
             self.assertEqual(save.call_count, 2)
         self.assertFalse(bridge.set_ai_processing_consent("true")["ok"])
+        with patch.object(bridge, "_save", side_effect=OSError("disk full")):
+            self.assertFalse(bridge.set_ai_processing_consent(True)["ok"])
+        self.assertFalse(bridge.settings["ai_processing_consent"])
+
 
     def test_git_process_does_not_spawn_console_on_windows(self):
         import subprocess
