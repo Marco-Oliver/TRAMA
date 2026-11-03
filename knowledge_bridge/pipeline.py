@@ -15,7 +15,7 @@ from .content import chunks, file_hash, lesson_identity, slug, concept_slug, tim
 from .code_intel import index_repository, match_lesson_to_repository, find_code_line
 from .publishing import Publisher
 from .store import Store
-from .memory_atlas import related_prior, norm
+from .memory_atlas import related_prior, norm, literal_technical_mention
 from .classroom import save_classroom_record
 
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm"}
@@ -204,20 +204,19 @@ class Application:
         # name appears literally in the ORIGINAL transcript. Names suggested
         # from a code repository may be useful hypotheses, but must never
         # turn into confirmed concept pages by mere model assertion.
-        normalized_source=norm(raw_text)
         grounded=[]
         unverified=[]
         for concept in clean["conceitos"]:
             label=concept.get("nome","").strip()
-            normalized_label=norm(label)
-            if (normalized_label and
-                    re.search(r"(?<!\w)"+re.escape(normalized_label)+r"(?!\w)",
-                              normalized_source)):
+            observed=literal_technical_mention(label,raw_text)
+            if observed:
+                # A literal abbreviation confirms a mention, NOT the model's
+                # explanation or a claim that the learner mastered the topic.
                 grounded.append(concept)
             else:
                 unverified.append({
                     "nome":label,
-                    "motivo":"Nome não encontrado literalmente na transcrição original.",
+                    "motivo":"Nome ou abreviação não encontrado na transcrição original.",
                 })
         clean["conceitos"]=grounded
         clean["conceitos_a_conferir"]=unverified[:12]
