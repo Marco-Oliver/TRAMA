@@ -176,6 +176,52 @@ class VerifiedCodeNavigationTests(unittest.TestCase):
         self.assertNotIn('window.open(', html)
 
 
+class IncrementalUncertaintyIndexTests(unittest.TestCase):
+    def test_new_lesson_only_parses_new_term_evidence(self):
+        from unittest.mock import patch
+        import knowledge_bridge.learning_review as reviews
+        from knowledge_bridge.pipeline import Application
+
+        with tempfile.TemporaryDirectory(prefix="trama-v220-indexed-followups-") as folder:
+            base=Path(folder)
+            app=Application(base/"Obsidian",base/"unused.env",log=lambda *_:None)
+            def add(number, content, questions=()):
+                source=base/f"Aula-{number:03d}-V01.txt"
+                source.write_text(content,encoding="utf-8")
+                self.assertTrue(app.add_file(source))
+                rec=next(s for s in app.store.sources("transcript")
+                         if s["label"]==source.name)
+                app.store.save_analysis(rec["id"],rec["digest"],"fake","offline",{
+                    "resumo":"Aula com fonte preservada.","tipo_aula":"tecnica",
+                    "conceitos":[],"exemplos":[],"duvidas":list(questions)})
+                return rec
+            try:
+                old=add(31,"[0:01] O operador parece exustrix.",
+                        questions=["O exustrix corresponde a algum operador RxJS?"])
+                calls=[]
+                original=reviews._source_text
+                def track(store,source):
+                    calls.append(source["id"])
+                    return original(store,source)
+                with patch.object(reviews,"_source_text",side_effect=track):
+                    app.publisher.rebuild()
+                    self.assertIn(old["id"],calls)
+                    calls.clear()
+                    app.publisher.rebuild()
+                    self.assertEqual(calls,[],"Revisita local repetida sem novas fontes")
+                    future=add(50,"[0:02] exhaustMap descarta solicitações concorrentes.")
+                    app.publisher.rebuild()
+                    self.assertEqual(calls,[future["id"]],"Aula 031 foi relida sem necessidade")
+                    rows=app.store.uncertainties_for_source(old["id"])
+                    self.assertEqual(len(rows),1)
+                    self.assertEqual(rows[0]["status"],"NOVA_EVIDENCIA_PARA_REVISAR")
+                    calls.clear()
+                    app.publisher.rebuild()
+                    self.assertEqual(calls,[])
+            finally:
+                app.close()
+
+
 class TargetedFollowUpKnowledgeTests(unittest.TestCase):
     def test_later_evidence_enriches_only_the_question_from_aula_031(self):
         from knowledge_bridge.pipeline import Application
