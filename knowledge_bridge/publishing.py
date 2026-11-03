@@ -444,17 +444,20 @@ class Publisher:
                             gravacao=video, estado="resumida_com_ia" if analysis else "aguardando_ia")
         body = [head, f"# {Path(src['label']).stem}", "", "## Resumo da aula"]
         if analysis:
-            body += [analysis.get("resumo", "Sem resumo."), "",
-                     "## Conceitos identificados pela IA (conferir na fonte)", "",
-                     "> Os nomes e explicações abaixo são interpretações da transcrição. "
-                     "Um termo mencionado não significa que foi ensinado ou dominado."]
-            for c in concepts:
-                name = c.get("nome","")
-                if not name:
-                    continue
-                tempo = f" ({c['tempo']})" if c.get("tempo") else ""
-                body.append(f"- **{_escape_md(name)}**{tempo}: {_escape_md(c.get('explicacao',''))}")
-            body += ["", "## Exemplos mencionados"] + [f"- {_escape_md(x)}" for x in analysis.get("exemplos",[])]
+            body.append(analysis.get("resumo") or "*Resumo da aula ainda incompleto; confira a transcrição original.*")
+            if concepts:
+                body += ["", "## Conceitos identificados pela IA (conferir na fonte)", "",
+                         "> Os nomes e explicações abaixo são interpretações da transcrição. "
+                         "Um termo mencionado não significa que foi ensinado ou dominado."]
+                for c in concepts:
+                    name = c.get("nome","")
+                    if not name:
+                        continue
+                    tempo = f" ({c['tempo']})" if c.get("tempo") else ""
+                    body.append(f"- **{_escape_md(name)}**{tempo}: {_escape_md(c.get('explicacao',''))}")
+            if analysis.get("exemplos"):
+                body += ["", "## Exemplos mencionados"] + [
+                    f"- {_escape_md(x)}" for x in analysis.get("exemplos",[])]
             if analysis.get("duvidas"):
                 body += ["", "## Dúvidas técnicas e passagens inaudíveis", "",
                          "> Uma hipótese de transcrição não comprova erro nem aprendizado."] + [
@@ -475,17 +478,18 @@ class Publisher:
                                  ("atividades", "Atividades mencionadas"),
                                  ("ferramentas", "Ferramentas e recursos citados"),
                                  ("marcos", "Metodologia, decisões e contexto")):
-                body.extend(["", f"## {heading}", "",
-                             "> Extração assistida por IA; confirme na fonte original antes de tratar como fato."])
+                entries=[]
                 for entry in analysis.get(key, [])[:16]:
                     if not isinstance(entry, dict):
                         continue
                     parts = [entry.get(name, "") for name in ("nome", "papel", "informacao", "descricao", "contexto") if entry.get(name)]
                     if parts:
-                        body.append(f"- {_escape_md(' — '.join(parts))} " +
+                        entries.append(f"- {_escape_md(' — '.join(parts))} " +
                                     (f"(**{_escape_md(entry.get('tempo', ''))}**)" if entry.get('tempo') else "(sem horário confirmado)"))
-                if body[-1].startswith('> Extração'):
-                    body.append('*Não identificado nesta aula.*')
+                if entries:
+                    body.extend(["", f"## {heading}", "",
+                                 "> Extração assistida por IA; confirme na fonte original antes de tratar como fato.",
+                                 *entries])
         # Only the original lesson receives targeted follow-up evidence. New
         # lessons do not overwrite the former explanation or the source TXT.
         # A local match is a lead to review, never automatic proof of learning.
