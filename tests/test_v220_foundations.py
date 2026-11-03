@@ -295,6 +295,45 @@ class IncrementalAutomationFoundationsTests(unittest.TestCase):
 
 
 
+class LocalPreferencesRegressionTests(unittest.TestCase):
+    def test_favorite_survives_restart_and_failed_write_keeps_previous_state(self):
+        from unittest.mock import patch
+        from knowledge_bridge.bridge import Bridge
+        with tempfile.TemporaryDirectory(prefix="trama-v220-favorites-") as folder:
+            base=Path(folder)
+            vault=base/"Obsidian"
+            (vault/"01-Meu-Conhecimento").mkdir(parents=True)
+            (vault/"01-Meu-Conhecimento"/"POO.md").write_text(
+                "# Orientação a Objetos\\nConteúdo local.",encoding="utf-8")
+            data=base/"settings"
+            settings_file=data/"settings.json"
+            with patch("knowledge_bridge.bridge.DATA_HOME",data), \\
+                 patch("knowledge_bridge.bridge.SETTINGS_FILE",settings_file):
+                original=Bridge()
+                original.settings={"vault":str(vault),"favorites":[]}
+                chosen="01-Meu-Conhecimento/POO.md"
+                self.assertTrue(original.toggle_favorite(chosen)["ok"])
+                reopened=Bridge()
+                self.assertIn(chosen,reopened.snapshot()["favorites"])
+                self.assertTrue(reopened.copy_note_link("../wrong.md")["ok"] is False)
+                response=reopened.copy_note_link(chosen)
+                self.assertTrue(response["ok"] or response.get("text")=="[[01-Meu-Conhecimento/POO]]")
+                with patch("knowledge_bridge.bridge.os.replace",
+                           side_effect=OSError("simulated locked settings")):
+                    self.assertFalse(reopened.toggle_favorite(chosen)["ok"])
+                self.assertIn(chosen,reopened.snapshot()["favorites"])
+                after=Bridge()
+                self.assertIn(chosen,after.snapshot()["favorites"])
+
+    def test_importer_has_separate_github_field_and_native_clipboard_api(self):
+        from knowledge_bridge.bridge import load_local_ui
+        html=load_local_ui()
+        self.assertIn('id="auto-repos"',html)
+        self.assertIn("call('copy_note_link'",html)
+        self.assertIn("call('search_notes'",html)
+        self.assertIn('id="lib-search-status"',html)
+
+
 class FairCodeEvidenceTests(unittest.TestCase):
     def test_rare_angular_operator_is_not_hidden_by_early_generic_classes(self):
         from knowledge_bridge.code_intel import index_repository, MAX_EVIDENCE
