@@ -17,6 +17,7 @@ import unicodedata
 from urllib.parse import quote
 
 from .content import timed_lines
+from .code_intel import redact_sensitive
 
 MAX_SOURCE_BYTES = 2_000_000
 MAX_TRANSCRIPT_CONTEXT = 1550
@@ -179,6 +180,20 @@ def attach_transcript_evidence(vault: Path, sources: list[dict],
                 # evidence if the note is only a placeholder awaiting analysis.
                 old_excerpt = entry.get("excerpt", "")
                 limit = 1000 if "Pendente:" in old_excerpt or "Aguardando" in old_excerpt else 1250
+                # Transcribed instructions targeting the model must not
+                # become operating instructions. Commands taught in class stay.
+                safe_lines = []
+                for line in excerpt.splitlines():
+                    if re.search(
+                        r"(?i)(?:ignore\s+(?:todas?\s+as\s+|as\s+|previous\s+)?"
+                        r"(?:regras|instruções|instrucoes|instructions)|"
+                        r"envie\s+(?:as?\s+)?(?:senhas|tokens|chaves)|"
+                        r"system\s+prompt|developer\s+message)", line
+                    ):
+                        safe_lines.append("[INSTRUÇÃO NÃO CONFIÁVEL OMITIDA]")
+                    else:
+                        safe_lines.append(line)
+                excerpt = redact_sensitive("\n".join(safe_lines))
                 evidence = f"\n\nTRANSCRIÇÃO ORIGINAL (trechos literais, horários não conferidos no vídeo):\n{excerpt}"
                 entry["excerpt"] = old_excerpt[:limit] + evidence[:1800]
                 entry["transcript_times"] = stamps[:6]

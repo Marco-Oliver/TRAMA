@@ -458,7 +458,7 @@ class Publisher:
             body += ["", "## Termos para conferir (não são erros confirmados)", "",
                      "> Estes termos foram sinalizados pela IA. Nomes próprios, apelidos e siglas podem estar corretos na fala."] + [f"- {_escape_md(x)}" for x in analysis.get("duvidas",[])]
         else:
-            body += ["*Pendente: nenhum provedor de IA gratuito configurado. Não é um resumo automático.*", "",
+            body += ["*Resumo ainda não gerado por IA. Se você configurou uma API gratuita em Ajustes, clique em Gerar Resumos para processar as transcrições pendentes. Os trechos abaixo não são síntese.*", "",
                      "## Trechos da transcrição para consulta (não são síntese)"]
             body += [f"- **{t}** — {_escape_md(s)}" for t,s in times]
         if analysis:
