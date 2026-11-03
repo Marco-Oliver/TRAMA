@@ -16,7 +16,7 @@ class NativeBootTests(TestCase):
             'process','process_lesson','add_repo','toggle_favorite','reveal_note','open_note',
             'open_obsidian','open_attachment','open_video_link','window_action',
             'save_classroom_context','import_classroom_materials',
-            'ai_status','save_ai_key','remove_ai_key',
+            'ai_status','set_ai_processing_consent','save_ai_key','remove_ai_key',
             'test_ai','open_ai_test_report','search_transcript','teacher_ask','teacher_reset','check_updates','open_update_page','prepare_update','launch_update'
         })
         self.assertTrue(all(callable(v) for v in public.values()))
