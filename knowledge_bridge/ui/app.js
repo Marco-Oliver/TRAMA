@@ -227,7 +227,13 @@ function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.inne
  html+=detail('Ações da Nota','⚙','<button class="detail-action" id="open-note">↗ &nbsp; Abrir nota no Obsidian</button><button class="detail-action" id="copy-note">▤ &nbsp; Copiar link interno</button>');
  area.innerHTML=html;
  area.querySelector('#open-note').addEventListener('click',()=>call('open_note',n.id));
- area.querySelector('#copy-note').addEventListener('click',async()=>{try{await navigator.clipboard.writeText('[['+n.id.replace(/\.md$/,'')+']]');notify('Link copiado.');}catch(_){notify('Copie: [['+n.id.replace(/\.md$/,'')+']]');}});
+ area.querySelector('#copy-note').addEventListener('click',async()=>{
+   const response=await call('copy_note_link',n.id);
+   if(response?.ok){notify('Link copiado.');return;}
+   const text=response?.text||'[['+n.id.replace(/\.md$/,'')+']]';
+   try{await navigator.clipboard.writeText(text);notify('Link copiado.');}
+   catch(_){notify('Copie o link: '+text,8500);}
+ });
  area.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',async()=>{
   const action=button.dataset.action,i=Number(button.dataset.idx);
   if(['video','transcript','video_links'].includes(action)){
