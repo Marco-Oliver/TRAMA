@@ -617,6 +617,36 @@ class Bridge:
         webbrowser.open(address)
         return {'ok':True}
 
+    def search_transcript(self, stored, query):
+        """Local-only search in registered TXT transcripts; never call AI."""
+        if (not isinstance(stored,str) or len(stored)>450 or
+                not isinstance(query,str) or not 1<=len(query.strip())<=160):
+            return {'ok':False,'message':'Escolha uma transcrição e informe um termo de busca.'}
+        vault=self._vault()
+        if not vault:return {'ok':False,'message':'Conecte o cofre do Obsidian primeiro.'}
+        from .teacher_transcripts import _load_verified, _extract_timed_excerpt
+        from .teacher import _terms
+        db=vault/'.base-conhecimento'/'estado.sqlite3'
+        if db.is_symlink() or db.parent.is_symlink() or not db.is_file():
+            return {'ok':False,'message':'Catálogo de fontes indisponível.'}
+        try:
+            with closing(sqlite3.connect(f'file:{quote(db.as_posix(),safe="/")}?mode=ro',uri=True,timeout=2)) as con:
+                row=con.execute(
+                    "SELECT digest FROM sources WHERE kind='transcript' AND stored_path=? LIMIT 1",
+                    (stored,)
+                ).fetchone()
+        except (sqlite3.Error,OSError):
+            return {'ok':False,'message':'Não foi possível consultar as transcrições.'}
+        if not row:
+            return {'ok':False,'message':'Transcrição não cadastrada no cofre.'}
+        raw=_load_verified(vault,stored,row[0])
+        if raw is None:
+            return {'ok':False,'message':'Fonte alterada, maior que 2 MB ou insegura. Confira o original.'}
+        excerpt,times=_extract_timed_excerpt(raw,_terms(query),query)
+        return {'ok':True,'excerpt':excerpt,'times':times[:12],
+                'message':('Trechos encontrados na transcrição original.' if excerpt else
+                           'Nenhum trecho com esse termo foi encontrado na transcrição.')}
+
     def teacher_ask(self, question, mode="explicar", code="", confirmed=False):
         """One consented request, read-only vault retrieval and short session memory."""
         if confirmed is not True:
@@ -1083,6 +1113,9 @@ class PublicApi:
 
     def open_update_page(self, address):
         return self._bridge.open_update_page(address)
+
+    def search_transcript(self, stored, query):
+        return self._bridge.search_transcript(stored, query)
 
     def teacher_ask(self, question, mode="explicar", code="", confirmed=False):
         return self._bridge.teacher_ask(question, mode, code, confirmed)

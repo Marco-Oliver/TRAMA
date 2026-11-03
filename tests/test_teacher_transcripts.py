@@ -12,6 +12,7 @@ from pathlib import Path
 from knowledge_bridge.ai import AIResult
 from knowledge_bridge.bridge import Bridge
 from knowledge_bridge.store import Store
+from knowledge_bridge.bridge import Bridge
 from knowledge_bridge.teacher import select_sources, make_prompt, teacher_answer
 from knowledge_bridge.teacher_transcripts import _load_verified
 
@@ -119,6 +120,26 @@ class TranscriptGroundingTests(unittest.TestCase):
         self.assertIsNone(_load_verified(
             self.vault, "99-Anexos/Transcricoes-Originais/../../secrets.txt",
             self.digest))
+
+    def test_in_app_search_finds_offline_timestamped_excerpts(self):
+        bridge=Bridge()
+        bridge.settings={"vault":str(self.vault)}
+        result=bridge.search_transcript(
+            "99-Anexos/Transcricoes-Originais/recording-002.txt","dotnet")
+        self.assertTrue(result["ok"],result)
+        self.assertIn("ponto net", result["excerpt"])
+        self.assertTrue(result["times"])
+        self.assertNotIn(str(self.vault), str(result))
+        self.assertFalse(bridge.search_transcript("../secrets.txt","dotnet")["ok"])
+
+    def test_in_app_search_rejects_tampered_catalog_source(self):
+        bridge=Bridge()
+        bridge.settings={"vault":str(self.vault)}
+        self.stored.write_text("conteúdo alterado",encoding="utf-8")
+        result=bridge.search_transcript(
+            "99-Anexos/Transcricoes-Originais/recording-002.txt","SDK")
+        self.assertFalse(result["ok"])
+        self.assertNotIn("conteúdo alterado",str(result))
 
     def test_symlink_file_is_rejected(self):
         target = self.stored

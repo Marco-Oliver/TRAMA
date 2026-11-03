@@ -519,3 +519,8 @@ O texto da transcrição é dado e não pode dar ordens à IA: comandos de progr
 Na aba Aulas, o botão de análise de uma aula envia somente as transcrições daquela aula ao provedor configurado, com consentimento e indicação de cota. A análise local atualiza o catálogo e regenera apenas as notas derivadas respeitando a proteção de edições do usuário. Recomenda-se criar um backup antes de reanalisar.
 
 **Estado:** a v2.0.1 continua sendo o instalador público; estas melhorias não estão disponíveis nele até uma futura release validada, e os testes automáticos usam aulas fictícias. Não há acesso remoto ao cofre real do estudante.
+
+
+### 14.1 Pesquisa local no TXT
+
+A aba Transcrição oferece busca textual local por termo, apresentando trechos curtos com timestamps da fonte original cadastrada. Não consome API, nem altera o TXT. A busca por `dotnet` procura também palavras como `net`, úteis quando a transcrição registra “ponto net”. O arquivo fica acessível pelo botão **Abrir original**. Fontes fora do catálogo, links simbólicos, hashes alterados e TXT acima de 2 MB não são utilizados.

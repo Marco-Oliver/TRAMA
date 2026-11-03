@@ -79,7 +79,47 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
  if(app.tab==='Markdown'){const pre=document.createElement('pre');pre.className='note-markdown';pre.textContent=n.content;box.append(pre);return;}
 
  if(app.tab==='Vídeos'){const files=n.media?.video||[],urls=n.media?.video_links||[];const rows=[...urls.map((x,i)=>fileRow('↗',x.label,'Link externo · sem cópia do vídeo','Abrir vídeo','video_links',i)),...files.map((x,i)=>fileRow('▶',x.label,'Vídeo local de versão anterior','Abrir','video',i))];box.innerHTML=card('Gravações da aula',rows.length?rows.join(''):empty('Cadastre o título e o link do vídeo em Aulas → Contexto +. Não é necessário baixar o vídeo.'));wireFiles();return;}
- if(app.tab==='Transcrição'){const files=n.media?.transcript||[];box.innerHTML=card('Transcrições originais',files.length?files.map((x,i)=>fileRow('▤',x.label,'Transcrição salva no cofre','Abrir','transcript',i)).join(''):empty('Nenhuma transcrição cadastrada.'));wireFiles();return;}
+ if(app.tab==='Transcrição'){
+   const files=n.media?.transcript||[];
+   box.innerHTML=card('Transcrições originais',files.length?
+     files.map((x,i)=>fileRow('▤',x.label,'Transcrição salva no cofre','Abrir','transcript',i)).join(''):
+     empty('Nenhuma transcrição cadastrada.'))+
+     (files.length?card('Pesquisar transcrição (local, sem IA)',
+       '<p>Encontre palavras e horários da transcrição original sem consumir a API.</p>'+
+       '<div class="transcript-find"><input id="transcript-query" maxlength="160" placeholder="Ex.: terminal, SDK, dotnet" aria-label="Termo da transcrição"/>'+
+       '<button id="transcript-search" type="button">Pesquisar</button></div>'+
+       '<div id="transcript-search-results" role="status" aria-live="polite"></div>'):'');
+   wireFiles();
+   const button=box.querySelector('#transcript-search');
+   if(button){
+     const input=box.querySelector('#transcript-query');
+     const results=box.querySelector('#transcript-search-results');
+     const search=async()=>{
+       const term=input.value.trim();
+       if(!term){results.textContent='Digite um termo para pesquisar.';return;}
+       results.textContent='Pesquisando apenas nos arquivos locais…';button.disabled=true;
+       try{
+         const found=[];
+         for(const file of files.slice(0,4)){
+           const response=await call('search_transcript',file.stored,term);
+           if(response?.ok && response.excerpt)found.push({file,response});
+         }
+         results.replaceChildren();
+         if(!found.length){results.textContent='Nenhum trecho encontrado. Tente outra grafia ou expressão.';return;}
+         for(const {file,response} of found){
+           const label=document.createElement('strong');label.textContent=file.label;results.append(label);
+           const excerpt=document.createElement('pre');excerpt.className='transcript-find-excerpt';
+           excerpt.textContent=response.excerpt;results.append(excerpt);
+           const open=document.createElement('button');open.type='button';open.textContent='Abrir original';
+           open.addEventListener('click',()=>call('open_attachment',file.stored));results.append(open);
+         }
+       }finally{button.disabled=false;}
+     };
+     button.addEventListener('click',search);
+     input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();search();}});
+   }
+   return;
+ }
  if(app.tab==='Conferência'){
    box.innerHTML=card('Conferência local das fontes', '<p>Verificando transcrições, horários e referências no Obsidian…</p>');
    call('audit_note',n.id).then(result=>{
