@@ -255,7 +255,7 @@ class Bridge:
             'updated':datetime.fromtimestamp(selected.path.stat().st_mtime).strftime('%d/%m/%Y'),'tags':self._tags(selected),
             'content':selected.content,'summary':summary,'concepts':concepts,
             'examples':examples,'media':self._media(idx,selected),
-            'related':[{'id':n.relative,'title':n.title,'section':n.section,'tags':self._tags(n)} for n in related],
+            'related':[{'id':n.relative,'title':n.title,'section':n.section,'kind':n.metadata.get('tipo',''), 'tags':self._tags(n)} for n in related],
         }
 
     def search_notes(self, query, limit=80):
