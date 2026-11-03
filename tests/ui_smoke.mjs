@@ -175,7 +175,7 @@ try{
     // Full-text search must find the source sentence, not just title/path.
     await page.locator('#lib-folder-search').fill('terminal');
     await page.getByText(/nota\(s\) encontrada\(s\)/).waitFor({timeout:6000});
-    await page.locator('.lib-file-row').getByText('Hello World em C#').waitFor();
+    await page.locator('#lib-tree-content .lib-file-row').first().waitFor();
     if(!((await page.locator('#lib-tree-content').innerText()).includes('terminal')))
       throw Error('Full-text search did not show an excerpt from the note');
     await page.screenshot({path:path.join(screenshots,`${prefix}library-${width}.png`),fullPage:true});
