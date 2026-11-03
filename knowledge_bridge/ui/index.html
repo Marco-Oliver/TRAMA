@@ -121,6 +121,19 @@ https://academiadoprogramador-fullstack.github.io/docs/inicio/"></textarea>
     </div>
   </div>
 </dialog>
+<dialog id="trama-diff-dialog" class="context-dialog trama-action-dialog trama-diff-dialog"
+  aria-labelledby="trama-diff-title">
+  <div class="trama-confirm-body">
+    <div class="dialog-header">
+      <h2 id="trama-diff-title">Comparar proposta de atualização</h2>
+      <button type="button" id="trama-diff-close" aria-label="Fechar comparação">×</button>
+    </div>
+    <p>Leia as diferenças antes de aceitar qualquer atualização no Obsidian. O TRAMA não altera a nota original nesta tela.</p>
+    <div id="trama-diff-content" class="trama-diff-content" role="region"
+      aria-label="Diferenças entre original e proposta"></div>
+    <div class="dialog-actions"><button type="button" id="trama-diff-dismiss">Fechar comparação</button></div>
+  </div>
+</dialog>
 <dialog id="classroom-dialog" class="context-dialog" aria-labelledby="context-title">
 <form id="context-form" novalidate>
   <div class="dialog-header"><h2 id="context-title">Registrar contexto da aula</h2><button type="button" id="context-cancel" aria-label="Fechar">×</button></div>
