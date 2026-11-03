@@ -214,6 +214,8 @@ try{
     await page.getByText('Autorização ativa nos Ajustes.').waitFor();
     await page.locator('#ai-processing-consent').uncheck();
     await page.getByText('Autorização revogada.').waitFor();
+    await page.locator('#check-storage').click();
+    await page.getByText(/Total: 10.0 MB/).waitFor();
     await page.getByRole('button',{name:'Verificar atualizações'}).click();
     await page.getByText('Você já está na versão mais recente.').waitFor();
     await assertNoUiError('settings and updates');
