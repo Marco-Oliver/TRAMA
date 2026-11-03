@@ -947,6 +947,77 @@ class Bridge:
         self._save()
         return {'ok':True,'favorites':self.settings['favorites']}
 
+    def copy_note_link(self, note_id):
+        """Copy an indexed Obsidian wiki link using the native Windows clipboard.
+
+        WebView clipboard APIs often fail when the application uses bundled
+        offline HTML. No console, shell, subprocess or external network.
+        """
+        if not isinstance(note_id,str) or len(note_id)>500:
+            return {'ok':False,'message':'Selecione uma nota válida.'}
+        idx=self._index()
+        note=idx.by_relative.get(note_id.casefold()) if idx else None
+        if note is None or not note.relative.endswith('.md') or ']]' in note.relative:
+            return {'ok':False,'message':'A nota não pertence ao cofre selecionado.'}
+        wikilink='[['+note.relative[:-3]+']]'
+        if sys.platform!='win32':
+            return {'ok':False,'message':'A cópia nativa está disponível no Windows.',
+                    'text':wikilink}
+        import ctypes
+        import time
+        from ctypes import wintypes
+        try:
+            user32=ctypes.WinDLL('user32',use_last_error=True)
+            kernel32=ctypes.WinDLL('kernel32',use_last_error=True)
+            user32.OpenClipboard.argtypes=[wintypes.HWND]
+            user32.OpenClipboard.restype=wintypes.BOOL
+            user32.EmptyClipboard.argtypes=[]
+            user32.EmptyClipboard.restype=wintypes.BOOL
+            user32.SetClipboardData.argtypes=[wintypes.UINT,wintypes.HANDLE]
+            user32.SetClipboardData.restype=wintypes.HANDLE
+            kernel32.GlobalAlloc.argtypes=[wintypes.UINT,ctypes.c_size_t]
+            kernel32.GlobalAlloc.restype=wintypes.HANDLE
+            kernel32.GlobalLock.argtypes=[wintypes.HANDLE]
+            kernel32.GlobalLock.restype=ctypes.c_void_p
+            kernel32.GlobalUnlock.argtypes=[wintypes.HANDLE]
+            kernel32.GlobalUnlock.restype=wintypes.BOOL
+            kernel32.GlobalFree.argtypes=[wintypes.HANDLE]
+            kernel32.GlobalFree.restype=wintypes.HANDLE
+            opened=False
+            for _ in range(4):
+                if user32.OpenClipboard(None):
+                    opened=True
+                    break
+                time.sleep(0.035)
+            if not opened:
+                return {'ok':False,'message':'A área de transferência está ocupada.',
+                        'text':wikilink}
+            # On success Windows owns the HGLOBAL, so never free it manually.
+            handle=None
+            try:
+                buffer=ctypes.create_unicode_buffer(wikilink)
+                handle=kernel32.GlobalAlloc(0x0002,ctypes.sizeof(buffer))
+                if not handle:
+                    raise OSError('GlobalAlloc failed')
+                target=kernel32.GlobalLock(handle)
+                if not target:
+                    raise OSError('GlobalLock failed')
+                ctypes.memmove(target,ctypes.addressof(buffer),ctypes.sizeof(buffer))
+                kernel32.GlobalUnlock(handle)
+                if not user32.EmptyClipboard():
+                    raise OSError('EmptyClipboard failed')
+                if not user32.SetClipboardData(13,handle):
+                    raise OSError('SetClipboardData failed')
+                handle=None
+                return {'ok':True,'message':'Link interno copiado.'}
+            finally:
+                if handle:
+                    kernel32.GlobalFree(handle)
+                user32.CloseClipboard()
+        except (OSError,AttributeError,ValueError):
+            return {'ok':False,'message':'Não foi possível copiar automaticamente.',
+                    'text':wikilink}
+
     def reveal_note(self,note_id):
         idx=self._index()
         if not idx or not isinstance(note_id,str):return {'ok':False}
@@ -1209,6 +1280,9 @@ class PublicApi:
 
     def reveal_note(self, note_id):
         return self._bridge.reveal_note(note_id)
+
+    def copy_note_link(self, note_id):
+        return self._bridge.copy_note_link(note_id)
 
     def open_note(self, note_id):
         return self._bridge.open_note(note_id)
