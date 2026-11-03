@@ -1227,10 +1227,12 @@ class Bridge:
                 ).fetchone()
             if not found:
                 return {'ok': False, 'message': 'Este commit não está indexado no TRAMA.'}
-            evidence = json.loads(found[0]).get("evidence", [])
-            if not isinstance(evidence,list) or not any(
+            payload=json.loads(found[0])
+            evidence=payload.get("evidence",[])
+            symbols=payload.get("symbols",[])
+            if not isinstance(evidence,list) or not isinstance(symbols,list) or not any(
                     isinstance(e,dict) and e.get('path') == path and e.get('line') == lineno
-                    for e in evidence[:500]):
+                    for e in [*evidence[:160],*symbols[:240]]):
                 return {'ok': False, 'message': 'Essa linha não foi verificada no índice de código.'}
         except (OSError, ValueError, TypeError, sqlite3.Error):
             return {'ok': False, 'message': 'Não foi possível conferir o índice GitHub.'}
