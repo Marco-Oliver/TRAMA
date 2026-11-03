@@ -97,7 +97,16 @@ try{
     await page.locator('#note-tabs .tab').getByText('Resumo',{exact:true}).click();
     // Reanalysis must never reach the bridge without the user's confirmation.
     const refresh=page.locator('#refresh-this-lesson');
-    await refresh.waitFor();
+    if(!(await refresh.count())){
+      const trace=await page.evaluate(()=>({
+        view:app.view,tab:app.tab,noteKind:app.note?.kind,
+        lesson:app.note?.lesson,selected:app.selected,
+        buttons:[...document.querySelectorAll('#note-content button')].map(b=>b.textContent.trim()).slice(0,8),
+        body:document.querySelector('#note-content')?.textContent.slice(0,350)
+      }));
+      throw Error('Scoped reanalysis button was not rendered: '+JSON.stringify(trace));
+    }
+    await refresh.waitFor({timeout:3000});
     page.once('dialog',dialog=>dialog.dismiss());
     await refresh.click();
     if(await page.evaluate(()=>window.__tramaLessonRefreshCalls||0))
