@@ -247,7 +247,7 @@ class Publisher:
                 # readable overview excerpt and explicitly link the full note.
                 preview=text if len(text)<=4500 else text[:4500].rsplit(' ',1)[0]
                 if len(preview)<len(text):
-                    preview += "\\n\\n*Resumo abreviado nesta visão geral; a explicação completa está na nota vinculada acima.*"
+                    preview += "\n\n*Resumo abreviado nesta visão geral; a explicação completa está na nota vinculada acima.*"
                 rows.extend(['', f"### [[{Path(note).stem}|{label}]]", '', preview])
         else:
             rows.append('**Pendente:** a IA ainda não gerou o resumo desta aula. Os materiais abaixo permanecem disponíveis.')
