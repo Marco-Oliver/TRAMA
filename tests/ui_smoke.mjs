@@ -34,7 +34,12 @@ const makeBridge=({notes})=>{
  // Playwright serializes this function into the page. Never reference
  // Node-side closures from the injected fake bridge.
  let savedConsent=false;
- const baseNote=n=>({...n,media:{video:[],video_links:[],transcript:n.lesson==='Aula-001'?[{label:'Aula 001.txt',stored:'99-Anexos/Transcricoes-Originais/aula001.txt'}]:[],materials:[]},related:[]});
+ const baseNote=n=>({...n,media:{video:[],video_links:[],transcript:n.lesson==='Aula-001'?[{label:'Aula 001.txt',stored:'99-Anexos/Transcricoes-Originais/aula001.txt'}]:[],materials:[]},
+   related:n.lesson==='Aula-001'?[
+     {id:'01-Meu-Conhecimento/Conceitos/console.md',title:'Console',kind:'conceito',section:'01-Meu-Conhecimento'},
+     {id:'01-Meu-Conhecimento/Pessoas/alec.md',title:'Alec',kind:'pessoa',section:'01-Meu-Conhecimento'},
+     {id:'02-Minhas-Aulas/Aula-001/Aula-001-V01.md',title:'Gravação V01',kind:'aula',section:'02-Minhas-Aulas'},
+   ]:[]});
  window.__TRAMA_API__=({
   snapshot: async()=>({connected:true,vault:'C:\\TRAMA-Teste\\Cofre',notes,stats:{notes:3,videos:2,transcriptions:2,materials:0,repositories:1},favorites:[notes[0].id]}),
   note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n.lesson==='Aula-001'?{...n,kind:'visao_geral',state:'fontes_organizadas',content:n.content+'\n\n## Em poucas palavras\n\n**Pendente:** a IA ainda não gerou o resumo desta aula.',summary:'**Pendente:** a IA ainda não gerou o resumo desta aula.'}:n):{error:'Nota não encontrada'};},
@@ -129,6 +134,16 @@ try{
     if((await page.locator('#note-content').innerText()).includes('Suas notas aparecerão'))
       throw Error('Lesson notes were not loaded into the interface');
     await assertNoUiError('lessons');
+    const sidebarCards=page.locator('#details-panel .detail-card');
+    const technical=sidebarCards.filter({has:page.locator('h3', {hasText:'Conhecimentos técnicos'})});
+    const people=sidebarCards.filter({has:page.locator('h3', {hasText:'Pessoas citadas'})});
+    const recordings=sidebarCards.filter({has:page.locator('h3', {hasText:'Gravações e notas desta aula'})});
+    await technical.getByText('Console').waitFor();
+    await people.getByText('Alec').waitFor();
+    await recordings.getByText('Gravação V01').waitFor();
+    if((await technical.innerText()).includes('Alec')||
+       (await people.innerText()).includes('Console'))
+      throw Error('People mixed with technical knowledge in the right panel');
     // The lessons workspace opens in 'Nota completa'; the action belongs to 'Resumo'.
     await page.locator('#note-tabs .tab').getByText('Resumo',{exact:true}).click();
     // Reanalysis must never reach the bridge without the user's confirmation.
