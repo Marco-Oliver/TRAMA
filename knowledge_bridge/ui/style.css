@@ -233,3 +233,15 @@ button:not(:disabled):hover{filter:brightness(.98)}
   padding:0;white-space:normal;overflow-wrap:anywhere;}
 .lib-md p,.lib-md li{overflow-wrap:anywhere;}
 .lib-md pre,.teacher-markdown .lib-md pre{max-width:100%;overflow-x:auto;}
+
+/* 2.2: protected proposals are revisions to review, not duplicate projects. */
+.lib-file-row.lib-proposal{color:#885e24;background:#fffcf3;}
+.lib-file-row.lib-proposal:hover{background:#fff3d9;}
+.trama-diff-dialog{width:min(900px,95vw);max-width:900px;}
+.trama-diff-content{border:1px solid #d0dad1;background:#f7f8f6;border-radius:6px;
+ padding:8px 0;max-height:58vh;overflow:auto;
+ font:12px/1.5 'Cascadia Mono',Consolas,monospace;}
+.trama-diff-content>div{white-space:pre-wrap;overflow-wrap:anywhere;padding:3px 12px;}
+.trama-diff-added{background:#e2f1e5;color:#195d36;}
+.trama-diff-removed{background:#fbebdf;color:#874b2b;}
+.trama-diff-line{color:#4b594c;}
