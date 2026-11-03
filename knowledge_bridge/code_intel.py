@@ -245,7 +245,9 @@ def match_lesson_to_repository(transcript: str, analysis: dict | None, repo: dic
 
 
 def find_code_line(repo: dict, path: str, line: int) -> dict | None:
-    for e in [*repo.get('evidence',[]),*repo.get('symbols',[])]:
+    # A declared name is more specific than the generic 'class' signal
+    # when both refer to the same source line.
+    for e in [*repo.get('symbols',[]),*repo.get('evidence',[])]:
         if e.get('path') == path and e.get('line') == line:
             return e
     return None
