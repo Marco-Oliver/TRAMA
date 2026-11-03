@@ -86,3 +86,38 @@ Todas as mudanças de código ficam em `feat/v2.2.0-automation-foundations`
 e em Pull Request **draft**. A `main` continua estável.
 Não cadastrar dados do usuário nem chaves no GitHub; usar fixtures artificiais
 no CI. Nenhum instalador deve ser publicado automaticamente a partir desta branch.
+
+
+## Revisão técnica adicional: rastreabilidade sem chamadas de IA (03/11/2026)
+
+**Ajustes no código de desenvolvimento (não são uma release):**
+
+- As notas de SDK, LTS e outros conceitos diferenciam **explicação gerada por IA**
+  de **menção literal encontrada na transcrição**. Uma correspondência textual
+  jamais confirma aprendizagem pessoal ou que a explicação da IA esteja correta.
+- Quando a análise não informou um horário, os trechos são localizados no TXT
+  preservado, com horário e citação de origem; não se inventam tempos do vídeo.
+- Transcrições com **horários repetidos** recebem âncoras distintas por
+  ocorrência, para que o clique abra a fala correspondente, não a primeira fala
+  que por acaso tem a mesma marca de tempo.
+- Em segmentos grandes, o trecho exibido é recortado em torno da menção,
+  indicando omissões com reticências; o texto completo permanece no anexo.
+- Se a nota de gravação foi editada manualmente e sua nova estrutura só pode ser
+  publicada como \`.PROPOSTA.md\`, o link temporal aponta explicitamente para
+  essa proposta. Sem âncora publicada, o horário é exibido **sem link inventado**.
+- O painel lateral separa conceitos, pessoas e outros materiais, e o resumo
+  de uma nota de conceito exibe a própria fonte, em vez das seções genéricas
+  de resumo de aula.
+
+**Testes de regressão:** transcrição sintética com horário repetido, trecho
+literal após parágrafo longo, ausência de horário, transcrição original
+imutável, proteção de edições e proposta de atualização, marcador HTML
+inofensivo e navegação de âncoras na interface Chromium. Sem Gemini nem vault
+privado no GitHub. Relatório e logs ficam no workflow vinculado à PR #5.
+
+**Etapas que dependem de uso real e não podem ser declaradas concluídas pela CI:**
+avaliar a didática com trechos autênticos do curso e a API real (mediante
+consentimento), conferir a restauração do backup que falhou no equipamento do
+usuário usando uma cópia e inspecionar visualmente o WebView2 Windows.
+Isso bloqueia o merge/release estável, mas não impede criar uma Preview isolada
+para o próximo teste manual.
