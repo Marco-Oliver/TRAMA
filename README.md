@@ -178,3 +178,6 @@ A versão publicada 2.0.1 reforça a privacidade da IA Professor, impede destino
 <sub>Feito para estudar melhor, mantendo seu material no Obsidian e seu controle sobre dados e atualizações.</sub>
 
 </div>
+
+
+> **Em desenvolvimento (ainda não incluído na v2.0.1):** a [PR #4](https://github.com/Marco-Oliver/TRAMA/pull/4) melhora a busca da IA Professor em transcrições originais com timestamps, a distinção de nomes e dúvidas técnicas e a reanálise individual de aulas. Depois dos testes, as melhorias poderão entrar numa próxima versão.

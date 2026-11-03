@@ -508,3 +508,14 @@ XML hostis, com teste que garante que documentos normais continuam legíveis.
 ## 13. TRAMA v2.0.1 — versão publicada
 
 A [v2.0.1](https://github.com/Marco-Oliver/TRAMA/releases/tag/v2.0.1) foi gerada pelo [GitHub Actions oficial](https://github.com/Marco-Oliver/TRAMA/actions/runs/41568287697). O pipeline validou 167 testes em Windows e 167 em Linux, 10 cenários adversariais em cada ambiente, testes visuais do navegador e o instalador Windows. A atualização **v2.0.0 → v2.0.1** foi executada com um cofre fictício: notas, SQLite, preferências e arquivo sintético de chaves permaneceram intactos. O instalador público permanece sem assinatura digital; devem-se conferir a origem oficial e o SHA-256. A fidelidade das explicações com IA real e a integridade do cofre pessoal exigem avaliação do usuário no próprio computador.
+
+
+## 14. Melhoria do estudo com as transcrições — em desenvolvimento (não publicada)
+
+A [PR #4](https://github.com/Marco-Oliver/TRAMA/pull/4) adiciona uma busca **local e somente leitura** de transcrições TXT registradas no catálogo do cofre. O Professor passa a incluir trechos literais com timestamps, junto às notas Markdown relevantes, sempre após o consentimento da pergunta. Referências continuam apontando para as notas verdadeiras; o estudante pode abrir o TXT associado. O modelo **não recebe arquivos inteiros, caminhos do PC ou arquivos não cadastrados**. As cópias são verificadas por SHA-256, extensão/pasta permitida e ausência de links simbólicos; arquivos superiores a 2 MB são deixados de fora da busca do Professor. Esses limites não substituem a revisão do próprio usuário antes do envio à API.
+
+O texto da transcrição é dado e não pode dar ordens à IA: comandos de programação efetivamente ensinados devem ser preservados, ao contrário de instruções maliciosas ao modelo. Um comando não ouvido com clareza não pode ser inventado. Para aulas ainda sem resumo, o modo sem IA mostra janelas cronológicas mais completas, **não uma síntese automática**. Novas análises separam dúvidas técnicas de nomes/apelidos para conferir; análises antigas permanecem inalteradas até o usuário pedir reanálise.
+
+Na aba Aulas, o botão de análise de uma aula envia somente as transcrições daquela aula ao provedor configurado, com consentimento e indicação de cota. A análise local atualiza o catálogo e regenera apenas as notas derivadas respeitando a proteção de edições do usuário. Recomenda-se criar um backup antes de reanalisar.
+
+**Estado:** a v2.0.1 continua sendo o instalador público; estas melhorias não estão disponíveis nele até uma futura release validada, e os testes automáticos usam aulas fictícias. Não há acesso remoto ao cofre real do estudante.

@@ -13,7 +13,7 @@ from collections import defaultdict
 from pathlib import Path
 from urllib.parse import quote
 
-from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines
+from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines, study_windows
 from .store import Store
 from .memory_atlas import make_atlas, render_atlas, lesson_order, norm
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections
@@ -466,7 +466,7 @@ class Publisher:
         else:
             body += ["*Pendente: resumo ainda não gerado por IA. Se você configurou uma API gratuita em Ajustes, clique em Gerar Resumos para processar as transcrições pendentes. Os trechos abaixo não são síntese.*", "",
                      "## Trechos da transcrição para consulta (não são síntese)"]
-            body += [f"- **{t}** — {_escape_md(s)}" for t,s in times]
+            body += [f"- **{t}** — {_escape_md(s)}" for t,s in study_windows(text)]
         if analysis:
             body += ["", "## Tipo e contexto do encontro", "",
                      f"- Classificação sugerida pela IA: **{_escape_md(analysis.get('tipo_aula', 'indefinida'))}**.",
