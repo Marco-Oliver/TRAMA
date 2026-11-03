@@ -9,7 +9,7 @@ import re
 from difflib import SequenceMatcher
 import shutil
 import tempfile
-from collections import defaultdict
+from collections import defaultdict, Counter
 from pathlib import Path
 from urllib.parse import quote
 
@@ -42,32 +42,61 @@ def _term_in_source(term: str, source: str) -> bool:
 
 
 
-def _literal_timed_evidence(label: str, source_rows: list[tuple[str, str]],
-                            preferred: str = "", limit: int = 2) -> list[tuple[str, str, str]]:
-    """Only cite timestamps when the same original TXT segment contains the literal term.
+def _indexed_source_rows(source_rows: list[tuple[str, str]]):
+    """Assign a stable, noncolliding anchor to every timed transcript segment.
 
-    Expanded IA labels may match a spoken abbreviation (LTS, SDK), but this
-    alone does not validate the explanation, exercise or student mastery.
+    Auto-transcriptions can repeat a timestamp. Only such duplicates gain an
+    occurrence suffix; unique old links stay compatible with older notes.
+    """
+    totals = Counter(stamp for stamp, _ in source_rows if stamp != "sem horário")
+    encountered = defaultdict(int)
+    for stamp, sentence in source_rows:
+        if stamp == "sem horário":
+            continue
+        encountered[stamp] += 1
+        anchor = _time_id(stamp)
+        if totals[stamp] > 1:
+            anchor += f"-{encountered[stamp]}"
+        yield stamp, sentence, anchor
+
+
+def _literal_timed_evidence(label: str, source_rows: list[tuple[str, str]],
+                            preferred: str = "", limit: int = 2) -> list[tuple[str, str, str, str]]:
+    """Match each technical name to a specific literal segment of the TXT.
+
+    A timestamp match confirms only a literal mention, not that the professor
+    explained the idea or that the student learned it.
     """
     matches = []
-    seen = set()
-    for stamp, sentence in source_rows:
-        if stamp == "sem horário" or not sentence.strip():
+    for stamp, sentence, anchor in _indexed_source_rows(source_rows):
+        if not sentence.strip():
             continue
         term = literal_technical_mention(label, sentence)
-        if term and stamp not in seen:
-            matches.append((stamp, sentence, term))
-            seen.add(stamp)
+        if term:
+            matches.append((stamp, sentence, term, anchor))
     if preferred:
         matches.sort(key=lambda row: row[0] != preferred)
     return matches[:max(0, limit)]
 
 
-def _source_quote(value: object, limit: int = 260) -> str:
-    """Safely display transcript excerpts as inert Markdown blockquotes."""
-    return (_escape_md(str(value)[:limit]).replace("&", "&amp;")
+def _source_quote(value: object, limit: int = 260, term: str = "") -> str:
+    """Inert Markdown excerpt centered around a literally found term.
+
+    Omitted material is marked with ellipses, never silently substituted. The
+    unmodified entire TXT remains available in the Obsidian attachments.
+    """
+    raw = str(value).replace("\r", " ").replace("\n", " ")
+    start, end = 0, min(limit, len(raw))
+    if term and len(raw) > limit:
+        found = re.search(re.escape(term), raw, flags=re.I)
+        if found:
+            start = max(0, min(found.start() - limit // 3, len(raw) - limit))
+            end = min(len(raw), start + limit)
+    excerpt = ("…" if start else "") + raw[start:end] + ("…" if end < len(raw) else "")
+    return (_escape_md(excerpt).replace("&", "&amp;")
             .replace("<", "&lt;").replace(">", "&gt;")
             .replace("[[", "［［").replace("]]", "］］"))
+
 
 def _code_ref(repo, path: str, line: int) -> str:
     """Link to the immutable GitHub revision; local repos retain path:line."""
@@ -653,18 +682,23 @@ class Publisher:
         for concept in concepts:
             if isinstance(concept, dict):
                 referenced_times.update(
-                    stamp for stamp, _sentence, _term in
+                    stamp for stamp, _sentence, _term, _anchor in
                     _literal_timed_evidence(str(concept.get("nome", "")), source_rows)
                 )
-        indexed = {}
-        for stamp, sentence in source_rows:
-            if stamp in referenced_times and stamp != "sem horário" and stamp not in indexed:
-                indexed[stamp] = sentence
+        indexed = [(stamp, sentence, anchor)
+                   for stamp, sentence, anchor in _indexed_source_rows(source_rows)
+                   if stamp in referenced_times and sentence.strip()]
         if indexed:
             body += ["", "## Trechos da transcrição com horários verificáveis", "",
-                     "> Trechos selecionados da transcrição; os horários não foram confirmados no vídeo."]
-            for stamp, sentence in indexed.items():
-                body.append(f"- **{stamp}** — {_escape_md(sentence[:420])} ^{_time_id(stamp)}")
+                     "> Trechos extraídos do TXT, sem comprovação do áudio do vídeo. "
+                     "Em horários repetidos, o sufixo da âncora identifica cada fala."]
+            for stamp, sentence, anchor in indexed:
+                # Keep a contextual mention for the same concept cited by a
+                # concept page, including very long timestamped paragraphs.
+                matching = next((literal_technical_mention(str(c.get("nome", "")), sentence)
+                                 for c in concepts if isinstance(c, dict)
+                                 and literal_technical_mention(str(c.get("nome", "")), sentence)), "")
+                body.append(f"- **{stamp}** — {_source_quote(sentence, 420, matching)} ^{anchor}")
         body += ["", "## Fontes originais", f"- Transcrição: [[{Path(src['stored_path']).stem}]]",
                  f"- Arquivo original: `{_escape_md(src['label'])}`", "", "## Conhecimentos relacionados",
                  ", ".join(concept_links) if concept_links else "*Serão vinculados após análise com IA.*",
@@ -934,14 +968,14 @@ class Publisher:
                              (explanation or "*Não fornecida pela análise.*"),
                              f"- **Fonte:** {where}."])
                 if matches:
-                    for stamp, sentence, form in matches:
+                    for stamp, sentence, form, anchor in matches:
                         target = (f"{Path(note).with_suffix('').as_posix()}"
-                                  f"#^{_time_id(stamp)}")
+                                  f"#^{anchor}")
                         body.append(
                             f"- **Menção literal na transcrição:** "
                             f"[[{target}|{stamp}]] — forma observada: "
                             f"{chr(96)}{_escape_md(form)}{chr(96)}.")
-                        body.append(f"  > {_source_quote(sentence)}")
+                        body.append(f"  > {_source_quote(sentence, term=form)}")
                     if not recorded or recorded not in {r[0] for r in matches}:
                         body.append(
                             "- **Horário da análise da IA:** ausente ou não associado "
