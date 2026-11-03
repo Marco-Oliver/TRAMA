@@ -234,7 +234,7 @@ function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.inne
    const m=n.media[action][i];if(m)await call(action==='video_links'?'open_video_link':'open_attachment',action==='video_links'?m.url:m.stored);return;}
   const related=n.related.filter(x=>x.section===action)[i];if(related){libraryState.search='';app.selected=related.id;app.view='library';await render();}
  }));}
-async function renderOverlay(){$('library-workspace').classList.add('hidden');const el=$('overlay-screen');el.classList.remove('hidden');$('list-panel').classList.add('hidden');$('note-panel').classList.add('hidden');$('details-panel').classList.add('hidden');
+async function renderOverlay(){$('library-workspace').classList.add('hidden');const el=$('overlay-screen');el.classList.remove('hidden');el.classList.toggle('teacher-overlay',app.view==='teacher');$('list-panel').classList.add('hidden');$('note-panel').classList.add('hidden');$('details-panel').classList.add('hidden');
  if(app.view==='teacher'){renderTeacher(el);return;}
  if(app.view==='settings'){
   el.innerHTML=`<div class="wide-header"><h2>Ajustes</h2><p>O cofre do Obsidian é a fonte principal. O TRAMA não cria outra biblioteca.</p></div>
