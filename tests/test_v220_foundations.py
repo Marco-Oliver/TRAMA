@@ -458,6 +458,65 @@ class StorageMetricsTests(unittest.TestCase):
             self.assertFalse(report["partial"])
 
 
+class UnsupportedConceptClaimsTests(unittest.TestCase):
+    def test_ai_cannot_invent_concepts_or_timestamps_from_unseen_content(self):
+        from knowledge_bridge.pipeline import Application
+        transcript=(
+            "[0:01] Hoje vamos citar o HttpClient do Angular.\\n"
+            "[0:02] A transcrição capturou a expressão exaust map, mas "
+            "não temos certeza da grafia.\\n"
+        )
+        response={
+            "resumo":"O encontro mencionou HttpClient e uma palavra incerta.",
+            "tipo_aula":"tecnica",
+            "conceitos":[
+                {"nome":"HttpClient","explicacao":"Aparece no texto","tempo":"0:01"},
+                {"nome":"GraphQL","explicacao":"A IA inventou este termo","tempo":"99:99"},
+                {"nome":"exhaustMap","explicacao":"Pode ser outro operador","tempo":"0:02"},
+            ],
+            "duvidas":[],
+        }
+        clean=Application._clean_result(response,transcript)
+        self.assertEqual([c["nome"] for c in clean["conceitos"]],["HttpClient"])
+        self.assertEqual(clean["conceitos"][0]["tempo"],"0:01")
+        self.assertEqual(
+            {c["nome"] for c in clean["conceitos_a_conferir"]},
+            {"GraphQL","exhaustMap"}
+        )
+        self.assertNotIn("99:99",str(clean))
+
+    def test_unverified_model_label_stays_out_of_concept_pages(self):
+        from knowledge_bridge.pipeline import Application
+        with tempfile.TemporaryDirectory(prefix="trama-v220-unsupported-") as folder:
+            root=Path(folder)
+            app=Application(root/"Obsidian",root/"no-key.env",log=lambda *_:None)
+            try:
+                file=root/"Aula-070-V01.txt"
+                file.write_text("[0:01] O exemplo da aula menciona HttpClient.",
+                                encoding="utf-8")
+                app.add_file(file)
+                src=app.store.sources("transcript")[0]
+                data=Application._clean_result({
+                    "resumo":"O exemplo apresentou HttpClient.","tipo_aula":"tecnica",
+                    "conceitos":[{"nome":"HttpClient","explicacao":"Presente."},
+                                {"nome":"GraphQL","explicacao":"Inventado."}]
+                },file.read_text(encoding="utf-8"))
+                app.store.save_analysis(src["id"],src["digest"],
+                                        "fixture","offline",data)
+                app.publisher.rebuild()
+                lesson_folder=app.store.vault/"02-Minhas-Aulas/Aula-070"
+                lesson=next(n for n in lesson_folder.glob("*.md")
+                            if n.name!="00-Visao-geral.md")
+                text=lesson.read_text(encoding="utf-8")
+                self.assertIn("Termos sugeridos pela IA para conferir",text)
+                self.assertIn("GraphQL",text)
+                self.assertNotIn("**GraphQL**",text)
+                concept_files=list((app.store.vault/"01-Meu-Conhecimento").rglob("*.md"))
+                self.assertFalse(any("GraphQL" in p.name for p in concept_files))
+            finally:
+                app.close()
+
+
 class SummaryQualityRegressionTests(unittest.TestCase):
     def test_short_summary_is_flagged_for_long_transcript_without_another_api_call(self):
         from knowledge_bridge.pipeline import Application
