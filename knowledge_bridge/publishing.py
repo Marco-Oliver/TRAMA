@@ -574,7 +574,6 @@ class Publisher:
             body.append("*Link da gravação ainda não informado. Cadastre em Aulas → Contexto +.*")
         body += ["", "> Os códigos e nomes técnicos devem ser conferidos com o repositório antes de serem considerados verificados."]
         body += ["", "## Relações com códigos e projetos", ""]
-        import json
         project_matches = []
         for repo in self.db.repositories():
             payload = json.loads(repo["payload"])
