@@ -194,6 +194,19 @@ try{
     await page.locator('#teacher-consent').check();
     await page.locator('#teacher-submit').click();
     await page.getByText('O código precisa de aspas corretas.').waitFor();
+    const geometry=await page.evaluate(()=>{
+      const rect=selector=>document.querySelector(selector)?.getBoundingClientRect();
+      const f=rect('#teacher-form'),q=rect('#teacher-question'),send=rect('#teacher-submit');
+      const t=document.querySelector('#toast');
+      const toast=t&&!t.classList.contains('hidden')?rect('#toast'):null;
+      const intersects=(x,y)=>x&&y&&x.left<y.right&&x.right>y.left&&x.top<y.bottom&&x.bottom>y.top;
+      return {form:f&&{top:f.top,bottom:f.bottom},question:q&&{top:q.top,bottom:q.bottom},
+              submitCovered:intersects(send,toast)};
+    });
+    if(geometry.question.top<geometry.form.top-2||
+       geometry.question.bottom>geometry.form.bottom+2)
+       throw Error('Professor question field is clipped inside its form: '+JSON.stringify(geometry));
+    if(geometry.submitCovered)throw Error('Toast overlaps Send button at '+width+'px');
     await page.screenshot({path:path.join(screenshots,`${prefix}professor-answer-${width}.png`),fullPage:true});
     // Attack simulation: model output must stay inert, even with forged HTML.
     await page.locator('[data-teacher-mode="explicar"]').click();
