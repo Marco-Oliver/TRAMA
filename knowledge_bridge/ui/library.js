@@ -93,11 +93,18 @@ function libWiki(content,source){
  safe=safe.replace(/\[\[([^\]\n]+)\]\]/g,(_,inner)=>{
   const raw=inner.replaceAll('&amp;','&').replaceAll('&lt;','<').replaceAll('&gt;','>');
   const n=libFindLink(raw,source);const caption=raw.split('|').at(-1);
-  return n?`<a href="#" data-lib-note="${libE(n.id)}">${libE(caption)}</a>`:`<span class="lib-dead-link">${libE(caption)}</span>`;
+  const stamp=/#\^(min-\d+(?:-\d+)*)/.exec(raw);
+  const anchor=stamp?' data-lib-anchor="'+stamp[1]+'"':'';
+  return n?'<a href="#" data-lib-note="'+libE(n.id)+'"'+anchor+'>'+libE(caption)+'</a>':
+    '<span class="lib-dead-link">'+libE(caption)+'</span>';
  });
  safe=safe.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>')
    .replace(/\*([^*\n]+)\*/g,'<em>$1</em>')
    .replace(/`([^`\n]+)`/g,'<code>$1</code>');
+ // Obsidian's source block marker becomes a real scroll target in the
+ // read-only TRAMA renderer. Only generated numeric anchors are accepted.
+ safe=safe.replace(/\s+\^(min-\d+(?:-\d+)*)$/g,(_,anchor)=>
+   '<span id="'+anchor+'" class="trama-source-anchor"></span>');
  return safe;
 }
 function libRenderMarkdown(markdown,source,title){
@@ -160,7 +167,16 @@ function libTreeMarkup(notes){
  }
  return levelHTML(root)||'<p class="lib-empty-message">Nenhuma nota foi encontrada.</p>';
 }
-async function libChooseNote(id){if(!libNotes().some(n=>n.id===id))return;libraryState.allowEmpty=false;app.selected=id;app.note=await call('note',id);await renderLibraryView();}
+async function libChooseNote(id,anchor=''){
+ if(!libNotes().some(n=>n.id===id))return;
+ libraryState.allowEmpty=false;app.selected=id;
+ app.note=await call('note',id);
+ await renderLibraryView();
+ if(anchor&&/^min-(?:\d+-)*\d+$/.test(anchor)){
+   const target=$('library-workspace').querySelector('#'+anchor);
+   if(target)target.scrollIntoView({block:'center',behavior:'auto'});
+ }
+}
 function libMetaPanel(n){const data=app.snapshot,stats=data?.stats||{};const status=data?.connected?'Conectado':'Desconectado';
  const links=[...String(n?.content||'').matchAll(/(?<!!)\[\[([^\]\n]+)\]\]/g)].map(m=>({target:libFindLink(m[1],n.id),label:m[1].split('|').at(-1)}));
  const uniqLinks=[];for(const l of links){if(l.target&&!uniqLinks.some(x=>x.target.id===l.target.id))uniqLinks.push(l);}
@@ -209,7 +225,7 @@ function libWire(){const root=$('library-workspace');
  // Event delegation prevents duplicate click handlers when the tree is rebuilt.
  root.onclick=async (event)=>{
   const note=event.target.closest('[data-lib-note]');
-  if(note){event.preventDefault();await libChooseNote(note.dataset.libNote);return;}
+  if(note){event.preventDefault();await libChooseNote(note.dataset.libNote,note.dataset.libAnchor||'');return;}
   const code=event.target.closest('[data-lib-code]');
   if(code){
     event.preventDefault();
