@@ -164,6 +164,39 @@ Veja os workflows na pasta [`.github/workflows`](.github/workflows).
 </details>
 
 
+## 🧪 TRAMA 2.2.0 — em desenvolvimento
+
+> **A versão estável disponível no botão de download continua sendo a 2.1.0.**
+> As funcionalidades abaixo estão na [PR de desenvolvimento #5](https://github.com/Marco-Oliver/TRAMA/pull/5);
+> não há instalador oficial 2.2.0 publicado.
+
+**O coração do TRAMA é a automação de conhecimento — não a IA Professor.**
+A proposta é importar algumas aulas por dia e deixar a biblioteca do Obsidian
+cada vez mais completa. A IA Professor é uma maneira adicional de consultar esse
+conteúdo, mas você também pode usar o Obsidian com outras IAs compatíveis.
+
+| Prioridade | Evolução em construção |
+| :-- | :-- |
+| 📥 **Importação incremental** | Acrescentar transcrições, imagens, links e repositórios sem reanalisar todas as aulas anteriores. |
+| 📖 **Resumos didáticos** | Explicações fiéis à aula, indicação de lacunas e alertas para resumos superficiais, sem novas chamadas desnecessárias. |
+| 🧷 **Dúvidas antigas** | Quando a Aula 050 explica uma questão aberta na Aula 031, anexar a evidência apenas à dúvida relevante — sem inventar confirmação. |
+| 💻 **Código do GitHub** | Distribuir evidências entre arquivos e conceitos; links verificáveis para arquivo, commit e linha. |
+| 🔎 **Busca no Obsidian** | Buscar dentro do texto Markdown e mostrar trechos correspondentes, localmente. |
+| 🖥️ **Interface clássica** | Janela própria para GitHub, avisos e confirmações legíveis, sem CMD espontâneo, cópia nativa de wikilinks e botões claros. |
+| 🔐 **Privacidade** | Autorização local e revogável nos Ajustes para operações de IA que você iniciar. |
+| 💾 **Integridade** | Backups com caminhos longos, proteção de notas editadas e favoritos persistentes. |
+
+**Limitações mantidas:** o aplicativo não baixa vídeos privados do Classroom
+nem lê automaticamente conteúdos de Drive restritos. URLs ficam registradas
+como fontes, mas só arquivos efetivamente importados ou código Git indexado
+podem fundamentar análises. Nenhuma IA deve inventar o que o professor disse.
+
+**Critérios de liberação:** testes automáticos Linux e Windows, integridade do
+instalador Windows, restauração isolada, revisão visual e avaliação de resumos
+com materiais apropriados. Veja o [plano de validação v2.2.0](docs/TRAMA_V220_PLANO_E_VALIDACAO.md).
+
+---
+
 ## 🛡️ O que muda na atualização 2.1.0
 
 A nova versão reúne as melhorias da IA Professor, o estudo de transcrições originais e os ajustes de segurança desde a 2.0.1:
