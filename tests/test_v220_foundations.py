@@ -123,6 +123,61 @@ class DesktopExperienceFoundationsTests(unittest.TestCase):
 
 
 
+class TargetedFollowUpKnowledgeTests(unittest.TestCase):
+    def test_later_evidence_enriches_only_the_question_from_aula_031(self):
+        from knowledge_bridge.pipeline import Application
+
+        with tempfile.TemporaryDirectory(prefix="trama-v220-follow-up-") as folder:
+            base = Path(folder)
+            app = Application(base / "Obsidian", base / "unused.env", log=lambda _: None)
+            try:
+                def record(lesson, raw, doubt=""):
+                    file = base / f"Aula-{lesson}-V01.txt"
+                    file.write_text(raw, encoding="utf-8")
+                    self.assertTrue(app.add_file(file))
+                    src = next(s for s in app.store.sources("transcript")
+                               if s["label"] == file.name)
+                    app.store.save_analysis(src["id"], src["digest"], "test", "offline", {
+                        "resumo": "Conteúdo fictício de teste.",
+                        "tipo_aula": "tecnica",
+                        "conceitos": [],
+                        "exemplos": [],
+                        "duvidas": [doubt] if doubt else [],
+                    })
+                    return src
+
+                src31 = record("031", "[0:01] Não entendi este assunto ainda.",
+                               "Como funciona o HttpClient?")
+                app.publisher.rebuild()
+                note31 = app.store.vault / "02-Minhas-Aulas" / "Aula-031"
+                entry31 = next(n for n in note31.glob("*.md")
+                               if n.name != "00-Visao-geral.md")
+                first = entry31.read_text(encoding="utf-8")
+                self.assertIn("Nenhuma explicação posterior", first)
+
+                record("049", "[0:01] Aula sobre organização do curso.")
+                app.publisher.rebuild()
+                self.assertEqual(entry31.read_text(encoding="utf-8"), first)
+
+                src50 = record("050", "[0:01] O HttpClient realiza requisições HTTP.")
+                app.publisher.rebuild()
+                enriched = entry31.read_text(encoding="utf-8")
+                self.assertIn("Aula-050", enriched)
+                self.assertIn("HttpClient realiza requisições", enriched)
+                self.assertIn("não comprovam que a dúvida foi resolvida", enriched)
+                self.assertIn("NOVA_EVIDENCIA_PARA_REVISAR", enriched)
+                self.assertNotEqual(first, enriched)
+                # Never rewrite the original transcript when evidence is found.
+                self.assertIn("Não entendi", (
+                    app.store.vault / src31["stored_path"]
+                ).read_text(encoding="utf-8"))
+                self.assertIn("HttpClient", (
+                    app.store.vault / src50["stored_path"]
+                ).read_text(encoding="utf-8"))
+            finally:
+                app.close()
+
+
 class IncrementalAutomationFoundationsTests(unittest.TestCase):
     def test_new_lessons_reuse_old_analyses_and_single_part_summary_has_no_prefix(self):
         from knowledge_bridge.ai import AIResult
