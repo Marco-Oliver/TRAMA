@@ -33,7 +33,7 @@ const makeBridge=({notes})=>{
  const baseNote=n=>({...n,media:{video:[],video_links:[],transcript:n.lesson==='Aula-001'?[{label:'Aula 001.txt',stored:'99-Anexos/Transcricoes-Originais/aula001.txt'}]:[],materials:[]},related:[]});
  window.__TRAMA_API__=({
   snapshot: async()=>({connected:true,vault:'C:\\TRAMA-Teste\\Cofre',notes,stats:{notes:3,videos:2,transcriptions:2,materials:0,repositories:1},favorites:[notes[0].id]}),
-  note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n.lesson==='Aula-001'?{...n,kind:'aula',state:'aguardando_ia',summary:'Pendente: resumo não gerado.'}:n):{error:'Nota não encontrada'};},
+  note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n.lesson==='Aula-001'?{...n,kind:'visao_geral',state:'fontes_organizadas',content:n.content+'\n\n## Em poucas palavras\n\n**Pendente:** a IA ainda não gerou o resumo desta aula.',summary:'**Pendente:** a IA ainda não gerou o resumo desta aula.'}:n):{error:'Nota não encontrada'};},
   graph: async()=>({nodes:notes,edges:[[0,2]]}),
   process_lesson: async (lesson, confirmed)=>{
     window.__tramaLessonRefreshCalls=(window.__tramaLessonRefreshCalls||0)+1;
@@ -113,6 +113,8 @@ try{
       }));
       throw Error('Scoped reanalysis button was not rendered: '+JSON.stringify(trace));
     }
+    if(!((await page.locator('#note-content').innerText()).includes('Gerar resumo desta aula')))
+      throw Error('Missing pending-summary action on real overview note');
     await refresh.waitFor({timeout:3000});
     page.once('dialog',dialog=>dialog.dismiss());
     await refresh.click();
