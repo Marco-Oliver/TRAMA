@@ -76,7 +76,7 @@
   <p>Primeiro junte transcrições, prints, documentos e links. <strong>Nada será enviado ao Gemini ou gravado no Obsidian antes de clicar em Processar tudo.</strong></p>
   <div id="auto-paste-zone" class="auto-paste-zone" tabindex="0" aria-label="Cole seu print aqui com Control V">
     <strong>▧ Cole seu print aqui com Ctrl + V</strong>
-    <span>Use Win + Shift + S e depois Ctrl + V nesta área. Não precisa abrir o Paint.</span>
+    <span>Cole uma captura de tela ou imagem diretamente aqui.</span>
   </div>
   <div class="auto-queue-toolbar"><strong>Arquivos preparados <span id="auto-queue-count">(0/100)</span></strong>
     <button type="button" id="auto-add-files">+ Adicionar arquivos</button><button type="button" id="auto-clear">Limpar fila</button>
@@ -91,6 +91,30 @@ https://academiadoprogramador-fullstack.github.io/docs/inicio/"></textarea>
   Autorizo enviar os materiais à API gratuita configurada <strong>somente ao clicar em Processar tudo.</strong></label>
   <div id="auto-feedback" role="status" aria-live="polite">Fila vazia. Adicione seus materiais; nada será processado ainda.</div>
   <div class="dialog-actions"><button type="button" id="auto-start" class="auto-primary">Processar tudo</button></div>
+</dialog>
+<dialog id="repo-dialog" class="context-dialog trama-action-dialog" aria-labelledby="repo-title">
+  <form id="repo-form" novalidate>
+    <div class="dialog-header"><h2 id="repo-title">Adicionar repositório GitHub</h2><button type="button" id="repo-close" aria-label="Fechar">×</button></div>
+    <p>O TRAMA consulta código e histórico de um repositório público ou de uma pasta Git local, sem modificar o projeto.</p>
+    <label for="repo-url">Link do GitHub ou caminho da pasta Git</label>
+    <input id="repo-url" name="repo-url" type="text" maxlength="1000" spellcheck="false" autocomplete="off"
+      placeholder="https://github.com/usuario/repositorio.git" required/>
+    <p id="repo-feedback" class="trama-inline-feedback" role="status" aria-live="polite">Cole o link e confirme a importação.</p>
+    <div class="dialog-actions">
+      <button type="button" id="repo-cancel">Cancelar</button>
+      <button type="submit" id="repo-submit" class="trama-primary">Importar repositório</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="trama-confirm-dialog" class="context-dialog trama-action-dialog" aria-labelledby="trama-confirm-title" aria-describedby="trama-confirm-description">
+  <div class="trama-confirm-body">
+    <div class="dialog-header"><h2 id="trama-confirm-title">Confirmar operação</h2><button type="button" id="trama-confirm-close" aria-label="Fechar">×</button></div>
+    <p id="trama-confirm-description"></p>
+    <div class="dialog-actions">
+      <button type="button" id="trama-confirm-cancel">Cancelar</button>
+      <button type="button" id="trama-confirm-accept" class="trama-primary">Continuar</button>
+    </div>
+  </div>
 </dialog>
 <dialog id="classroom-dialog" class="context-dialog" aria-labelledby="context-title">
 <form id="context-form" novalidate>
