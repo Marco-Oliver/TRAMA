@@ -229,9 +229,9 @@ try{
     // Previous content-search filter may still be active; select Console explicitly.
     await page.locator('#lib-folder-search').fill('Console');
     await page.locator('#lib-tree-content [data-lib-note="01-Meu-Conhecimento/Conceitos/console.md"]').click();
-    await page.getByText('Propostas de atualização').waitFor();
+    await page.getByText('Atualização disponível para revisão.').waitFor();
     await page.locator('[data-lib-note="01-Meu-Conhecimento/Conceitos/console.PROPOSTA.md"]').first().click();
-    await page.locator('[data-lib-action="compare"]').click();
+    await page.locator('.lib-note-panel .lib-proposal-compare').click();
     await page.locator('#trama-diff-dialog').waitFor({state:'visible'});
     if(!(await page.locator('#trama-diff-content').innerText()).includes('Versão revisada'))
       throw Error('Safe proposal diff did not render');
