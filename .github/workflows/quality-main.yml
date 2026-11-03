@@ -42,3 +42,41 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check bandit
           python -m bandit -r knowledge_bridge -ll -ii
+
+  v220-windows:
+    name: TRAMA 2.2 - Windows e executavel (sem publicar)
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/v2.2.0-automation-foundations'
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Dependencias e compilador local
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check -r requirements.txt "pyinstaller>=6.10,<7"
+      - name: Compilar codigo Python
+        shell: pwsh
+        run: python -m compileall -q knowledge_bridge tests
+      - name: Testes Windows, caminhos longos e escala de 150 aulas
+        shell: pwsh
+        run: python -m unittest discover -s tests -q
+      - name: Casos adversariais Windows
+        shell: pwsh
+        run: python qa_adversarial.py
+      - name: Validar JavaScript
+        shell: pwsh
+        run: |
+          node --check knowledge_bridge/ui/app.js
+          node --check knowledge_bridge/ui/library.js
+          node --check knowledge_bridge/ui/teacher.js
+      - name: Empacotar executavel Windows sem publicar
+        shell: pwsh
+        run: python -m PyInstaller --clean --noconfirm TRAMA.spec
+      - name: Self-test do executavel empacotado
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path '.\\dist\\TRAMA\\TRAMA.exe').Path
+          $run = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -Wait
+          if ($run.ExitCode -ne 0) { throw "TRAMA.exe saiu com erro: $($run.ExitCode)" }
