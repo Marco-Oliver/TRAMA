@@ -232,9 +232,23 @@ function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.inne
   ...videos.map((v,i)=>detailRow('▶',v.label,'video',i)),
   ...trs.map((v,i)=>detailRow('▤','Transcrição: '+v.label,'transcript',i))].join('')||empty('Nenhuma gravação ou transcrição associada.'));
  }else{html+=detail('Ligação com Obsidian','◆',`<div class="soft-count">● Vault conectado</div><div class="soft-count">${app.snapshot.stats?.notes||0} notas indexadas</div><div class="soft-count">Pasta local selecionada</div>`);}
- const group=(section)=>n.related.filter(r=>r.section===section);
- for(const [title,icon,section] of [['Meu Conhecimento','♧','01-Meu-Conhecimento'],['Projetos Relacionados','▱','03-Meus-Projetos'],['Aulas Relacionadas','▤','02-Minhas-Aulas']]){
-  const list=group(section);html+=detail(title,icon,list.length?list.map((v,i)=>detailRow('↗',v.title,section,i)).join(''):empty('Sem vínculos confirmados ainda.'));
+ const related=n.related||[];
+ const knowledge=related.filter(r=>r.section==='01-Meu-Conhecimento');
+ const isPerson=r=>r.kind==='pessoa'||r.id?.startsWith('01-Meu-Conhecimento/Pessoas/');
+ const groups={
+  'knowledge-technical':knowledge.filter(r=>!isPerson(r)),
+  'knowledge-people':knowledge.filter(isPerson),
+  '03-Meus-Projetos':related.filter(r=>r.section==='03-Meus-Projetos'),
+  '02-Minhas-Aulas':related.filter(r=>r.section==='02-Minhas-Aulas'),
+ };
+ for(const [title,icon,action] of [
+  ['Conhecimentos técnicos','♧','knowledge-technical'],
+  ['Pessoas citadas','♙','knowledge-people'],
+  ['Projetos Relacionados','▱','03-Meus-Projetos'],
+  ['Aulas Relacionadas','▤','02-Minhas-Aulas']]){
+  const list=groups[action];
+  if(action==='knowledge-people'&&!list.length)continue;
+  html+=detail(title,icon,list.length?list.map((v,i)=>detailRow('↗',v.title,action,i)).join(''):empty('Sem vínculos confirmados ainda.'));
  }
  html+=detail('Ações da Nota','⚙','<button class="detail-action" id="open-note">↗ &nbsp; Abrir nota no Obsidian</button><button class="detail-action" id="copy-note">▤ &nbsp; Copiar link interno</button>');
  area.innerHTML=html;
@@ -250,7 +264,7 @@ function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.inne
   const action=button.dataset.action,i=Number(button.dataset.idx);
   if(['video','transcript','video_links'].includes(action)){
    const m=n.media[action][i];if(m)await call(action==='video_links'?'open_video_link':'open_attachment',action==='video_links'?m.url:m.stored);return;}
-  const related=n.related.filter(x=>x.section===action)[i];if(related){libraryState.search='';app.selected=related.id;app.view='library';await render();}
+  const related=groups[action]?.[i];if(related){libraryState.search='';app.selected=related.id;app.view='library';await render();}
  }));}
 async function renderOverlay(){$('library-workspace').classList.add('hidden');const el=$('overlay-screen');el.classList.remove('hidden');el.classList.toggle('teacher-overlay',app.view==='teacher');$('list-panel').classList.add('hidden');$('note-panel').classList.add('hidden');$('details-panel').classList.add('hidden');
  if(app.view==='teacher'){renderTeacher(el);return;}
