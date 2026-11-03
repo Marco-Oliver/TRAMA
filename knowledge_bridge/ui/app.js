@@ -235,19 +235,24 @@ function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.inne
  const related=n.related||[];
  const knowledge=related.filter(r=>r.section==='01-Meu-Conhecimento');
  const isPerson=r=>r.kind==='pessoa'||r.id?.startsWith('01-Meu-Conhecimento/Pessoas/');
+ const sameLesson=n.lesson?
+   related.filter(r=>r.section==='02-Minhas-Aulas' &&
+     r.id.startsWith('02-Minhas-Aulas/'+n.lesson+'/')):[];
  const groups={
   'knowledge-technical':knowledge.filter(r=>!isPerson(r)),
   'knowledge-people':knowledge.filter(isPerson),
   '03-Meus-Projetos':related.filter(r=>r.section==='03-Meus-Projetos'),
-  '02-Minhas-Aulas':related.filter(r=>r.section==='02-Minhas-Aulas'),
+  'lesson-recordings':sameLesson,
+  '02-Minhas-Aulas':related.filter(r=>r.section==='02-Minhas-Aulas'&&!sameLesson.includes(r)),
  };
  for(const [title,icon,action] of [
   ['Conhecimentos técnicos','♧','knowledge-technical'],
   ['Pessoas citadas','♙','knowledge-people'],
   ['Projetos Relacionados','▱','03-Meus-Projetos'],
-  ['Aulas Relacionadas','▤','02-Minhas-Aulas']]){
+  ['Gravações e notas desta aula','▤','lesson-recordings'],
+  ['Outras aulas relacionadas','▤','02-Minhas-Aulas']]){
   const list=groups[action];
-  if(action==='knowledge-people'&&!list.length)continue;
+  if((action==='knowledge-people'||action==='lesson-recordings'||action==='02-Minhas-Aulas')&&!list.length)continue;
   html+=detail(title,icon,list.length?list.map((v,i)=>detailRow('↗',v.title,action,i)).join(''):empty('Sem vínculos confirmados ainda.'));
  }
  html+=detail('Ações da Nota','⚙','<button class="detail-action" id="open-note">↗ &nbsp; Abrir nota no Obsidian</button><button class="detail-action" id="copy-note">▤ &nbsp; Copiar link interno</button>');
