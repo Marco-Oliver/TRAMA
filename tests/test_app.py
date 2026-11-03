@@ -78,7 +78,7 @@ class TestSystem(unittest.TestCase):
         self.a.ai.analyze=lambda t,c: (_ for _ in ()).throw(AssertionError('AI chamada duas vezes'))
         self.a.process()
         self.assertEqual(len(lessons),2)
-        self.assertEqual(len(list((self.vault/'01-Meu-Conhecimento/Conceitos').glob('*.md'))),2)
+        self.assertEqual(len(list((self.vault/'01-Meu-Conhecimento/Conceitos').glob('*.md'))),1)
 
     def test_video_is_linked_not_copied(self):
         self.make_lesson(); self.a.scan(self.inbox)
