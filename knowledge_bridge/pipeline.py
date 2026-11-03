@@ -166,7 +166,7 @@ class Application:
             return result
         kinds = {"apresentacao", "tecnica", "organizacional", "atividade", "mista", "indefinida"}
         kind = safe(payload.get("tipo_aula"), 24)
-        return {
+        clean = {
             "resumo": safe(payload.get("resumo"), 2200),
             "tipo_aula": kind if kind in kinds else "indefinida",
             "pessoas": entries("pessoas", {"nome": 130, "papel": 140, "informacao": 420}, 8),
@@ -179,6 +179,28 @@ class Application:
             "nomes_a_conferir": [safe(x, 180) for x in payload.get("nomes_a_conferir", [])
                                  if isinstance(x, str)][:7],
         }
+        # A provider can put a spoken personal name in multiple JSON fields.
+        # Resolve direct category conflicts deterministically rather than
+        # publishing a name as a programming concept or technical question.
+        def normalized_name(value):
+            return re.sub(r"\\s+", " ", str(value).casefold().strip(' \\t\\r\\n.,:;!?\\\"\\u201c\\u201d')).strip()
+        known_names = {
+            normalized_name(value) for value in clean["nomes_a_conferir"]
+        } | {
+            normalized_name(person.get("nome", ""))
+            for person in clean["pessoas"]
+        }
+        known_names.discard("")
+        if known_names:
+            clean["conceitos"] = [
+                concept for concept in clean["conceitos"]
+                if normalized_name(concept.get("nome", "")) not in known_names
+            ]
+            clean["duvidas"] = [
+                doubt for doubt in clean["duvidas"]
+                if normalized_name(doubt) not in known_names
+            ]
+        return clean
 
     def process(self, lesson_filter: str | None = None, force: bool = False):
         sources = self.store.sources("transcript")
