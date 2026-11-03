@@ -969,6 +969,65 @@ class Bridge:
             return {'ok':False,'message':'Link não registrado no cofre.'}
         return {'ok':bool(webbrowser.open(url))}
 
+    def open_code_link(self, address):
+        """Open only an indexed GitHub file at its verified commit and line.
+
+        Markdown from a transcript or model must not turn the desktop bridge
+        into an arbitrary browser opener. Only known repository evidence is
+        eligible; arbitrary https URLs are not accepted.
+        """
+        from urllib.parse import urlsplit, unquote
+        vault = self._vault()
+        if (vault is None or not isinstance(address, str) or len(address) > 1250 or
+                any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in address)):
+            return {'ok': False, 'message': 'Referência GitHub inválida.'}
+        try:
+            url = urlsplit(address)
+            if (url.scheme != "https" or url.hostname != "github.com" or
+                    url.username is not None or url.password is not None or
+                    url.port not in (None, 443) or url.query):
+                return {'ok': False, 'message': 'Apenas links GitHub verificados são permitidos.'}
+        except ValueError:
+            return {'ok': False, 'message': 'Link GitHub inválido.'}
+        parts = url.path.split("/")
+        if len(parts) < 6 or parts[3] != "blob":
+            return {'ok': False, 'message': 'O link precisa apontar para um arquivo GitHub.'}
+        owner, name, sha = parts[1], parts[2], parts[4]
+        if (not all(re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", x) for x in (owner,name)) or
+                not re.fullmatch(r"[a-fA-F0-9]{40}", sha)):
+            return {'ok': False, 'message': 'Revisão GitHub inválida.'}
+        path = unquote("/".join(parts[5:]))
+        if (not path or "\\" in path or ":" in path or
+                any(x in (".", "..", "") for x in path.split("/")) or
+                any(ord(c) < 32 or ord(c) == 127 for c in path)):
+            return {'ok': False, 'message': 'Caminho de código inválido.'}
+        match = re.fullmatch(r"L([1-9][0-9]{0,7})", url.fragment)
+        if not match:
+            return {'ok': False, 'message': 'Informe uma linha verificada do código.'}
+        lineno = int(match.group(1))
+        db = vault / ".base-conhecimento" / "estado.sqlite3"
+        if not db.is_file():
+            return {'ok': False, 'message': 'Nenhum repositório indexado neste cofre.'}
+        repo_url = f"https://github.com/{owner}/{name}"
+        try:
+            with closing(sqlite3.connect(db.as_uri() + '?mode=ro', uri=True, timeout=2)) as conn:
+                found = conn.execute(
+                    "SELECT payload FROM repositories WHERE url=? AND sha=? LIMIT 1",
+                    (repo_url, sha)
+                ).fetchone()
+            if not found:
+                return {'ok': False, 'message': 'Este commit não está indexado no TRAMA.'}
+            evidence = json.loads(found[0]).get("evidence", [])
+            if not isinstance(evidence,list) or not any(
+                    isinstance(e,dict) and e.get('path') == path and e.get('line') == lineno
+                    for e in evidence[:500]):
+                return {'ok': False, 'message': 'Essa linha não foi verificada no índice de código.'}
+        except (OSError, ValueError, TypeError, sqlite3.Error):
+            return {'ok': False, 'message': 'Não foi possível conferir o índice GitHub.'}
+        safe = f"{repo_url}/blob/{sha}/{quote(path, safe='/')}#L{lineno}"
+        return {'ok': bool(webbrowser.open(safe)),
+                'message': 'Referência aberta no navegador.'}
+
     def open_attachment(self,stored):
         """Open only media imported into this vault's SQLite catalog.
 
@@ -1110,6 +1169,9 @@ class PublicApi:
 
     def open_video_link(self, url):
         return self._bridge.open_video_link(url)
+
+    def open_code_link(self, url):
+        return self._bridge.open_code_link(url)
 
     def window_action(self, action):
         return self._bridge.window_action(action)
