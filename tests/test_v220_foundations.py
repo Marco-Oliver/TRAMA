@@ -295,6 +295,36 @@ class IncrementalAutomationFoundationsTests(unittest.TestCase):
 
 
 
+class FairCodeEvidenceTests(unittest.TestCase):
+    def test_rare_angular_operator_is_not_hidden_by_early_generic_classes(self):
+        from knowledge_bridge.code_intel import index_repository, MAX_EVIDENCE
+        with tempfile.TemporaryDirectory(prefix="trama-v220-index-") as folder:
+            root=Path(folder)
+            paths=[]
+            for i in range(95):
+                name=f"src/part-{i:03d}.ts"
+                file=root/name
+                file.parent.mkdir(parents=True,exist_ok=True)
+                file.write_text(
+                    "\\n".join(f"class Example{j:02d} {{}}" for j in range(12)),
+                    encoding="utf-8"
+                )
+                paths.append(name)
+            rare="src/zz-final-polling.ts"
+            (root/rare).write_text(
+                "import { exhaustMap } from 'rxjs/operators';\\n"
+                "source.pipe(exhaustMap(() => request()));",
+                encoding="utf-8"
+            )
+            paths.append(rare)
+            indexed=index_repository(root,sorted(paths))
+            evidence=indexed["evidence"]
+            self.assertLessEqual(len(evidence),MAX_EVIDENCE)
+            self.assertTrue(any(e["concept"]=="exhaustMap" and
+                                e["path"]==rare for e in evidence))
+            self.assertGreater(len({e["path"] for e in evidence}),10)
+
+
 class ObsidianFullTextSearchTests(unittest.TestCase):
     def test_search_finds_text_inside_notes_and_shows_short_excerpts(self):
         from unittest.mock import patch
