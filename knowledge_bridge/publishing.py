@@ -468,6 +468,19 @@ class Publisher:
                         continue
                     tempo = f" ({c['tempo']})" if c.get("tempo") else ""
                     body.append(f"- **{_escape_md(name)}**{tempo}: {_escape_md(c.get('explicacao',''))}")
+            # Unsupported model labels remain hypotheses, never exported as
+            # verified concepts or navigable concept pages.
+            suggested=[c for c in analysis.get("conceitos_a_conferir",[])
+                       if isinstance(c,dict) and c.get("nome")]
+            if suggested:
+                body += ["", "## Termos sugeridos pela IA para conferir", "",
+                         "> Os nomes abaixo NÃO foram encontrados literalmente no TXT. "
+                         "Podem ser erro de transcrição, interpretação indevida ou "
+                         "termo visto apenas no código. Confira a fonte antes de aceitar."]
+                for candidate in suggested[:12]:
+                    body.append("- `" + _escape_md(candidate.get("nome","")) +
+                                "` — conferir na transcrição e, se disponível, "
+                                "no repositório relacionado.")
             if analysis.get("exemplos"):
                 body += ["", "## Exemplos mencionados"] + [
                     f"- {_escape_md(x)}" for x in analysis.get("exemplos",[])]
