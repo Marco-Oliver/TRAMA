@@ -179,6 +179,19 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
    });return;
  }
  if(app.tab==='Relacionados'){box.innerHTML=card('Conhecimentos relacionados',n.related.length?n.related.map((x,i)=>`<button class="simplelink" data-related="${i}">↗ &nbsp; ${escapeHTML(x.title)}</button>`).join(''):empty('Ainda não existem conexões confirmadas entre esta nota e outras.'));wireRelations();return;}
+ // Technical and people profiles are not lesson summaries: show the actual
+ // linked evidence instead of empty "Principais conceitos" placeholders.
+ if(app.tab==='Resumo'&&(n.kind==='conceito'||n.kind==='pessoa')){
+   const heading=n.kind==='conceito'?'Explicações e fontes das aulas':'Menções nas aulas';
+   box.innerHTML=card(heading,n.summary?libRenderMarkdown(n.summary,n.id,n.title):
+     empty('Ainda não há referências verificáveis nesta nota.'),'summary');
+   box.querySelectorAll('[data-lib-note]').forEach(el=>el.addEventListener('click',async event=>{
+     event.preventDefault();libraryState.search='';
+     app.selected=el.dataset.libNote;app.view='library';
+     app.note=await call('note',app.selected);await render();
+   }));
+   return;
+ }
  let html=card('Resumo da aula',paragraphs(n.summary),'summary');
  const lessonPending=n.state==='aguardando_ia' ||
    (n.kind==='visao_geral' && n.content.includes('**Pendente:**'));
@@ -235,12 +248,14 @@ function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.inne
  const related=n.related||[];
  const knowledge=related.filter(r=>r.section==='01-Meu-Conhecimento');
  const isPerson=r=>r.kind==='pessoa'||r.id?.startsWith('01-Meu-Conhecimento/Pessoas/');
+ const isTechnical=r=>r.kind==='conceito'||r.id?.startsWith('01-Meu-Conhecimento/Conceitos/');
  const sameLesson=n.lesson?
    related.filter(r=>r.section==='02-Minhas-Aulas' &&
      r.id.startsWith('02-Minhas-Aulas/'+n.lesson+'/')):[];
  const groups={
-  'knowledge-technical':knowledge.filter(r=>!isPerson(r)),
+  'knowledge-technical':knowledge.filter(isTechnical),
   'knowledge-people':knowledge.filter(isPerson),
+  'knowledge-other':knowledge.filter(r=>!isPerson(r)&&!isTechnical(r)),
   '03-Meus-Projetos':related.filter(r=>r.section==='03-Meus-Projetos'),
   'lesson-recordings':sameLesson,
   '02-Minhas-Aulas':related.filter(r=>r.section==='02-Minhas-Aulas'&&!sameLesson.includes(r)),
@@ -248,11 +263,12 @@ function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.inne
  for(const [title,icon,action] of [
   ['Conhecimentos técnicos','♧','knowledge-technical'],
   ['Pessoas citadas','♙','knowledge-people'],
+  ['Outros materiais de estudo','▤','knowledge-other'],
   ['Projetos Relacionados','▱','03-Meus-Projetos'],
   ['Gravações e notas desta aula','▤','lesson-recordings'],
   ['Outras aulas relacionadas','▤','02-Minhas-Aulas']]){
   const list=groups[action];
-  if((action==='knowledge-people'||action==='lesson-recordings'||action==='02-Minhas-Aulas')&&!list.length)continue;
+  if((action==='knowledge-people'||action==='knowledge-other'||action==='lesson-recordings'||action==='02-Minhas-Aulas')&&!list.length)continue;
   html+=detail(title,icon,list.length?list.map((v,i)=>detailRow('↗',v.title,action,i)).join(''):empty('Sem vínculos confirmados ainda.'));
  }
  html+=detail('Ações da Nota','⚙','<button class="detail-action" id="open-note">↗ &nbsp; Abrir nota no Obsidian</button><button class="detail-action" id="copy-note">▤ &nbsp; Copiar link interno</button>');
