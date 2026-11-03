@@ -95,6 +95,19 @@ class DesktopExperienceFoundationsTests(unittest.TestCase):
         self.assertIn("Cole uma captura de tela ou imagem diretamente aqui.", html)
         self.assertNotIn("Não precisa abrir o Paint.", html)
 
+    def test_consent_is_persistent_in_settings_and_can_be_revoked(self):
+        from unittest.mock import patch
+        from knowledge_bridge.bridge import Bridge
+        bridge = Bridge()
+        bridge.settings = {"vault": "", "ai_processing_consent": False}
+        with patch.object(bridge, "_save") as save:
+            self.assertTrue(bridge.set_ai_processing_consent(True)["ok"])
+            self.assertTrue(bridge.ai_status()["processing_consent"])
+            self.assertTrue(bridge.set_ai_processing_consent(False)["ok"])
+            self.assertFalse(bridge.ai_status()["processing_consent"])
+            self.assertEqual(save.call_count, 2)
+        self.assertFalse(bridge.set_ai_processing_consent("true")["ok"])
+
     def test_git_process_does_not_spawn_console_on_windows(self):
         import subprocess
         from unittest.mock import patch
