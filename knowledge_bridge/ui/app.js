@@ -140,8 +140,9 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
  }
  if(app.tab==='Relacionados'){box.innerHTML=card('Conhecimentos relacionados',n.related.length?n.related.map((x,i)=>`<button class="simplelink" data-related="${i}">↗ &nbsp; ${escapeHTML(x.title)}</button>`).join(''):empty('Ainda não existem conexões confirmadas entre esta nota e outras.'));wireRelations();return;}
  let html=card('Resumo da aula',paragraphs(n.summary),'summary');
- if(n.kind==='aula' && n.lesson){
-   const pending=n.state==='aguardando_ia';
+ if(n.lesson && (n.kind==='aula' || (n.kind==='visao_geral' && (n.media?.transcript||[]).length))){
+   const pending=n.state==='aguardando_ia' ||
+      (n.kind==='visao_geral' && n.content.includes('**Pendente:**'));
    html+=card(pending?'Resumo pendente':'Revisar análise da aula',
      '<p>'+(pending?
        'A transcrição está salva, mas o resumo por IA ainda não foi gerado.':
