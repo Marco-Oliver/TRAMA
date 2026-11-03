@@ -295,6 +295,34 @@ class IncrementalAutomationFoundationsTests(unittest.TestCase):
 
 
 
+class ProposedNoteComparisonTests(unittest.TestCase):
+    def test_proposal_diff_is_read_only_and_scoped_to_its_original(self):
+        from knowledge_bridge.bridge import Bridge,load_local_ui
+        with tempfile.TemporaryDirectory(prefix="trama-v220-proposals-") as folder:
+            vault=Path(folder)/"Obsidian"
+            lesson=vault/"02-Minhas-Aulas"/"Aula-031"
+            lesson.mkdir(parents=True)
+            note=lesson/"resumo.md"
+            draft=lesson/"resumo.PROPOSTA.md"
+            note.write_text("# Aula 031\\n\\nO conceito ainda não foi explicado.",encoding="utf-8")
+            draft.write_text("# Aula 031\\n\\nA Aula 050 trouxe uma evidência.",encoding="utf-8")
+            before=(note.read_bytes(),draft.read_bytes())
+            bridge=Bridge()
+            bridge.settings={"vault":str(vault)}
+            ref="02-Minhas-Aulas/Aula-031/resumo.PROPOSTA.md"
+            result=bridge.compare_proposal(ref)
+            self.assertTrue(result["ok"],result)
+            self.assertIn("-O conceito ainda não foi explicado.",result["diff"])
+            self.assertIn("+A Aula 050 trouxe uma evidência.",result["diff"])
+            self.assertFalse(result["truncated"])
+            self.assertFalse(bridge.compare_proposal("02-Minhas-Aulas/Aula-031/resumo.md")["ok"])
+            self.assertFalse(bridge.compare_proposal("../resumo.PROPOSTA.md")["ok"])
+            self.assertEqual(before,(note.read_bytes(),draft.read_bytes()))
+            html=load_local_ui()
+            self.assertIn('id="trama-diff-dialog"',html)
+            self.assertIn("call('compare_proposal'",html)
+
+
 class StorageMetricsTests(unittest.TestCase):
     def test_usage_reports_local_categories_without_reading_files(self):
         from knowledge_bridge.bridge import Bridge
