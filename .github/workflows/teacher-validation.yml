@@ -52,6 +52,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -79,6 +81,11 @@ jobs:
       - name: Instalar reinstalar e desinstalar
         shell: pwsh
         run: ./tools/windows_installer_smoke.ps1
+      - name: Testar upgrade 2.0.1 para 2.1.0 com cofre e chave sintetica
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./tools/windows_upgrade_smoke.ps1
 
       - name: Preparar Preview em area de trabalho isolada
         shell: pwsh
