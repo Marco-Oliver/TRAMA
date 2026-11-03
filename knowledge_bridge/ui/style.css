@@ -259,3 +259,10 @@ button:not(:disabled):hover{filter:brightness(.98)}
  .lib-heading-row{flex-wrap:wrap;gap:7px;}
  .lib-proposal-compare{order:3;}
 }
+
+/* TRAMA 2.2: do not hide API failures inside a disappearing toast.
+   Show a durable, readable explanation alongside the lesson action. */
+.trama-ai-feedback{display:block;margin:11px 0 0;padding:12px 14px;
+ border:1px solid #d3bf8d;border-left:4px solid #a37a35;
+ background:#fff8e9;color:#654822;border-radius:6px;
+ font-size:13px;line-height:1.6;overflow-wrap:anywhere;}
