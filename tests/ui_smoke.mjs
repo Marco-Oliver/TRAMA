@@ -39,9 +39,15 @@ const makeBridge=({notes})=>{
   snapshot: async()=>({connected:true,vault:'C:\\TRAMA-Teste\\Cofre',notes,stats:{notes:3,videos:2,transcriptions:2,materials:0,repositories:1},favorites:[notes[0].id]}),
   note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n.lesson==='Aula-001'?{...n,kind:'visao_geral',state:'fontes_organizadas',content:n.content+'\n\n## Em poucas palavras\n\n**Pendente:** a IA ainda não gerou o resumo desta aula.',summary:'**Pendente:** a IA ainda não gerou o resumo desta aula.'}:n):{error:'Nota não encontrada'};},
   graph: async()=>({nodes:notes,edges:[[0,2]]}),
-  process_lesson: async (lesson, confirmed)=>{
+  process_lesson: async (lesson, confirmed, force)=>{
     window.__tramaLessonRefreshCalls=(window.__tramaLessonRefreshCalls||0)+1;
-    return confirmed && lesson==='Aula-001' ? {ok:true,message:'Análise simulada'} : {ok:false,message:'Confirmação obrigatória'};
+    (window.__tramaLessonForceArgs??=[]).push(force);
+    if(!confirmed || lesson!=='Aula-001')
+      return {ok:false,message:'Confirmação obrigatória'};
+    if(window.__tramaLessonRefreshCalls===1)
+      return {ok:false,reason:'local_limit',
+              message:'O limite local de chamadas nesta execução foi atingido. Os trechos anteriores estão preservados.'};
+    return {ok:true,message:'Análise retomada com trechos anteriores reaproveitados'};
   },
   search_transcript: async (stored,query)=>{
     window.__tramaTranscriptSearchCalls=(window.__tramaTranscriptSearchCalls||0)+1;
@@ -148,7 +154,14 @@ try{
     await page.locator('#trama-confirm-dialog').waitFor({state:'visible'});
     await page.locator('#trama-confirm-accept').click();
     await page.waitForFunction(()=>window.__tramaLessonRefreshCalls===1);
-    await assertNoUiError('lesson reanalysis');
+    await page.locator('#lesson-ai-feedback').getByText('limite local',{exact:false}).waitFor();
+    if(JSON.stringify(await page.evaluate(()=>window.__tramaLessonForceArgs))!=='[false]')
+      throw Error('Pending lesson restarted all AI chunks instead of resuming cache');
+    await refresh.click();
+    await page.locator('#trama-confirm-dialog').waitFor({state:'visible'});
+    await page.locator('#trama-confirm-accept').click();
+    await page.waitForFunction(()=>window.__tramaLessonRefreshCalls===2);
+    await assertNoUiError('lesson pending AI resume');
 
     // The transcript-search feature is local-only and must render untrusted
     // transcript text as text rather than executable HTML.
