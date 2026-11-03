@@ -122,5 +122,69 @@ class DesktopExperienceFoundationsTests(unittest.TestCase):
             )
 
 
+
+class IncrementalAutomationFoundationsTests(unittest.TestCase):
+    def test_new_lessons_reuse_old_analyses_and_single_part_summary_has_no_prefix(self):
+        from knowledge_bridge.ai import AIResult
+        from knowledge_bridge.pipeline import Application
+
+        class FakeFreeAI:
+            def __init__(self):
+                self.calls = 0
+
+            def analyze(self, text, context):
+                self.calls += 1
+                return AIResult({
+                    "resumo": "O professor demonstrou um exemplo de programação.",
+                    "tipo_aula": "tecnica",
+                    "conceitos": [{
+                        "nome": "Console.WriteLine",
+                        "explicacao": "Escreve texto no console segundo o exemplo.",
+                        "tempo": "0:01",
+                    }],
+                    "pessoas": [],
+                    "atividades": [],
+                    "ferramentas": [],
+                    "marcos": [],
+                    "exemplos": [],
+                    "duvidas": [],
+                    "nomes_a_conferir": [],
+                }, "gemini", "offline-test")
+
+        with tempfile.TemporaryDirectory(prefix="trama-v220-incremental-") as folder:
+            root = Path(folder)
+            app = Application(root / "obsidian", root / "no-key.env", log=lambda _: None)
+            try:
+                ai = FakeFreeAI()
+                app.ai = ai
+                original = root / "Aula-001-V01.txt"
+                original.write_text(
+                    "[0:01] O professor demonstrou Console.WriteLine em C#.",
+                    encoding="utf-8",
+                )
+                self.assertTrue(app.add_file(original))
+                app.process()
+                self.assertEqual(ai.calls, 1)
+                notes = list((app.store.vault / "02-Minhas-Aulas" / "Aula-001").glob("*.md"))
+                transcript_notes = [p for p in notes if p.name != "00-Visao-geral.md"]
+                self.assertTrue(transcript_notes)
+                self.assertIn("O professor demonstrou", transcript_notes[0].read_text(encoding="utf-8"))
+                self.assertNotIn("**Parte 1:**", transcript_notes[0].read_text(encoding="utf-8"))
+
+                # A second run has nothing new and must spend no AI calls.
+                app.process()
+                self.assertEqual(ai.calls, 1)
+
+                newer = root / "Aula-002-V01.txt"
+                newer.write_text("[0:01] Um novo exemplo foi ensinado.", encoding="utf-8")
+                self.assertTrue(app.add_file(newer))
+                app.process()
+                self.assertEqual(ai.calls, 2)
+                self.assertTrue((app.store.vault / "02-Minhas-Aulas" / "Aula-001").is_dir())
+                self.assertTrue((app.store.vault / "02-Minhas-Aulas" / "Aula-002").is_dir())
+            finally:
+                app.close()
+
+
 if __name__ == "__main__":
     unittest.main()
