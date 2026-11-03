@@ -480,6 +480,66 @@ class LocalPreferencesRegressionTests(unittest.TestCase):
         self.assertIn('id="lib-search-status"',html)
 
 
+class LiteralSourceSymbolTests(unittest.TestCase):
+    def test_custom_class_and_interface_are_linked_only_when_named_in_lesson(self):
+        from knowledge_bridge.code_intel import index_repository,match_lesson_to_repository,find_code_line
+        with tempfile.TemporaryDirectory(prefix="trama-v220-symbol-") as folder:
+            root=Path(folder)
+            (root/"services").mkdir()
+            file=root/"services"/"certificate.service.ts"
+            file.write_text(
+                "export class CertificateService {\n"
+                "  create() { return true; }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            (root/"services"/"contract.cs").write_text(
+                "public interface ICertificateRepository { }\n",
+                encoding="utf-8",
+            )
+            indexed=index_repository(root,[
+                "services/certificate.service.ts","services/contract.cs"
+            ])
+            names={item["name"] for item in indexed["symbols"]}
+            self.assertIn("CertificateService",names)
+            self.assertIn("ICertificateRepository",names)
+            matches=match_lesson_to_repository(
+                "[0:04] O CertificateService gerencia a criação de certificados.",
+                None,indexed
+            )
+            self.assertTrue(any(m["concept"]=="CertificateService" for m in matches))
+            self.assertFalse(any(m["concept"]=="ICertificateRepository" for m in matches))
+            self.assertEqual(
+                find_code_line(indexed,"services/certificate.service.ts",1)["concept"],
+                "CertificateService"
+            )
+
+    def test_symbol_code_reference_requires_exact_registered_line(self):
+        from unittest.mock import patch
+        from knowledge_bridge.bridge import Bridge
+        from knowledge_bridge.store import Store
+        sha="c"*40
+        url="https://github.com/unit/symbol-example"
+        with tempfile.TemporaryDirectory(prefix="trama-v220-symbol-url-") as folder:
+            vault=Path(folder)/"vault"
+            store=Store(vault)
+            store.save_repo(url,"symbol-example",sha,{
+                "evidence":[],
+                "symbols":[{"name":"CertificateService","concept":"CertificateService",
+                            "path":"services/certificate.service.ts","line":1}]
+            },"INDEXED")
+            store.close()
+            bridge=Bridge()
+            bridge.settings={"vault":str(vault)}
+            good=f"{url}/blob/{sha}/services/certificate.service.ts#L1"
+            bad=f"{url}/blob/{sha}/services/certificate.service.ts#L2"
+            with patch("knowledge_bridge.bridge.webbrowser.open",
+                       return_value=True) as opener:
+                self.assertFalse(bridge.open_code_link(bad)["ok"])
+                self.assertTrue(bridge.open_code_link(good)["ok"])
+                opener.assert_called_once_with(good)
+
+
 class FairCodeEvidenceTests(unittest.TestCase):
     def test_rare_angular_operator_is_not_hidden_by_early_generic_classes(self):
         from knowledge_bridge.code_intel import index_repository, MAX_EVIDENCE
