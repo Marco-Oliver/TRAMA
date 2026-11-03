@@ -39,6 +39,11 @@ DOC_EXTS = {".md", ".txt"}
 MAX_FILE_BYTES = 100_000
 MAX_EVIDENCE = 160
 MAX_DOCS = 12
+MAX_SYMBOLS = 240
+SYMBOL_DECLARATION = re.compile(
+    r"\\b(?:class|interface|enum|struct|record|function|def)\\s+"
+    r"([A-Za-z_][A-Za-z0-9_]*)\\b"
+)
 
 
 def safe_repo_file(root: Path, rel: str) -> Path | None:
@@ -124,6 +129,7 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
     # All candidates remain local and the final output is still bounded.
     evidence_by_concept: dict[str, list[dict]] = {term: [] for term in CONCEPTS}
     docs: list[dict] = []
+    symbols_by_file: list[list[dict]] = []
     techs: set[str] = set()
     type_for_ext = {".cs": "C#", ".ts": "TypeScript", ".tsx": "React/TSX", ".js": "JavaScript",
                     ".jsx": "React/JSX", ".py": "Python", ".sql": "SQL", ".html": "HTML", ".css": "CSS"}
@@ -145,7 +151,20 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
         if path.suffix.lower() not in SOURCE_EXTS:
             continue
         hits_in_file: dict[str, int] = {}
+        symbols_in_file: list[dict] = []
         for lineno, line in enumerate(lines, 1):
+            # Literal declarations only; no guessed symbol from a comment or
+            # an unverified model output. Four per file keeps the index small.
+            if len(symbols_in_file)<4 and not line.lstrip().startswith(("//", "#", "*", "/*")):
+                match=SYMBOL_DECLARATION.search(line)
+                if match:
+                    name=match.group(1)
+                    if 4<=len(name)<=90 and name.casefold() not in {"class", "function", "interface"}:
+                        symbols_in_file.append({
+                            "name":name,"concept":name,"path":rel,"line":lineno,
+                            "snippet":_snippet(lines,lineno),
+                            "line_text":redact_sensitive(line.strip()[:200])
+                        })
             for concept, (pattern, _) in CONCEPTS.items():
                 bucket=evidence_by_concept[concept]
                 if (len(bucket)>=MAX_EVIDENCE or
@@ -156,6 +175,8 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
                                    "snippet":_snippet(lines,lineno),
                                    "line_text":redact_sensitive(line.strip()[:200])})
                     hits_in_file[concept]=hits_in_file.get(concept,0)+1
+        if symbols_in_file:
+            symbols_by_file.append(symbols_in_file)
     evidence=[]
     for round_number in range(MAX_EVIDENCE):
         added=False
@@ -168,8 +189,18 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
                     break
         if not added or len(evidence)>=MAX_EVIDENCE:
             break
+    symbols=[]
+    for round_number in range(4):
+        for batch in symbols_by_file:
+            if round_number<len(batch):
+                symbols.append(batch[round_number])
+                if len(symbols)>=MAX_SYMBOLS:
+                    break
+        if len(symbols)>=MAX_SYMBOLS:
+            break
     return {"files": files, "total_files": len(files), "technologies": sorted(techs),
-            "evidence": evidence, "documentation": docs, "history": (history or [])[:80],
+            "evidence": evidence, "symbols":symbols,
+            "documentation": docs, "history": (history or [])[:80],
             "collaboration": len({h.get('author_email','').casefold() for h in (history or []) if h.get('author_email')}) > 1}
 
 
@@ -189,19 +220,33 @@ def match_lesson_to_repository(transcript: str, analysis: dict | None, repo: dic
         text += "\n" + "\n".join(str(c.get('nome','')) for c in analysis.get('conceitos',[]) if isinstance(c,dict))
     concepts = concept_from_text(text)
     found = []
+    seen=set()
     for e in repo.get('evidence',[]):
-        if e['concept'] in concepts:
-            if e['concept'] in {x['concept'] for x in found}:
-                continue
+        if e['concept'] in concepts and e['concept'] not in seen:
             found.append(e)
-            if len(found) >= cap:
-                break
+            seen.add(e['concept'])
+            if len(found)>=cap:
+                return found
+    # Additional links to actual declared C#/TS/Python names seen literally
+    # in the lesson or extracted concepts. No fuzzy name guesses or authorship.
+    for e in repo.get('symbols',[]):
+        if not isinstance(e,dict):
+            continue
+        name=e.get('name','')
+        if (not isinstance(name,str) or len(name)<4 or
+                not re.search(r"(?<![A-Za-z0-9_])"+re.escape(name)+r"(?![A-Za-z0-9_])",
+                              text,re.I) or name.casefold() in seen):
+            continue
+        found.append(e)
+        seen.add(name.casefold())
+        if len(found)>=cap:
+            break
     return found
 
 
 def find_code_line(repo: dict, path: str, line: int) -> dict | None:
-    for e in repo.get('evidence',[]):
-        if e['path'] == path and e['line'] == line:
+    for e in [*repo.get('evidence',[]),*repo.get('symbols',[])]:
+        if e.get('path') == path and e.get('line') == line:
             return e
     return None
 
