@@ -256,7 +256,7 @@ class Application:
                     self.log(f"Erro controlado em {src['label']}: {type(exc).__name__}. Verifique a configuração.")
                     return self.publisher.rebuild()
             # Consolidação estruturada sem requisição adicional.
-            combined = {"resumo":"\n\n".join(f"**Parte {i+1}:** {x['resumo']}" for i,x in enumerate(all_results)),
+            combined = {"resumo": (all_results[0]["resumo"] if len(all_results) == 1 else\n                         "\n\n".join(f"**Trecho {i+1}:** {x['resumo']}" for i,x in enumerate(all_results))),
                         "tipo_aula": "indefinida", "pessoas": [], "atividades": [],
                         "ferramentas": [], "marcos": [], "conceitos": [],
                         "exemplos": [], "duvidas": [], "nomes_a_conferir": []}
