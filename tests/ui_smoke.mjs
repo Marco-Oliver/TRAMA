@@ -30,6 +30,7 @@ const notes = [
 const makeBridge=({notes})=>{
  // Playwright serializes this function into the page. Never reference
  // Node-side closures from the injected fake bridge.
+ let savedConsent=false;
  const baseNote=n=>({...n,media:{video:[],video_links:[],transcript:n.lesson==='Aula-001'?[{label:'Aula 001.txt',stored:'99-Anexos/Transcricoes-Originais/aula001.txt'}]:[],materials:[]},related:[]});
  window.__TRAMA_API__=({
   snapshot: async()=>({connected:true,vault:'C:\\TRAMA-Teste\\Cofre',notes,stats:{notes:3,videos:2,transcriptions:2,materials:0,repositories:1},favorites:[notes[0].id]}),
@@ -46,7 +47,23 @@ const makeBridge=({notes})=>{
       : {ok:true,excerpt:'',times:[]};
   },
   open_attachment: async()=>({ok:true}),
-  ai_status: async()=>({configured:{gemini:true},confirmed_free:true}),
+  ai_status: async()=>({configured:{gemini:true},confirmed_free:true,
+                             processing_consent:savedConsent}),
+  set_ai_processing_consent: async allowed=>{
+    savedConsent=allowed===true;
+    return {ok:true,processing_consent:savedConsent,
+            message:savedConsent?'Autorização ativa nos Ajustes.':'Autorização revogada.'};
+  },
+  search_notes: async (query,limit=80)=>{
+    const q=query.toLowerCase();
+    const found=notes.filter(n=>(n.id+' '+n.title+' '+n.content).toLowerCase().includes(q));
+    return {ok:true,total:found.length,matches:found.slice(0,limit).map(n=>({
+      id:n.id,title:n.title,section:n.section,
+      snippet:n.content.toLowerCase().includes(q)?n.content.slice(0,150):'',
+      in_content:n.content.toLowerCase().includes(q)
+    }))};
+  },
+  copy_note_link: async id=>({ok:true,message:'Link interno copiado.'}),
   check_updates: async()=>({ok:true,available:false,message:'Você já está na versão mais recente.'}),
   teacher_ask: async (question, mode, code, confirmed)=>confirmed?({
     ok:true,answer:question.includes('XSSTEST')
@@ -116,12 +133,14 @@ try{
     if(!((await page.locator('#note-content').innerText()).includes('Gerar resumo desta aula')))
       throw Error('Missing pending-summary action on real overview note');
     await refresh.waitFor({timeout:3000});
-    page.once('dialog',dialog=>dialog.dismiss());
     await refresh.click();
+    await page.locator('#trama-confirm-dialog').waitFor({state:'visible'});
+    await page.locator('#trama-confirm-cancel').click();
     if(await page.evaluate(()=>window.__tramaLessonRefreshCalls||0))
       throw Error('Lesson reanalysis ran after cancelling consent');
-    page.once('dialog',dialog=>dialog.accept());
     await refresh.click();
+    await page.locator('#trama-confirm-dialog').waitFor({state:'visible'});
+    await page.locator('#trama-confirm-accept').click();
     await page.waitForFunction(()=>window.__tramaLessonRefreshCalls===1);
     await assertNoUiError('lesson reanalysis');
 
@@ -153,6 +172,12 @@ try{
     await page.locator('#library-workspace').waitFor({state:'visible'});
     await page.locator('.lib-title').getByText('Angular — componentes').waitFor();
     await assertNoUiError('library search');
+    // Full-text search must find the source sentence, not just title/path.
+    await page.locator('#lib-folder-search').fill('terminal');
+    await page.getByText(/nota\(s\) encontrada\(s\)/).waitFor({timeout:6000});
+    await page.locator('.lib-file-row').getByText('Hello World em C#').waitFor();
+    if(!((await page.locator('#lib-tree-content').innerText()).includes('terminal')))
+      throw Error('Full-text search did not show an excerpt from the note');
     await page.screenshot({path:path.join(screenshots,`${prefix}library-${width}.png`),fullPage:true});
     await page.locator('.nav-item[data-view="teacher"]').click();
     await page.getByRole('heading',{name:/IA Professor/}).waitFor();
@@ -183,16 +208,29 @@ try{
     await page.locator('.lib-title').getByText('Hello World em C#').waitFor();
     await assertNoUiError('teacher cited source');
     await page.locator('.nav-item[data-view="settings"]').click();
+    await page.locator('#ai-processing-consent').check();
+    await page.getByText('Autorização ativa nos Ajustes.').waitFor();
+    await page.locator('#ai-processing-consent').uncheck();
+    await page.getByText('Autorização revogada.').waitFor();
     await page.getByRole('button',{name:'Verificar atualizações'}).click();
     await page.getByText('Você já está na versão mais recente.').waitFor();
     await assertNoUiError('settings and updates');
     await page.screenshot({path:path.join(screenshots,`${prefix}settings-${width}.png`),fullPage:true});
+    await page.locator('.nav-item[data-view="lessons"]').click();
+    await page.locator('#btn-import').click();
+    await page.locator('#auto-dialog').waitFor({state:'visible'});
+    await page.locator('#auto-repos').fill('https://github.com/academiadoprogramador-fullstack/teste.git');
+    if(!(await page.locator('#auto-dialog').innerText()).includes('Repositórios GitHub relacionados'))
+       throw Error('Batch import is missing its dedicated GitHub field');
+    if((await page.locator('#auto-dialog').innerText()).includes('Paint'))
+       throw Error('Outdated Paint instructions remain in import');
+    await page.locator('#auto-close').click();
     const dimensions=await page.evaluate(()=>({viewport:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth}));
     if(dimensions.scrollWidth>dimensions.viewport+2)throw Error(`Horizontal viewport overflow at ${width}: ${JSON.stringify(dimensions)}`);
     await page.close();
   }
   if(errors.length)throw Error('Browser errors:\n'+errors.join('\n'));
-  console.log('PASS: two viewports, navigation, home, list filters, search, teacher consent, review, sources, updates, screenshots');
+  console.log('PASS: two viewports, internal dialogs, content search, consent settings, GitHub import, study flow and screenshots');
 }finally{
   await browser.close();
 }
