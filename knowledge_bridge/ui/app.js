@@ -11,7 +11,38 @@ const prettyLesson=v=>String(v||'').replace(/^Aula-(\d+)$/i,(_,n)=>'Aula '+n);
 
 const stripMarkup = s => String(s||'').replace(/\[\[([^\]]+)\]\]/g,(_,v)=>v.split('|').at(-1)).replace(/\*\*/g,'').replace(/`/g,'').replace(/^[-*] /gm,'• ');
 function empty(msg){return `<p class="empty-text">${escapeHTML(msg)}</p>`;}
-function notify(message,wait=4000){$('status-message').textContent=message;const e=$('toast');e.textContent=message;e.classList.remove('hidden');clearTimeout(notify.timer);notify.timer=setTimeout(()=>e.classList.add('hidden'),wait);}
+function notify(message,wait=5500){
+ $('status-message').textContent=message;
+ const toast=$('toast');toast.textContent=message;toast.classList.remove('hidden');
+ toast.dataset.kind=/\\b(falha|erro|inválid|não foi possível|indisponível|corrompid)/i.test(message)?'error':
+   /\\b(concluído|adicionado|criado|salvo|sucesso|copiado|restaurado)/i.test(message)?'success':'info';
+ clearTimeout(notify.timer);notify.timer=setTimeout(()=>toast.classList.add('hidden'),wait);
+}
+let confirmationActive=false;
+function askTramaConfirm(title,description,acceptLabel='Continuar'){
+ const dialog=$('trama-confirm-dialog');
+ if(!dialog||confirmationActive)return Promise.resolve(false);
+ confirmationActive=true;
+ $('trama-confirm-title').textContent=title;
+ $('trama-confirm-description').textContent=description;
+ $('trama-confirm-accept').textContent=acceptLabel;
+ return new Promise(resolve=>{
+  let finished=false;
+  const yes=$('trama-confirm-accept'),no=$('trama-confirm-cancel'),close=$('trama-confirm-close');
+  function finish(accepted){
+   if(finished)return;finished=true;
+   yes.removeEventListener('click',onYes);no.removeEventListener('click',onNo);
+   close.removeEventListener('click',onNo);dialog.removeEventListener('cancel',onCancel);
+   if(dialog.open){if(typeof dialog.close==='function')dialog.close();else dialog.removeAttribute('open');}
+   confirmationActive=false;resolve(accepted);
+  }
+  const onYes=()=>finish(true),onNo=()=>finish(false);
+  const onCancel=event=>{event.preventDefault();finish(false);};
+  yes.addEventListener('click',onYes);no.addEventListener('click',onNo);
+  close.addEventListener('click',onNo);dialog.addEventListener('cancel',onCancel);
+  if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
+ });
+}
 async function call(name,...args){if(!bridge||typeof bridge[name]!=='function'){notify('Conecte o aplicativo TRAMA.');return null;}try{return await bridge[name](...args);}catch(e){notify('Falha ao executar: '+String(e).slice(0,160));return null;}}
 async function refresh(){const data=await call('snapshot');if(!data)return;app.snapshot=data;libraryState.favorites=new Set(data.favorites||[]);document.body.classList.toggle('connected',!!data.connected);$('connect-state').textContent=data.connected?'Obsidian conectado':'Configure o cofre do Obsidian';const s=data.stats||{};$('status-counts').textContent=`▤ ${s.notes||0} notas   │   ▶ ${s.videos||0} vídeos   │   ▤ ${s.transcriptions||0} transcrições   │   ▰ ${s.materials||0} materiais   │   ▱ ${s.repositories||0} projetos`;
  document.querySelector('.status-version').textContent='TRAMA v2.1.0  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
@@ -158,7 +189,7 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
  box.innerHTML=html;wireFiles();
  const update=box.querySelector('#refresh-this-lesson');
  if(update)update.addEventListener('click',async()=>{
-   if(!confirm('Apenas a aula '+n.lesson+' será reanalisada. Isso envia trechos das transcrições para sua API externa e pode consumir várias chamadas. Recomenda-se criar um backup local antes. Continuar?'))return;
+   if(!await askTramaConfirm('Reanalisar aula',`O TRAMA vai reanalisar somente ${n.lesson} com a API configurada. A operação pode consumir sua cota gratuita.`,`Reanalisar aula`))return;
    update.disabled=true;update.textContent='Processando esta aula…';
    try{
      const result=await call('process_lesson',n.lesson,true);
@@ -241,12 +272,12 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     if(r?.available&&r?.release_page){link.classList.remove('hidden');install.classList.remove('hidden');
       link.onclick=()=>call('open_update_page',r.release_page);
       install.onclick=async()=>{
-        if(!confirm('Baixar o instalador oficial e verificar SHA-256? Ele só será executado após sua confirmação.'))return;
+        if(!await askTramaConfirm('Baixar atualização','O instalador oficial será baixado e sua integridade será verificada antes de abrir.','Baixar e verificar'))return;
         install.disabled=true;output.textContent='Baixando e verificando instalador...';
         try{
           const downloaded=await call('prepare_update',true);
           output.textContent=downloaded?.message||'Falha no download.';
-          if(downloaded?.ok&&downloaded?.path&&confirm('Instalador verificado. Abrir a instalação agora? Feche o TRAMA quando o Windows solicitar.')){
+          if(downloaded?.ok&&downloaded?.path&&await askTramaConfirm('Instalador verificado','A instalação será aberta agora. Salve seu trabalho e feche o TRAMA quando o Windows solicitar.','Abrir instalador')){
              const launched=await call('launch_update',downloaded.path,true);
              output.textContent=launched?.message||'Não foi possível iniciar.';
           }
@@ -256,7 +287,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
   });
   el.querySelector('#choose-vault').addEventListener('click',chooseVault);
   el.querySelector('#backup-vault').addEventListener('click', async()=>{
-    if(!confirm('Criar ZIP local do cofre? Ele conterá suas notas e fontes sem criptografia. Guarde-o com cuidado.'))return;
+    if(!await askTramaConfirm('Criar backup do Obsidian','O ZIP será salvo no computador e incluirá notas e fontes sem criptografia. Guarde-o em local seguro.','Criar backup'))return;
     const button=el.querySelector('#backup-vault'),status=el.querySelector('#backup-message');
     button.disabled=true;status.textContent='Preparando backup verificado…';
     try{const r=await call('backup_vault',true);
@@ -264,7 +295,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     finally{button.disabled=false;}
   });
   el.querySelector('#restore-vault').addEventListener('click', async()=>{
-    if(!confirm('Restaurar um backup ZIP em uma pasta NOVA? O cofre atual não será substituído.'))return;
+    if(!await askTramaConfirm('Restaurar em pasta separada','Escolha um ZIP e uma pasta de destino. O TRAMA criará outro cofre e não substituirá o original.','Selecionar backup'))return;
     const button=el.querySelector('#restore-vault'),status=el.querySelector('#backup-message');
     button.disabled=true;status.textContent='Selecione o ZIP e a pasta onde criar o cofre restaurado…';
     try{const r=await call('restore_vault',true);
@@ -381,13 +412,46 @@ async function runAutoImport(){
  }finally{button.disabled=false;add.disabled=false;clear.disabled=false;}
 }
 async function importFiles(){openAutoImport();}
-async function generate(){if(!confirm('Gerar resumos pode enviar suas transcrições a uma IA externa configurada. Confirmar?'))return;notify('Processando notas com a IA gratuita configurada…',10000);const r=await call('process',true);notify(r?.ok?(r.logs?.at(-1)||'Processamento concluído.'):(r?.message||'Sem provedor gratuito disponível.'),6000);await refresh();}
-async function addRepo(){const url=prompt('Cole o link público do GitHub ou o caminho de uma pasta Git local:');if(!url)return;notify('Importando repositório…',10000);const r=await call('add_repo',url);notify(r?.ok?'Repositório adicionado.':r?.message||'Falha ao adicionar.');await refresh();}
+async function generate(){
+ if(!await askTramaConfirm('Gerar resumos','Apenas os materiais necessários serão enviados à API configurada. As análises já concluídas serão reaproveitadas.','Gerar resumos'))return;
+ notify('Processando notas com a IA gratuita configurada…',10000);
+ const r=await call('process',true);
+ notify(r?.ok?(r.logs?.at(-1)||'Processamento concluído.'):(r?.message||'Sem provedor gratuito disponível.'),6500);
+ await refresh();
+}
+function addRepo(){
+ const dialog=$('repo-dialog');
+ $('repo-feedback').textContent='Cole o link e confirme a importação.';
+ if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
+ $('repo-url').focus();
+}
+function closeRepoDialog(){
+ const dialog=$('repo-dialog');
+ if(dialog.open){if(typeof dialog.close==='function')dialog.close();else dialog.removeAttribute('open');}
+}
+async function submitRepo(event){
+ event.preventDefault();
+ const url=$('repo-url').value.trim();
+ const status=$('repo-feedback'),button=$('repo-submit');
+ if(!url){status.textContent='Informe o link ou caminho da pasta.';return;}
+ button.disabled=true;
+ status.textContent='Lendo o repositório e indexando o código. Isso pode levar alguns instantes…';
+ try{
+  const result=await call('add_repo',url);
+  if(!result?.ok){status.textContent=result?.message||'Não foi possível importar o projeto.';return;}
+  closeRepoDialog();$('repo-url').value='';
+  notify('Repositório adicionado à biblioteca. Os vínculos com aulas serão atualizados.',7000);
+  await refresh();
+ }finally{button.disabled=false;}
+}
 function bind(){document.querySelectorAll('.nav-item').forEach(el=>el.addEventListener('click',()=>setView(el.dataset.view)));
  $('btn-refresh').addEventListener('click',refresh);$('btn-import').addEventListener('click',importFiles);$('btn-list-add').addEventListener('click',()=>app.view==='projects'?addRepo():importFiles());
  $('btn-generate').addEventListener('click',generate);$('btn-obsidian').addEventListener('click',()=>call('open_obsidian'));
  $('btn-settings').addEventListener('click',()=>setView('settings'));
  $('btn-context').addEventListener('click',openClassroomContext);
+ $('repo-form').addEventListener('submit',submitRepo);
+ $('repo-close').addEventListener('click',closeRepoDialog);
+ $('repo-cancel').addEventListener('click',closeRepoDialog);
  $('auto-close').addEventListener('click',closeAutoImport);
  $('auto-start').addEventListener('click',runAutoImport);
  $('auto-add-files').addEventListener('click',addAutoFiles);
