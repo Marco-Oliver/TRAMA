@@ -218,7 +218,15 @@ function libWire(){const root=$('library-workspace');
   const a=act.dataset.libAction;
   if(a==='open'&&app.note)await call('open_note',app.note.id);
   if(a==='reveal'&&app.note)await call('reveal_note',app.note.id);
-  if(a==='copy'&&app.note){const text='[['+app.note.id.replace(/\.md$/i,'')+']]';try{await navigator.clipboard.writeText(text);notify('Link interno copiado.');}catch(_){notify('Não foi possível copiar automaticamente.');}}
+  if(a==='copy'&&app.note){
+    const result=await call('copy_note_link',app.note.id);
+    if(result?.ok){notify(result.message||'Link interno copiado.');}
+    else{
+      const wiki=result?.text||'[['+app.note.id.replace(/\.md$/i,'')+']]';
+      try{await navigator.clipboard.writeText(wiki);notify('Link interno copiado.');}
+      catch(_){notify('Não foi possível copiar. Link: '+wiki,8500);}
+    }
+  }
   if(a==='organize'){
     if(!await askTramaConfirm('Organizar biblioteca','Atualizar as notas a partir das fontes cadastradas, sem usar IA e sem sobrescrever alterações pessoais.','Organizar aulas'))return;
     notify('Organizando a biblioteca local…',7500);
