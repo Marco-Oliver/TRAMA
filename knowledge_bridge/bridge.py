@@ -238,13 +238,21 @@ class Bridge:
         selected=idx.by_relative.get(note_id.lower())
         if not selected:return {'error':'Nota não encontrada'}
         related=idx.related(selected,60)
-        summary=(self._section(selected.content,'Resumo da aula') or
-                 self._section(selected.content,'Em poucas palavras') or
-                 self._section(selected.content,'Resumo') or '')
-        concepts=(self._section(selected.content,'Conceitos identificados pela IA (conferir na fonte)') or
-                  self._section(selected.content,'Conceitos ensinados (extraídos pela IA)') or
-                  self._section(selected.content,'Pessoas e assuntos mencionados') or
-                  self._section(selected.content,'Conceitos principais') or '')
+        kind=selected.metadata.get('tipo','')
+        if kind=='conceito':
+            summary=self._section(selected.content,'Explicações e referências das aulas') or ''
+            concepts=''
+        elif kind=='pessoa':
+            summary=self._section(selected.content,'Menções nas aulas') or ''
+            concepts=''
+        else:
+            summary=(self._section(selected.content,'Resumo da aula') or
+                     self._section(selected.content,'Em poucas palavras') or
+                     self._section(selected.content,'Resumo') or '')
+            concepts=(self._section(selected.content,'Conhecimentos técnicos citados') or
+                      self._section(selected.content,'Conceitos identificados pela IA (conferir na fonte)') or
+                      self._section(selected.content,'Conceitos ensinados (extraídos pela IA)') or
+                      self._section(selected.content,'Conceitos principais') or '')
         examples=self._section(selected.content,'Exemplos mencionados')
         if not summary:
             paragraphs=[p.strip() for p in selected.content.split('\n\n') if p.strip() and not p.lstrip().startswith('#')]
