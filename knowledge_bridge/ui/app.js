@@ -504,7 +504,7 @@ function bind(){document.querySelectorAll('.nav-item').forEach(el=>el.addEventLi
  $('btn-fullscreen').addEventListener('click',toggleFullscreen);
  document.addEventListener('keydown',event=>{
    if(event.key==='F11'){event.preventDefault();toggleFullscreen();}
-   else if(event.key==='Escape' && !$('classroom-dialog').open && !$('auto-dialog').open && window.__tramaFullscreen){event.preventDefault();toggleFullscreen();}
+   else if(event.key==='Escape' && !['classroom-dialog','auto-dialog','repo-dialog','trama-confirm-dialog'].some(id=>$(id)?.open) && window.__tramaFullscreen){event.preventDefault();toggleFullscreen();}
  });
  async function runGlobalSearch(){
    app.filter=$('search-all').value.trim();libraryState.search=app.filter;
