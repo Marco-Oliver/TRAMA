@@ -33,8 +33,12 @@ const makeBridge=({notes})=>{
  const baseNote=n=>({...n,media:{video:[],video_links:[],transcript:[],materials:[]},related:[]});
  window.__TRAMA_API__=({
   snapshot: async()=>({connected:true,vault:'C:\\TRAMA-Teste\\Cofre',notes,stats:{notes:3,videos:2,transcriptions:2,materials:0,repositories:1},favorites:[notes[0].id]}),
-  note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n):{error:'Nota não encontrada'};},
+  note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n.lesson==='Aula-001'?{...n,kind:'aula',state:'aguardando_ia',summary:'Pendente: resumo não gerado.'}:n):{error:'Nota não encontrada'};},
   graph: async()=>({nodes:notes,edges:[[0,2]]}),
+  process_lesson: async (lesson, confirmed)=>{
+    window.__tramaLessonRefreshCalls=(window.__tramaLessonRefreshCalls||0)+1;
+    return confirmed && lesson==='Aula-001' ? {ok:true,message:'Análise simulada'} : {ok:false,message:'Confirmação obrigatória'};
+  },
   ai_status: async()=>({configured:{gemini:true},confirmed_free:true}),
   check_updates: async()=>({ok:true,available:false,message:'Você já está na versão mais recente.'}),
   teacher_ask: async (question, mode, code, confirmed)=>confirmed?({
@@ -89,6 +93,18 @@ try{
     if((await page.locator('#note-content').innerText()).includes('Suas notas aparecerão'))
       throw Error('Lesson notes were not loaded into the interface');
     await assertNoUiError('lessons');
+    // Reanalysis must never reach the bridge without the user's confirmation.
+    const refresh=page.locator('#refresh-this-lesson');
+    await refresh.waitFor();
+    page.once('dialog',dialog=>dialog.dismiss());
+    await refresh.click();
+    if(await page.evaluate(()=>window.__tramaLessonRefreshCalls||0))
+      throw Error('Lesson reanalysis ran after cancelling consent');
+    page.once('dialog',dialog=>dialog.accept());
+    await refresh.click();
+    await page.waitForFunction(()=>window.__tramaLessonRefreshCalls===1);
+    await assertNoUiError('lesson reanalysis');
+
     await page.locator('[data-list-filter="favorites"]').click();
     if(await page.locator('.lesson-row').count()!==1)throw Error('Favorites filter did not work');
     await page.locator('[data-list-filter="recent"]').click();
