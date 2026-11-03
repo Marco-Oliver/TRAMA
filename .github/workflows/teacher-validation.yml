@@ -3,11 +3,25 @@ on:
   push:
     branches:
       - feat/ia-professor-20261031
+  pull_request:
+    branches: [main]
+    paths:
+      - 'knowledge_bridge/**'
+      - 'tests/**'
+      - 'TRAMA.spec'
+      - 'TRAMA_Instalador.iss'
+      - '.github/workflows/teacher-validation.yml'
+      - 'tools/build_preview_candidate.py'
+      - 'tools/windows_preview_smoke.ps1'
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: teacher-validation-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   regression:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feat/teacher-')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -33,10 +47,13 @@ jobs:
       - name: Auditoria
         run: python tools/audit_release.py
   installer:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feat/teacher-')
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -48,7 +65,12 @@ jobs:
         shell: pwsh
         run: |
           $exe = (Resolve-Path '.\dist\TRAMA\TRAMA.exe').Path
-          $result = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -Wait
+          $result = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru
+          if (-not $result.WaitForExit(90000)) {
+            Stop-Process -Id $result.Id -Force -ErrorAction SilentlyContinue
+            throw 'Exe self-test exceeded 90 seconds'
+          }
+          $result.Refresh()
           if ($result.ExitCode -ne 0) { throw 'Exe self-test failed' }
       - name: Instalador local
         shell: pwsh
@@ -59,3 +81,84 @@ jobs:
       - name: Instalar reinstalar e desinstalar
         shell: pwsh
         run: ./tools/windows_installer_smoke.ps1
+      - name: Testar upgrade 2.0.1 para 2.1.0 com cofre e chave sintetica
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./tools/windows_upgrade_smoke.ps1
+
+      - name: Preparar Preview em area de trabalho isolada
+        shell: pwsh
+        run: python tools/build_preview_candidate.py
+      - name: Compilar executavel da Preview
+        run: python -m PyInstaller --clean --noconfirm TRAMA.spec
+      - name: Validar executavel da Preview
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path '.\dist\TRAMA\TRAMA.exe').Path
+          $proc = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru
+          if (-not $proc.WaitForExit(90000)) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            throw 'Preview executable self-test timed out'
+          }
+          $proc.Refresh()
+          if ($proc.ExitCode -ne 0) { throw "Preview executable failed: $($proc.ExitCode)" }
+      - name: Compilar instalador Preview exclusivo
+        shell: pwsh
+        run: |
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' 'TRAMA_Preview_Instalador.iss'
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path 'release\TRAMA_Preview_Setup.exe')) {
+            throw 'Preview installer compilation failed'
+          }
+      - name: Testar instalacao paralela e retencao de dados estaveis
+        shell: pwsh
+        run: ./tools/windows_preview_smoke.ps1
+      - name: Conferir checksum da Preview
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash 'release\TRAMA_Preview_Setup.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  TRAMA_Preview_Setup.exe" | Set-Content 'release\SHA256SUMS-Preview.txt' -Encoding ASCII
+          Get-Content 'release\SHA256SUMS-Preview.txt'
+      - name: Disponibilizar instalador experimental sem publicar release
+        uses: actions/upload-artifact@v4
+        with:
+          name: TRAMA-Preview-2.1-PR4-Installer
+          path: |
+            release/TRAMA_Preview_Setup.exe
+            release/SHA256SUMS-Preview.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  browser:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feat/teacher-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Preparar navegador de teste
+        run: |
+          npm install --no-save --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+      - name: Testar UI e consentimento de reanalise
+        run: node tests/ui_smoke.mjs
+      - name: Gerar HTML realmente embutido no executavel
+        run: |
+          python -c "from pathlib import Path; from knowledge_bridge.bridge import load_local_ui; p=Path('ui-smoke-artifacts/native-bundle.html'); p.parent.mkdir(exist_ok=True); p.write_text(load_local_ui(),encoding='utf-8')"
+      - name: Repetir testes na versao embutida
+        env:
+          TRAMA_BUNDLED_HTML: ui-smoke-artifacts/native-bundle.html
+        run: node tests/ui_smoke.mjs
+      - name: Guardar capturas para revisao visual
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: teacher-v2-ui-screenshots
+          path: ui-smoke-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7

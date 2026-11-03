@@ -125,3 +125,28 @@ def evidence_excerpt(text: str, limit: int = 4) -> list[tuple[str, str]]:
         return []
     step = max(1, len(items) // limit)
     return [(t, s[:260]) for t, s in items[::step][:limit]]
+
+
+def study_windows(text: str, limit: int = 4, span: int = 8) -> list[tuple[str, str]]:
+    """Useful chronological windows without pretending to summarize a lesson.
+
+    Each timestamp comes literally from the original transcript. Only the
+    neighboring text is joined, and no LLM or factual inference is involved.
+    """
+    rows = [(time, sentence) for time, sentence in timed_lines(text)
+            if time != "sem horário" and sentence.strip()]
+    if not rows:
+        return []
+    count = min(max(1, limit), len(rows))
+    stride = max(1, len(rows) // count)
+    out = []
+    seen = set()
+    for index in range(count):
+        start = min(index * stride, len(rows) - 1)
+        if start in seen:
+            continue
+        seen.add(start)
+        stamp = rows[start][0]
+        text_window = " ".join(value.strip() for _, value in rows[start:start + span])
+        out.append((stamp, text_window[:440]))
+    return out

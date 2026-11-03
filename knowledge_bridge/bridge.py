@@ -103,7 +103,7 @@ class Bridge:
         db=path/'.base-conhecimento'/'estado.sqlite3'
         if not db.is_file():return output
         try:
-            with closing(sqlite3.connect(f'file:{quote(db.as_posix())}?mode=ro',uri=True,timeout=2)) as con:
+            with closing(sqlite3.connect(db.as_uri() + '?mode=ro',uri=True,timeout=2)) as con:
                 for kind,count in con.execute('SELECT kind,COUNT(*) FROM sources GROUP BY kind'):
                     if kind=='transcript':output['transcriptions']=count
                     if kind=='video':output['videos']=count
@@ -157,7 +157,7 @@ class Bridge:
         lesson=note.metadata.get('aula','')
         if not lesson:return out
         try:
-            with closing(sqlite3.connect(f'file:{quote(db.as_posix())}?mode=ro',uri=True,timeout=2)) as con:
+            with closing(sqlite3.connect(db.as_uri() + '?mode=ro',uri=True,timeout=2)) as con:
                 for kind,label,stored,video in con.execute('SELECT kind,label,stored_path,video FROM sources WHERE lesson=?',(lesson,)):
                     if kind in ('video', 'transcript') and stored:
                         out[kind].append({'label':label,'stored':stored,'video_id':video or ''})
@@ -617,6 +617,36 @@ class Bridge:
         webbrowser.open(address)
         return {'ok':True}
 
+    def search_transcript(self, stored, query):
+        """Local-only search in registered TXT transcripts; never call AI."""
+        if (not isinstance(stored,str) or len(stored)>450 or
+                not isinstance(query,str) or not 1<=len(query.strip())<=160):
+            return {'ok':False,'message':'Escolha uma transcrição e informe um termo de busca.'}
+        vault=self._vault()
+        if not vault:return {'ok':False,'message':'Conecte o cofre do Obsidian primeiro.'}
+        from .teacher_transcripts import _load_verified, _extract_timed_excerpt
+        from .teacher import _terms
+        db=vault/'.base-conhecimento'/'estado.sqlite3'
+        if db.is_symlink() or db.parent.is_symlink() or not db.is_file():
+            return {'ok':False,'message':'Catálogo de fontes indisponível.'}
+        try:
+            with closing(sqlite3.connect(db.as_uri()+'?mode=ro',uri=True,timeout=2)) as con:
+                row=con.execute(
+                    "SELECT digest FROM sources WHERE kind='transcript' AND stored_path=? LIMIT 1",
+                    (stored,)
+                ).fetchone()
+        except (sqlite3.Error,OSError):
+            return {'ok':False,'message':'Não foi possível consultar as transcrições.'}
+        if not row:
+            return {'ok':False,'message':'Transcrição não cadastrada no cofre.'}
+        raw=_load_verified(vault,stored,row[0])
+        if raw is None:
+            return {'ok':False,'message':'Fonte alterada, maior que 2 MB ou insegura. Confira o original.'}
+        excerpt,times=_extract_timed_excerpt(raw,_terms(query),query)
+        return {'ok':True,'excerpt':excerpt,'times':times[:12],
+                'message':('Trechos encontrados na transcrição original.' if excerpt else
+                           'Nenhum trecho com esse termo foi encontrado na transcrição.')}
+
     def teacher_ask(self, question, mode="explicar", code="", confirmed=False):
         """One consented request, read-only vault retrieval and short session memory."""
         if confirmed is not True:
@@ -784,6 +814,42 @@ class Bridge:
                 self._write_lock.release()
         return {'ok':True,'logs':logs[-8:]}
 
+    def process_lesson(self, lesson, confirmed=False):
+        """Explicitly refresh one lesson only, respecting existing local keys."""
+        if confirmed is not True:
+            return {'ok':False,'message':'Confirme o envio dos trechos desta aula à API configurada.'}
+        if not isinstance(lesson,str) or not re.fullmatch(r'Aula-\d{3,4}',lesson):
+            return {'ok':False,'message':'Identificador de aula inválido.'}
+        vault=self._vault()
+        if not vault:
+            return {'ok':False,'message':'Selecione o cofre do Obsidian primeiro.'}
+        if not self.settings.get('confirmed_free') or not any(self._key_vault.configured().values()):
+            return {'ok':False,'message':'Configure e confirme sua chave Free em Ajustes.'}
+        if not self._write_lock.acquire(blocking=False):
+            return {'ok':False,'message':'Outro processamento está em andamento.'}
+        logs=[]
+        app=None
+        try:
+            app=self._make_application(vault,log=lambda text:logs.append(redact_sensitive(str(text))[:600]))
+            matches=[src for src in app.store.sources("transcript") if src["lesson"]==lesson]
+            if not matches:
+                return {'ok':False,'message':'Nenhuma transcrição cadastrada para esta aula.'}
+            app.process(lesson_filter=lesson,force=True)
+            remaining=[src for src in app.store.sources("transcript")
+                       if src["lesson"]==lesson and src["status"]!="PUBLISHED"]
+            if remaining:
+                return {'ok':False,'message':'A análise não terminou. Confira a cota da API e tente novamente.',
+                        'logs':logs[-6:]}
+            return {'ok':True,'message':'Análise da aula concluída; notas do Obsidian atualizadas.',
+                    'logs':logs[-8:]}
+        except Exception:
+            return {'ok':False,'message':'Não foi possível reanalisar a aula. As transcrições originais foram preservadas.'}
+        finally:
+            try:
+                if app is not None:app.close()
+            finally:
+                self._write_lock.release()
+
     def add_repo(self,url):
         if not self._vault():return {'ok':False,'message':'Configure o cofre primeiro.'}
         if not isinstance(url,str) or not url.strip() or len(url)>1000:return {'ok':False,'message':'URL inválida'}
@@ -870,7 +936,7 @@ class Bridge:
             return {'ok':False,'message':'Link não registrado no cofre.'}
         allowed=False
         try:
-            with closing(sqlite3.connect(f'file:{quote(db.as_posix())}?mode=ro',uri=True,timeout=2)) as con:
+            with closing(sqlite3.connect(db.as_uri() + '?mode=ro',uri=True,timeout=2)) as con:
                 for (stored,) in con.execute("SELECT stored_path FROM sources WHERE kind='classroom'"):
                     record=self._safe_classroom_record(vault,stored)
                     rows=record.get('videos',[]) if record else []
@@ -904,7 +970,7 @@ class Bridge:
             return {'ok':False}
         try:
             with closing(sqlite3.connect(
-                    f'file:{quote(db.as_posix())}?mode=ro',uri=True,timeout=2)) as con:
+                    db.as_uri() + '?mode=ro',uri=True,timeout=2)) as con:
                 registered=con.execute(
                     "SELECT 1 FROM sources WHERE stored_path=? "
                     "AND kind IN ('video','transcript','material') LIMIT 1",
@@ -1003,6 +1069,9 @@ class PublicApi:
     def process(self, confirmed=False):
         return self._bridge.process(confirmed)
 
+    def process_lesson(self, lesson, confirmed=False):
+        return self._bridge.process_lesson(lesson, confirmed)
+
     def add_repo(self, url):
         return self._bridge.add_repo(url)
 
@@ -1044,6 +1113,9 @@ class PublicApi:
 
     def open_update_page(self, address):
         return self._bridge.open_update_page(address)
+
+    def search_transcript(self, stored, query):
+        return self._bridge.search_transcript(stored, query)
 
     def teacher_ask(self, question, mode="explicar", code="", confirmed=False):
         return self._bridge.teacher_ask(question, mode, code, confirmed)

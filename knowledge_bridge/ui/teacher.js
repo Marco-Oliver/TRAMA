@@ -4,7 +4,7 @@
 const teacherState={messages:[],busy:false,mode:'explicar',draft:'',code:''};
 function teacherClearVisual(el){
  const r=document.createElement('p');r.className='teacher-empty';
- r.textContent='Pergunte sobre suas aulas, peça desafios ou cole um código para receber dicas. O Professor usa apenas notas encontradas no Obsidian.';
+ r.textContent='Pergunte sobre suas aulas, peça desafios ou cole um código para receber dicas. O Professor usa notas e trechos das transcrições cadastradas no Obsidian.';
  el.append(r);
 }
 function teacherOpenSource(source){
@@ -44,6 +44,17 @@ function teacherDrawMessages(){
     button.className='teacher-ref';button.textContent=source.title||source.id;
     button.title=source.id;button.addEventListener('click',()=>teacherOpenSource(source));
     refs.append(button);
+    if(source.transcript_times?.length && source.transcript_stored){
+      const open=document.createElement('button');open.type='button';
+      open.className='teacher-ref';
+      open.textContent='▤ Transcrição original · '+source.transcript_times[0];
+      open.title='Abrir a transcrição original vinculada à aula';
+      open.addEventListener('click',async()=>{
+        const result=await call('open_attachment',source.transcript_stored);
+        if(!result?.ok){const feedback=$('teacher-feedback');if(feedback)feedback.textContent=result?.message||'Não foi possível abrir a transcrição.';}
+      });
+      refs.append(open);
+    }
    }
    wrap.append(refs);
   }
@@ -79,7 +90,7 @@ function renderTeacher(el){
    <textarea id="teacher-code" rows="6" maxlength="6500" spellcheck="false" placeholder="Cole apenas o código que deseja revisar. Remova senhas e chaves."></textarea>
   </div>
   <label class="teacher-consent"><input type="checkbox" id="teacher-consent"/>
-   Autorizo enviar esta pergunta, o código colado (se houver), trechos das notas selecionadas e parte da conversa à API gratuita configurada.</label>
+   Autorizo enviar esta pergunta, o código colado (se houver), trechos das notas e transcrições selecionadas e parte da conversa à API gratuita configurada.</label>
   <div class="teacher-controls"><p id="teacher-feedback" role="status">Uma pergunta pode consumir cota gratuita da API. Nenhuma cobrança é garantida se a conta externa tiver faturamento habilitado.</p>
   <button id="teacher-submit" type="submit">Enviar pergunta</button></div>
  </form></div>`;
@@ -134,7 +145,7 @@ function renderTeacher(el){
    el.querySelector('#teacher-question').value='';el.querySelector('#teacher-code').value='';
    el.querySelector('#teacher-consent').checked=false;
    teacherDrawMessages();
-   status.textContent='Resposta baseada nas notas listadas acima. Confira as fontes quando necessário.';
+   status.textContent='Resposta baseada nas notas e transcrições citadas. Confira as fontes quando necessário.';
   }finally{teacherState.busy=false;button.disabled=false;}
  });
 }

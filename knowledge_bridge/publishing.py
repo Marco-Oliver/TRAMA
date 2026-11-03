@@ -13,7 +13,7 @@ from collections import defaultdict
 from pathlib import Path
 from urllib.parse import quote
 
-from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines
+from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines, study_windows
 from .store import Store
 from .memory_atlas import make_atlas, render_atlas, lesson_order, norm
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections
@@ -455,12 +455,18 @@ class Publisher:
                 tempo = f" ({c['tempo']})" if c.get("tempo") else ""
                 body.append(f"- **{_escape_md(name)}**{tempo}: {_escape_md(c.get('explicacao',''))}")
             body += ["", "## Exemplos mencionados"] + [f"- {_escape_md(x)}" for x in analysis.get("exemplos",[])]
-            body += ["", "## Termos para conferir (não são erros confirmados)", "",
-                     "> Estes termos foram sinalizados pela IA. Nomes próprios, apelidos e siglas podem estar corretos na fala."] + [f"- {_escape_md(x)}" for x in analysis.get("duvidas",[])]
+            if analysis.get("duvidas"):
+                body += ["", "## Dúvidas técnicas e passagens inaudíveis", "",
+                         "> Uma hipótese de transcrição não comprova erro nem aprendizado."] + [
+                             f"- {_escape_md(x)}" for x in analysis.get("duvidas",[])]
+            if analysis.get("nomes_a_conferir"):
+                body += ["", "## Nomes e apelidos para conferir", "",
+                         "> Nomes próprios ou apelidos podem estar corretos; não são dúvidas de programação."] + [
+                             f"- {_escape_md(x)}" for x in analysis.get("nomes_a_conferir",[])]
         else:
-            body += ["*Pendente: nenhum provedor de IA gratuito configurado. Não é um resumo automático.*", "",
+            body += ["*Pendente: resumo ainda não gerado por IA. Se você configurou uma API gratuita em Ajustes, clique em Gerar Resumos para processar as transcrições pendentes. Os trechos abaixo não são síntese.*", "",
                      "## Trechos da transcrição para consulta (não são síntese)"]
-            body += [f"- **{t}** — {_escape_md(s)}" for t,s in times]
+            body += [f"- **{t}** — {_escape_md(s)}" for t,s in study_windows(text)]
         if analysis:
             body += ["", "## Tipo e contexto do encontro", "",
                      f"- Classificação sugerida pela IA: **{_escape_md(analysis.get('tipo_aula', 'indefinida'))}**.",

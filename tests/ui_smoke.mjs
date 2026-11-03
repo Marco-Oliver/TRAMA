@@ -30,11 +30,22 @@ const notes = [
 const makeBridge=({notes})=>{
  // Playwright serializes this function into the page. Never reference
  // Node-side closures from the injected fake bridge.
- const baseNote=n=>({...n,media:{video:[],video_links:[],transcript:[],materials:[]},related:[]});
+ const baseNote=n=>({...n,media:{video:[],video_links:[],transcript:n.lesson==='Aula-001'?[{label:'Aula 001.txt',stored:'99-Anexos/Transcricoes-Originais/aula001.txt'}]:[],materials:[]},related:[]});
  window.__TRAMA_API__=({
   snapshot: async()=>({connected:true,vault:'C:\\TRAMA-Teste\\Cofre',notes,stats:{notes:3,videos:2,transcriptions:2,materials:0,repositories:1},favorites:[notes[0].id]}),
-  note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n):{error:'Nota não encontrada'};},
+  note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n.lesson==='Aula-001'?{...n,kind:'visao_geral',state:'fontes_organizadas',content:n.content+'\n\n## Em poucas palavras\n\n**Pendente:** a IA ainda não gerou o resumo desta aula.',summary:'**Pendente:** a IA ainda não gerou o resumo desta aula.'}:n):{error:'Nota não encontrada'};},
   graph: async()=>({nodes:notes,edges:[[0,2]]}),
+  process_lesson: async (lesson, confirmed)=>{
+    window.__tramaLessonRefreshCalls=(window.__tramaLessonRefreshCalls||0)+1;
+    return confirmed && lesson==='Aula-001' ? {ok:true,message:'Análise simulada'} : {ok:false,message:'Confirmação obrigatória'};
+  },
+  search_transcript: async (stored,query)=>{
+    window.__tramaTranscriptSearchCalls=(window.__tramaTranscriptSearchCalls||0)+1;
+    return stored==='99-Anexos/Transcricoes-Originais/aula001.txt' && query==='terminal'
+      ? {ok:true,excerpt:'[0:09] Comando no terminal <img src=x onerror="window.__tramaXss=true">',times:['0:09']}
+      : {ok:true,excerpt:'',times:[]};
+  },
+  open_attachment: async()=>({ok:true}),
   ai_status: async()=>({configured:{gemini:true},confirmed_free:true}),
   check_updates: async()=>({ok:true,available:false,message:'Você já está na versão mais recente.'}),
   teacher_ask: async (question, mode, code, confirmed)=>confirmed?({
@@ -89,6 +100,46 @@ try{
     if((await page.locator('#note-content').innerText()).includes('Suas notas aparecerão'))
       throw Error('Lesson notes were not loaded into the interface');
     await assertNoUiError('lessons');
+    // The lessons workspace opens in 'Nota completa'; the action belongs to 'Resumo'.
+    await page.locator('#note-tabs .tab').getByText('Resumo',{exact:true}).click();
+    // Reanalysis must never reach the bridge without the user's confirmation.
+    const refresh=page.locator('#refresh-this-lesson');
+    if(!(await refresh.count())){
+      const trace=await page.evaluate(()=>({
+        view:app.view,tab:app.tab,noteKind:app.note?.kind,
+        lesson:app.note?.lesson,selected:app.selected,
+        buttons:[...document.querySelectorAll('#note-content button')].map(b=>b.textContent.trim()).slice(0,8),
+        body:document.querySelector('#note-content')?.textContent.slice(0,350)
+      }));
+      throw Error('Scoped reanalysis button was not rendered: '+JSON.stringify(trace));
+    }
+    if(!((await page.locator('#note-content').innerText()).includes('Gerar resumo desta aula')))
+      throw Error('Missing pending-summary action on real overview note');
+    await refresh.waitFor({timeout:3000});
+    page.once('dialog',dialog=>dialog.dismiss());
+    await refresh.click();
+    if(await page.evaluate(()=>window.__tramaLessonRefreshCalls||0))
+      throw Error('Lesson reanalysis ran after cancelling consent');
+    page.once('dialog',dialog=>dialog.accept());
+    await refresh.click();
+    await page.waitForFunction(()=>window.__tramaLessonRefreshCalls===1);
+    await assertNoUiError('lesson reanalysis');
+
+    // The transcript-search feature is local-only and must render untrusted
+    // transcript text as text rather than executable HTML.
+    await page.locator('#note-tabs .tab').filter({hasText:/^Transcrição$/}).click();
+    await page.locator('#transcript-query').fill('terminal');
+    await page.locator('#transcript-search').click();
+    const excerpt=page.locator('.transcript-find-excerpt');
+    await excerpt.waitFor();
+    if(!(await excerpt.textContent()).includes('[0:09]'))
+      throw Error('Transcript search lost the original timestamp');
+    if(await page.evaluate(()=>Boolean(window.__tramaXss ||
+         document.querySelector('#transcript-search-results img'))))
+      throw Error('Untrusted transcript snippet executed HTML');
+    if((await page.evaluate(()=>window.__tramaTranscriptSearchCalls||0))!==1)
+      throw Error('Transcript search did not use the local bridge exactly once');
+
     await page.locator('[data-list-filter="favorites"]').click();
     if(await page.locator('.lesson-row').count()!==1)throw Error('Favorites filter did not work');
     await page.locator('[data-list-filter="recent"]').click();

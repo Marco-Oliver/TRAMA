@@ -178,3 +178,8 @@ button:not(:disabled):hover{filter:brightness(.98)}
 /* CSS for settings and graph controls (CSP-compliant) */
 .ai-key-actions{display:flex;gap:8px;flex-wrap:wrap}
 .graph-empty{padding:25px}
+
+.transcript-find{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.transcript-find input{flex:1;min-width:190px}
+.transcript-find-excerpt{white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow:auto;padding:12px;border:1px solid #d8e1d9;border-radius:7px;font:inherit;font-size:.9rem;line-height:1.5}
+#transcript-search-results{display:grid;gap:10px;margin-top:12px}

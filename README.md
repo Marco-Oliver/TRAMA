@@ -164,9 +164,17 @@ Veja os workflows na pasta [`.github/workflows`](.github/workflows).
 </details>
 
 
-## 🛡️ Novidades da versão 2.0.1
+## 🛡️ O que muda na atualização 2.1.0
 
-A versão publicada 2.0.1 reforça a privacidade da IA Professor, impede destinos não autorizados para as APIs, endurece a leitura de documentos e corrige falhas de importação e navegação. O instalador mantém a mesma identidade da versão 2.0.0 para permitir atualização no Windows sem substituir o cofre. Veja a versão publicada no link **Última versão** do topo.
+A nova versão reúne as melhorias da IA Professor, o estudo de transcrições originais e os ajustes de segurança desde a 2.0.1:
+
+- **IA Professor com evidências:** usa, mediante autorização, trechos verificados do TXT original e referências às notas do Obsidian; não trata citações como prova de que a resposta esteja correta.
+- **Busca em transcrições:** procure termos como `dotnet`, `SDK` e `terminal` na aula, com trechos e horários do arquivo original, sem gastar cota de IA.
+- **Resumos mais claros:** distingue nomes/apelidos de conceitos técnicos e marca explicitamente aulas sem análise por IA.
+- **Reprocessamento individual:** permite reanalisar uma aula com confirmação, preservando edições manuais e criando propostas quando há conflito.
+- **Compatibilidade Windows:** leitura SQLite corrigida e testes de regressão, interface e atualização de instalador.
+
+**Para quem já tem o TRAMA 2.0.1:** use **Ajustes → Verificar atualizações** quando a 2.1.0 aparecer. Não instale a edição Preview separada. O instalador oficial usa a **mesma identidade, pasta e nome** do aplicativo existente e mantém cofre, configurações e chaves locais. Faça o backup do cofre antes de reprocessar aulas. A versão pública atual é indicada pelo selo **Última versão** no topo.
 
 
 ---
@@ -178,3 +186,6 @@ A versão publicada 2.0.1 reforça a privacidade da IA Professor, impede destino
 <sub>Feito para estudar melhor, mantendo seu material no Obsidian e seu controle sobre dados e atualizações.</sub>
 
 </div>
+
+
+> **Revisão de qualidade:** os testes automatizados usam dados fictícios. As aulas reais e as respostas de um provedor externo ainda precisam de conferência humana, mesmo após a publicação de uma atualização.

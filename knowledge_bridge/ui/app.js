@@ -14,7 +14,7 @@ function empty(msg){return `<p class="empty-text">${escapeHTML(msg)}</p>`;}
 function notify(message,wait=4000){$('status-message').textContent=message;const e=$('toast');e.textContent=message;e.classList.remove('hidden');clearTimeout(notify.timer);notify.timer=setTimeout(()=>e.classList.add('hidden'),wait);}
 async function call(name,...args){if(!bridge||typeof bridge[name]!=='function'){notify('Conecte o aplicativo TRAMA.');return null;}try{return await bridge[name](...args);}catch(e){notify('Falha ao executar: '+String(e).slice(0,160));return null;}}
 async function refresh(){const data=await call('snapshot');if(!data)return;app.snapshot=data;libraryState.favorites=new Set(data.favorites||[]);document.body.classList.toggle('connected',!!data.connected);$('connect-state').textContent=data.connected?'Obsidian conectado':'Configure o cofre do Obsidian';const s=data.stats||{};$('status-counts').textContent=`▤ ${s.notes||0} notas   │   ▶ ${s.videos||0} vídeos   │   ▤ ${s.transcriptions||0} transcrições   │   ▰ ${s.materials||0} materiais   │   ▱ ${s.repositories||0} projetos`;
- document.querySelector('.status-version').textContent='TRAMA v2.0.1  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
+ document.querySelector('.status-version').textContent='TRAMA v2.1.0  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
  if(!data.connected){app.note=null;app.selected=null;}
  renderNavigation();await render();}
 function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
@@ -79,7 +79,47 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
  if(app.tab==='Markdown'){const pre=document.createElement('pre');pre.className='note-markdown';pre.textContent=n.content;box.append(pre);return;}
 
  if(app.tab==='Vídeos'){const files=n.media?.video||[],urls=n.media?.video_links||[];const rows=[...urls.map((x,i)=>fileRow('↗',x.label,'Link externo · sem cópia do vídeo','Abrir vídeo','video_links',i)),...files.map((x,i)=>fileRow('▶',x.label,'Vídeo local de versão anterior','Abrir','video',i))];box.innerHTML=card('Gravações da aula',rows.length?rows.join(''):empty('Cadastre o título e o link do vídeo em Aulas → Contexto +. Não é necessário baixar o vídeo.'));wireFiles();return;}
- if(app.tab==='Transcrição'){const files=n.media?.transcript||[];box.innerHTML=card('Transcrições originais',files.length?files.map((x,i)=>fileRow('▤',x.label,'Transcrição salva no cofre','Abrir','transcript',i)).join(''):empty('Nenhuma transcrição cadastrada.'));wireFiles();return;}
+ if(app.tab==='Transcrição'){
+   const files=n.media?.transcript||[];
+   box.innerHTML=card('Transcrições originais',files.length?
+     files.map((x,i)=>fileRow('▤',x.label,'Transcrição salva no cofre','Abrir','transcript',i)).join(''):
+     empty('Nenhuma transcrição cadastrada.'))+
+     (files.length?card('Pesquisar transcrição (local, sem IA)',
+       '<p>Encontre palavras e horários da transcrição original sem consumir a API.</p>'+
+       '<div class="transcript-find"><input id="transcript-query" maxlength="160" placeholder="Ex.: terminal, SDK, dotnet" aria-label="Termo da transcrição"/>'+
+       '<button id="transcript-search" type="button">Pesquisar</button></div>'+
+       '<div id="transcript-search-results" role="status" aria-live="polite"></div>'):'');
+   wireFiles();
+   const button=box.querySelector('#transcript-search');
+   if(button){
+     const input=box.querySelector('#transcript-query');
+     const results=box.querySelector('#transcript-search-results');
+     const search=async()=>{
+       const term=input.value.trim();
+       if(!term){results.textContent='Digite um termo para pesquisar.';return;}
+       results.textContent='Pesquisando apenas nos arquivos locais…';button.disabled=true;
+       try{
+         const found=[];
+         for(const file of files.slice(0,4)){
+           const response=await call('search_transcript',file.stored,term);
+           if(response?.ok && response.excerpt)found.push({file,response});
+         }
+         results.replaceChildren();
+         if(!found.length){results.textContent='Nenhum trecho encontrado. Tente outra grafia ou expressão.';return;}
+         for(const {file,response} of found){
+           const label=document.createElement('strong');label.textContent=file.label;results.append(label);
+           const excerpt=document.createElement('pre');excerpt.className='transcript-find-excerpt';
+           excerpt.textContent=response.excerpt;results.append(excerpt);
+           const open=document.createElement('button');open.type='button';open.textContent='Abrir original';
+           open.addEventListener('click',()=>call('open_attachment',file.stored));results.append(open);
+         }
+       }finally{button.disabled=false;}
+     };
+     button.addEventListener('click',search);
+     input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();search();}});
+   }
+   return;
+ }
  if(app.tab==='Conferência'){
    box.innerHTML=card('Conferência local das fontes', '<p>Verificando transcrições, horários e referências no Obsidian…</p>');
    call('audit_note',n.id).then(result=>{
@@ -100,12 +140,33 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
  }
  if(app.tab==='Relacionados'){box.innerHTML=card('Conhecimentos relacionados',n.related.length?n.related.map((x,i)=>`<button class="simplelink" data-related="${i}">↗ &nbsp; ${escapeHTML(x.title)}</button>`).join(''):empty('Ainda não existem conexões confirmadas entre esta nota e outras.'));wireRelations();return;}
  let html=card('Resumo da aula',paragraphs(n.summary),'summary');
+ if(n.lesson && (n.kind==='aula' || (n.kind==='visao_geral' && (n.media?.transcript||[]).length))){
+   const pending=n.state==='aguardando_ia' ||
+      (n.kind==='visao_geral' && n.content.includes('**Pendente:**'));
+   html+=card(pending?'Resumo pendente':'Revisar análise da aula',
+     '<p>'+(pending?
+       'A transcrição está salva, mas o resumo por IA ainda não foi gerado.':
+       'Você pode refazer a análise desta aula se encontrou erros na transcrição ou nos conceitos.')+
+     '</p><button id="refresh-this-lesson" type="button">'+
+     (pending?'Gerar resumo desta aula':'Reanalisar somente esta aula')+'</button>');
+ }
  html+=card('Principais conceitos',n.concepts?paragraphs(n.concepts):empty('Os conceitos aparecem aqui quando houver análise. Consulte também a Nota completa.'));
  if(n.examples)html+=card('Exemplos mencionados',paragraphs(n.examples));
  const vids=n.media?.video||[],urls=n.media?.video_links||[],trans=n.media?.transcript||[];
  const links=[...trans.map((x,i)=>fileRow('▤',x.label,'Transcrição original','Abrir','transcript',i)),...urls.map((x,i)=>fileRow('↗',x.label,'Gravação vinculada por URL','Abrir','video_links',i)),...vids.map((x,i)=>fileRow('▶',x.label,'Vídeo local de versão anterior','Abrir','video',i))];
  html+=card('Materiais e links',links.length?`<div class="card-rows">${links.join('')}</div>`:empty('Os materiais associados aparecerão aqui.'));
- box.innerHTML=html;wireFiles();}
+ box.innerHTML=html;wireFiles();
+ const update=box.querySelector('#refresh-this-lesson');
+ if(update)update.addEventListener('click',async()=>{
+   if(!confirm('Apenas a aula '+n.lesson+' será reanalisada. Isso envia trechos das transcrições para sua API externa e pode consumir várias chamadas. Recomenda-se criar um backup local antes. Continuar?'))return;
+   update.disabled=true;update.textContent='Processando esta aula…';
+   try{
+     const result=await call('process_lesson',n.lesson,true);
+     if(!result?.ok){notify(result?.message||'Análise pendente.',8000);return;}
+     notify('Aula reanalisada. Verifique as novas notas no Obsidian.',7000);
+     await refresh();
+   }finally{update.disabled=false;}
+ });}
 function fileRow(icon,title,detail,cta,kind,i){return `<div class="resource-row"><span class="resource-icon">${icon}</span><span class="resource-text"><strong>${escapeHTML(title)}</strong><small>${escapeHTML(detail)}</small></span><button class="row-open" data-file-kind="${kind}" data-file-idx="${i}">${cta} ↗</button></div>`;}
 function wireFiles(){document.querySelectorAll('[data-file-kind]').forEach(el=>el.addEventListener('click',async()=>{const kind=el.dataset.fileKind,media=app.note?.media?.[kind]?.[Number(el.dataset.fileIdx)];if(media)await call(kind==='video_links'?'open_video_link':'open_attachment',kind==='video_links'?media.url:media.stored);}));}
 function wireRelations(){document.querySelectorAll('[data-related]').forEach(el=>el.addEventListener('click',async()=>{libraryState.search='';app.selected=app.note.related[Number(el.dataset.related)].id;app.view='library';await render();}));}
@@ -138,7 +199,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
  if(app.view==='settings'){
   el.innerHTML=`<div class="wide-header"><h2>Ajustes</h2><p>O cofre do Obsidian é a fonte principal. O TRAMA não cria outra biblioteca.</p></div>
   <div class="settings-grid"><div class="setting-block"><h3>Atualizações do TRAMA</h3>
-    <p><strong>Versão instalada: 2.0.1.</strong> Para atualizar: clique em Verificar, depois em Baixar e confirme a instalação. Você não precisa reinstalar Python nem baixar arquivos ZIP.</p>
+    <p><strong>Versão instalada: 2.1.0.</strong> Para atualizar: clique em Verificar, depois em Baixar e confirme a instalação. Você não precisa reinstalar Python nem baixar arquivos ZIP.</p>
     <button id="check-updates">Verificar atualizações</button>
     <p id="update-message" class="setting-status">Clique em “Verificar atualizações” para consultar o GitHub.</p>
     <button id="install-update" class="hidden">Baixar e instalar nova versão</button>

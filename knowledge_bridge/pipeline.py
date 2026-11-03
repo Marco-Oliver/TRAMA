@@ -166,7 +166,7 @@ class Application:
             return result
         kinds = {"apresentacao", "tecnica", "organizacional", "atividade", "mista", "indefinida"}
         kind = safe(payload.get("tipo_aula"), 24)
-        return {
+        clean = {
             "resumo": safe(payload.get("resumo"), 2200),
             "tipo_aula": kind if kind in kinds else "indefinida",
             "pessoas": entries("pessoas", {"nome": 130, "papel": 140, "informacao": 420}, 8),
@@ -176,10 +176,36 @@ class Application:
             "conceitos": entries("conceitos", {"nome": 90, "explicacao": 700}, 12),
             "exemplos": [safe(x, 350) for x in payload.get("exemplos", []) if isinstance(x, str)][:7],
             "duvidas": [safe(x, 350) for x in payload.get("duvidas", []) if isinstance(x, str)][:7],
+            "nomes_a_conferir": [safe(x, 180) for x in payload.get("nomes_a_conferir", [])
+                                 if isinstance(x, str)][:7],
         }
+        # A provider can put a spoken personal name in multiple JSON fields.
+        # Resolve direct category conflicts deterministically rather than
+        # publishing a name as a programming concept or technical question.
+        def normalized_name(value):
+            return re.sub(r"\s+", " ", str(value).casefold().strip(' \t\r\n.,:;!?"“”')).strip()
+        known_names = {
+            normalized_name(value) for value in clean["nomes_a_conferir"]
+        } | {
+            normalized_name(person.get("nome", ""))
+            for person in clean["pessoas"]
+        }
+        known_names.discard("")
+        if known_names:
+            clean["conceitos"] = [
+                concept for concept in clean["conceitos"]
+                if normalized_name(concept.get("nome", "")) not in known_names
+            ]
+            clean["duvidas"] = [
+                doubt for doubt in clean["duvidas"]
+                if normalized_name(doubt) not in known_names
+            ]
+        return clean
 
-    def process(self):
+    def process(self, lesson_filter: str | None = None, force: bool = False):
         sources = self.store.sources("transcript")
+        if lesson_filter is not None:
+            sources = [s for s in sources if s["lesson"] == lesson_filter]
         if not sources:
             self.log("Nenhuma transcrição cadastrada. Adicione .txt ou .md à pasta de entrada.")
             return {"aulas":0, "conceitos":0, "projetos":len(self.store.repositories())}
@@ -194,7 +220,7 @@ class Application:
             done = self.store.conn.execute("SELECT digest,payload FROM analyses WHERE source_id=?",(src["id"],)).fetchone()
             was_done = bool(done and done['digest']==src['digest'] and
                 json.loads(done['payload']).get('_context_revision')==context_digest)
-            if was_done:
+            if was_done and not force:
                 self.log(f"Já analisada, ignorando: {src['label']}")
                 continue
             pieces = chunks(text)
@@ -202,7 +228,7 @@ class Application:
             self.store.update_status(src["id"], "PROCESSING")
             self.log(f"Analisando {src['label']} em {len(pieces)} trecho(s).")
             for i, piece in enumerate(pieces):
-                cached = self.store.get_chunk(src["id"], segment_digest, i)
+                cached = None if force else self.store.get_chunk(src["id"], segment_digest, i)
                 if cached:
                     all_results.append(cached)
                     self.log(f"  Trecho {i+1}: reaproveitado.")
@@ -232,7 +258,8 @@ class Application:
             # Consolidação estruturada sem requisição adicional.
             combined = {"resumo":"\n\n".join(f"**Parte {i+1}:** {x['resumo']}" for i,x in enumerate(all_results)),
                         "tipo_aula": "indefinida", "pessoas": [], "atividades": [],
-                        "ferramentas": [], "marcos": [], "conceitos": [], "exemplos": [], "duvidas": []}
+                        "ferramentas": [], "marcos": [], "conceitos": [],
+                        "exemplos": [], "duvidas": [], "nomes_a_conferir": []}
             # Preserve different explanations/timestamps from distinct parts of
             # the same recording. A concept may be introduced and then applied.
             known = set()
@@ -255,6 +282,7 @@ class Application:
                             combined[category].append(item)
                 combined["exemplos"].extend(result.get("exemplos", []))
                 combined["duvidas"].extend(result.get("duvidas", []))
+                combined["nomes_a_conferir"].extend(result.get("nomes_a_conferir", []))
             combined['_context_revision']=context_digest
             meta = self.store.conn.execute("SELECT provider,model FROM chunks WHERE source_id=? AND digest=? ORDER BY segment LIMIT 1",
                                            (src["id"],segment_digest)).fetchone()
@@ -267,7 +295,10 @@ class Application:
             # If interrupted, rebuilding on the next run recovers saved results.
         # Cross-source comparison is separate from transcription summaries,
         # cached by transcript digest + commit SHA, and opt-in via process().
-        self.enrich_context()
+        # A single-lesson refresh must not silently spend more API calls on
+        # unrelated repositories and lessons.
+        if lesson_filter is None:
+            self.enrich_context()
         return self.publisher.rebuild()
 
     @staticmethod
