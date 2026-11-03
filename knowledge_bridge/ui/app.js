@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const escapeHTML = value => String(value??'').replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-const app={view:'lessons',tab:'Nota completa',snapshot:null,note:null,selected:null,filter:'',listFilter:'all'};
+const app={view:'lessons',tab:'Nota completa',snapshot:null,note:null,selected:null,filter:'',listFilter:'all',aiConsent:false};
 let bridge=null;
 const categories={lessons:'02-Minhas-Aulas',knowledge:'01-Meu-Conhecimento',projects:'03-Meus-Projetos'};
 const titles={lessons:'Minhas Aulas',knowledge:'Meu Conhecimento',projects:'Meus Projetos',library:'Biblioteca do Obsidian'};
@@ -189,7 +189,7 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
  box.innerHTML=html;wireFiles();
  const update=box.querySelector('#refresh-this-lesson');
  if(update)update.addEventListener('click',async()=>{
-   if(!await askTramaConfirm('Reanalisar aula',`O TRAMA vai reanalisar somente ${n.lesson} com a API configurada. A operação pode consumir sua cota gratuita.`,`Reanalisar aula`))return;
+   if(!app.aiConsent && !await askTramaConfirm('Reanalisar aula',`O TRAMA vai reanalisar somente ${n.lesson} com a API configurada. A operação pode consumir sua cota gratuita.`,`Reanalisar aula`))return;
    update.disabled=true;update.textContent='Processando esta aula…';
    try{
      const result=await call('process_lesson',n.lesson,true);
@@ -251,6 +251,9 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     <label class="free-confirm"><input id="ai-free" type="checkbox"/> Confirmei que a chave é de uma conta/projeto Free sem faturamento.</label>
     <div class="ai-key-actions"><button id="save-ai">Salvar chave</button><button id="remove-ai">Remover chave</button></div>
     <p id="ai-status" class="setting-status">Consultando configuração…</p>
+    <label class="free-confirm trama-persistent-consent"><input type="checkbox" id="ai-processing-consent"/>
+      Autorizar processamento com IA nas operações que eu iniciar. Posso revogar em qualquer momento.</label>
+    <p id="ai-consent-status" class="setting-status" role="status">Nenhuma fonte será enviada automaticamente.</p>
     <div class="ai-diagnostic">
       <h3>Testar inteligência artificial</h3>
       <p>Teste a conexão, a compreensão da aula e a ligação com trechos de código. Usa <strong>até 2 requisições</strong> do provedor selecionado e não altera as notas do Obsidian.</p>
@@ -302,9 +305,32 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
       status.textContent=r?.message||'Backup não restaurado.';}
     finally{button.disabled=false;}
   });
-  const renderStatus=async()=>{const r=await call('ai_status');const p=el.querySelector('#ai-status');if(!p)return;
-   if(!r){p.textContent='Configuração indisponível.';return;}
-   const names=Object.entries(r.configured||{}).filter(([k,v])=>v).map(([k])=>k).join(', ');p.textContent='Chaves configuradas: '+(names||'nenhuma')+'.';};
+  const renderStatus=async()=>{
+    const r=await call('ai_status');const p=el.querySelector('#ai-status');if(!p)return;
+    if(!r){p.textContent='Configuração indisponível.';return;}
+    const names=Object.entries(r.configured||{}).filter(([k,v])=>v).map(([k])=>k).join(', ');
+    p.textContent='Chaves configuradas: '+(names||'nenhuma')+'.';
+    app.aiConsent=r.processing_consent===true;
+    const consent=el.querySelector('#ai-processing-consent');if(consent)consent.checked=app.aiConsent;
+    el.querySelector('#ai-consent-status').textContent=app.aiConsent
+      ?'Autorizado para ações iniciadas por você. Nenhum processamento automático em segundo plano.'
+      :'Desativado: cada operação com IA exigirá autorização individual.';
+    el.querySelector('#ai-test-consent').closest('label').classList.toggle('hidden',app.aiConsent);
+   };
+  el.querySelector('#ai-processing-consent').addEventListener('change',async event=>{
+    const checkbox=event.target;checkbox.disabled=true;
+    try{
+      const result=await call('set_ai_processing_consent',checkbox.checked);
+      if(!result?.ok){
+        checkbox.checked=!checkbox.checked;
+        el.querySelector('#ai-consent-status').textContent=result?.message||'Falha ao salvar autorização.';
+        return;
+      }
+      app.aiConsent=result.processing_consent===true;
+      el.querySelector('#ai-consent-status').textContent=result.message;
+      el.querySelector('#ai-test-consent').closest('label').classList.toggle('hidden',app.aiConsent);
+    }finally{checkbox.disabled=false;}
+  });
   el.querySelector('#save-ai').addEventListener('click',async()=>{const provider=el.querySelector('#ai-provider').value;
     const input=el.querySelector('#ai-key'),key=input.value;input.value='';
     const checked=el.querySelector('#ai-free').checked;
@@ -313,7 +339,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     const r=await call('remove_ai_key',provider);notify(r?.ok?'Chave removida.':r?.message||'Erro.');await renderStatus();});
   el.querySelector('#test-ai').addEventListener('click',async()=>{
     const button=el.querySelector('#test-ai'), status=el.querySelector('#ai-test-status');
-    if(!el.querySelector('#ai-test-consent').checked){status.textContent='Marque a autorização para enviar o teste à API externa.';return;}
+    if(!app.aiConsent && !el.querySelector('#ai-test-consent').checked){status.textContent='Marque a autorização para enviar o teste à API externa.';return;}
     button.disabled=true;status.textContent='Testando conexão, aula e evidências de código… (até 2 chamadas)';
     try{
       const result=await call('test_ai',el.querySelector('#ai-provider').value,el.querySelector('#ai-test-mode').value,true);
@@ -378,7 +404,14 @@ async function updateAutoQueue(result){
  if(result.errors?.length)$('auto-feedback').textContent=result.errors.join(' | ');
  else if(result.added)$('auto-feedback').textContent=`${result.added} arquivo(s) adicionado(s). Nada foi enviado. Continue adicionando ou clique em Processar tudo.`;
 }
-async function openAutoImport(){const dlg=$('auto-dialog');if(typeof dlg.showModal==='function')dlg.showModal();else dlg.setAttribute('open','');await updateAutoQueue(await call('staged_items'));}
+async function openAutoImport(){
+ const dlg=$('auto-dialog');if(typeof dlg.showModal==='function')dlg.showModal();else dlg.setAttribute('open','');
+ const status=await call('ai_status');
+ app.aiConsent=status?.processing_consent===true;
+ $('auto-consent-row').classList.toggle('hidden',app.aiConsent);
+ $('auto-consent-info').classList.toggle('hidden',!app.aiConsent);
+ await updateAutoQueue(await call('staged_items'));
+}
 function closeAutoImport(){const dlg=$('auto-dialog');if(dlg.open && typeof dlg.close==='function')dlg.close();else dlg.removeAttribute('open');}
 async function addAutoFiles(){const btn=$('auto-add-files');btn.disabled=true;
  try{await updateAutoQueue(await call('stage_files'));}finally{btn.disabled=false;}}
@@ -395,7 +428,7 @@ async function pasteAutoImage(event){
 }
 async function runAutoImport(){
  const feedback=$('auto-feedback');
- if(!$('auto-consent').checked){feedback.textContent='Marque a autorização antes de processar o lote.';return;}
+ if(!app.aiConsent && !$('auto-consent').checked){feedback.textContent='Marque a autorização antes de processar o lote.';return;}
  const links=$('auto-links').value;
  const button=$('auto-start'),add=$('auto-add-files'),clear=$('auto-clear');
  button.disabled=true;add.disabled=true;clear.disabled=true;
@@ -413,7 +446,7 @@ async function runAutoImport(){
 }
 async function importFiles(){openAutoImport();}
 async function generate(){
- if(!await askTramaConfirm('Gerar resumos','Apenas os materiais necessários serão enviados à API configurada. As análises já concluídas serão reaproveitadas.','Gerar resumos'))return;
+ if(!app.aiConsent && !await askTramaConfirm('Gerar resumos','Apenas os materiais necessários serão enviados à API configurada. As análises já concluídas serão reaproveitadas.','Gerar resumos'))return;
  notify('Processando notas com a IA gratuita configurada…',10000);
  const r=await call('process',true);
  notify(r?.ok?(r.logs?.at(-1)||'Processamento concluído.'):(r?.message||'Sem provedor gratuito disponível.'),6500);
