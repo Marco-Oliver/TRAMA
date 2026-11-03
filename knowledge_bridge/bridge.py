@@ -914,6 +914,48 @@ class Bridge:
         app.ai=FreeAIRouter(env)
         return app
 
+    @staticmethod
+    def _processing_feedback(remaining, logs):
+        """Explain incomplete work without guessing that a provider quota failed.
+
+        These log messages are already redacted by the bridge. Raw exceptions,
+        HTTP responses and user-provided keys must never reach the frontend.
+        """
+        count=len(remaining)
+        message=next((line.split("Pausado sem cobrança: ",1)[1]
+                      for line in reversed(logs)
+                      if line.startswith("Pausado sem cobrança: ")), "")
+        lower=message.casefold()
+        if "429" in lower or "limite gratuito atingido" in lower:
+            reason="api_quota"
+            why="A API respondeu com limite de uso (429). Verifique a cota gratuita do provedor."
+        elif "limite de segurança" in lower or "limite de requisições" in lower or "chamadas atingido" in lower:
+            reason="local_limit"
+            why="O limite local de chamadas do TRAMA nesta execução foi atingido."
+        elif "nenhum provedor" in lower or "configure" in lower or "chave" in lower:
+            reason="not_configured"
+            why="Nenhum provedor gratuito configurado respondeu. Confira a chave em Ajustes."
+        elif "resposta estruturada inválida" in lower or "resposta sem texto" in lower:
+            reason="invalid_ai_response"
+            why="O provedor não devolveu uma resposta estruturada válida."
+        elif "falha http" in lower or "conexão" in lower or "tempo esgotado" in lower:
+            reason="connection"
+            why="A chamada ao provedor falhou ou demorou demais."
+        elif any(row["status"]=="NEEDS_REVIEW" for row in remaining):
+            reason="analysis_error"
+            why="A análise encontrou uma resposta inesperada; revise o diagnóstico da IA."
+        else:
+            reason="incomplete"
+            why="O processamento ficou incompleto. Execute o diagnóstico em Ajustes para identificar a causa."
+        return {
+            "ok":False,
+            "reason":reason,
+            "pending":count,
+            "message":why+" "+str(count)+" gravação(ões) ainda pendente(s). "+
+                      "As transcrições e os trechos já analisados foram preservados.",
+            "logs":logs[-6:],
+        }
+
     def process(self,confirmed=False):
         if confirmed is not True:return {'ok':False,'message':'Confirme o envio de transcrições para IA gratuita.'}
         vault=self._vault()
@@ -924,6 +966,10 @@ class Bridge:
         try:
             app=self._make_application(vault,log=lambda text:logs.append(redact_sensitive(str(text))[:600]))
             app.process()
+            remaining=[src for src in app.store.sources("transcript")
+                       if src["status"]!="PUBLISHED"]
+            if remaining:
+                return self._processing_feedback(remaining,logs)
         except Exception:
             # Exceptions from files or network may contain local paths or tokens.
             return {'ok':False,'message':'Não foi possível processar os materiais. Consulte as fontes locais.'}
@@ -934,8 +980,8 @@ class Bridge:
                 self._write_lock.release()
         return {'ok':True,'logs':logs[-8:]}
 
-    def process_lesson(self, lesson, confirmed=False):
-        """Explicitly refresh one lesson only, respecting existing local keys."""
+    def process_lesson(self, lesson, confirmed=False, force=False):
+        """Resume pending segments by default; explicit full refresh is optional."""
         if confirmed is not True:
             return {'ok':False,'message':'Confirme o envio dos trechos desta aula à API configurada.'}
         if not isinstance(lesson,str) or not re.fullmatch(r'Aula-\d{3,4}',lesson):
@@ -954,12 +1000,11 @@ class Bridge:
             matches=[src for src in app.store.sources("transcript") if src["lesson"]==lesson]
             if not matches:
                 return {'ok':False,'message':'Nenhuma transcrição cadastrada para esta aula.'}
-            app.process(lesson_filter=lesson,force=True)
+            app.process(lesson_filter=lesson,force=force is True)
             remaining=[src for src in app.store.sources("transcript")
                        if src["lesson"]==lesson and src["status"]!="PUBLISHED"]
             if remaining:
-                return {'ok':False,'message':'A análise não terminou. Confira a cota da API e tente novamente.',
-                        'logs':logs[-6:]}
+                return self._processing_feedback(remaining,logs)
             return {'ok':True,'message':'Análise da aula concluída; notas do Obsidian atualizadas.',
                     'logs':logs[-8:]}
         except Exception:
@@ -1364,8 +1409,8 @@ class PublicApi:
     def process(self, confirmed=False):
         return self._bridge.process(confirmed)
 
-    def process_lesson(self, lesson, confirmed=False):
-        return self._bridge.process_lesson(lesson, confirmed)
+    def process_lesson(self, lesson, confirmed=False, force=False):
+        return self._bridge.process_lesson(lesson, confirmed, force)
 
     def add_repo(self, url):
         return self._bridge.add_repo(url)
