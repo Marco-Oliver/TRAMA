@@ -26,6 +26,9 @@ const notes = [
   {id:'01-Meu-Conhecimento/Conceitos/console.md',title:'Console',section:'01-Meu-Conhecimento',
    kind:'conceito',state:'resumida_com_ia', updated:'27/10/2026',
    content:'# Console\n\nConceito de saída usado nos exemplos C#.'},
+  {id:'01-Meu-Conhecimento/Conceitos/console.PROPOSTA.md',title:'Console',
+   section:'01-Meu-Conhecimento',kind:'conceito',state:'resumida_com_ia',
+   updated:'31/10/2026',content:'# Console\n\nVersão revisada da nota do projeto.'},
 ];
 const makeBridge=({notes})=>{
  // Playwright serializes this function into the page. Never reference
@@ -64,6 +67,7 @@ const makeBridge=({notes})=>{
     }))};
   },
   copy_note_link: async id=>({ok:true,message:'Link interno copiado.'}),
+  compare_proposal: async id=>({ok:id.endsWith('.PROPOSTA.md'),original:'console.md',proposal:id,diff:'--- original\n+++ proposta\n-Versão antiga\n+Versão revisada <img src=x onerror=window.__tramaXss=true>',truncated:false}),
   vault_disk_usage: async()=>({ok:true,total_bytes:10485760,files:15,
     categories:{notes:1048576,attachments:2097152,repositories:5242880,catalog:1048576,other:1048576}}),
   check_updates: async()=>({ok:true,available:false,message:'Você já está na versão mais recente.'}),
@@ -222,6 +226,16 @@ try{
     await page.locator('#library-workspace').waitFor({state:'visible'});
     await page.locator('.lib-title').getByText('Hello World em C#').waitFor();
     await assertNoUiError('teacher cited source');
+    await page.locator('[data-lib-note="01-Meu-Conhecimento/Conceitos/console.md"]').first().click();
+    await page.getByText('Propostas de atualização').waitFor();
+    await page.locator('[data-lib-note="01-Meu-Conhecimento/Conceitos/console.PROPOSTA.md"]').first().click();
+    await page.locator('[data-lib-action="compare"]').click();
+    await page.locator('#trama-diff-dialog').waitFor({state:'visible'});
+    if(!(await page.locator('#trama-diff-content').innerText()).includes('Versão revisada'))
+      throw Error('Safe proposal diff did not render');
+    if(await page.locator('#trama-diff-content img').count())
+      throw Error('Proposal diff injected arbitrary markup');
+    await page.locator('#trama-diff-dismiss').click();
     await page.locator('.nav-item[data-view="settings"]').click();
     await page.locator('#ai-processing-consent').check();
     await page.getByText('Autorização ativa nos Ajustes.').waitFor();
