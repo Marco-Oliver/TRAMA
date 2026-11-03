@@ -242,7 +242,13 @@ class Publisher:
             for src, note, analysis in summaries:
                 label = _escape_md(src['label'].removesuffix('.txt').removesuffix('.md'))
                 text = str(analysis['resumo']).replace('**Parte 1:**', '').strip()
-                rows.extend(['', f"### [[{Path(note).stem}|{label}]]", '', text[:1250]])
+                # A 1250-character cut used to hide the end of otherwise valid
+                # summaries, including examples and open questions. Keep a
+                # readable overview excerpt and explicitly link the full note.
+                preview=text if len(text)<=4500 else text[:4500].rsplit(' ',1)[0]
+                if len(preview)<len(text):
+                    preview += "\\n\\n*Resumo abreviado nesta visão geral; a explicação completa está na nota vinculada acima.*"
+                rows.extend(['', f"### [[{Path(note).stem}|{label}]]", '', preview])
         else:
             rows.append('**Pendente:** a IA ainda não gerou o resumo desta aula. Os materiais abaixo permanecem disponíveis.')
         rows += ['', '## Gravações e transcrições', '']
@@ -767,7 +773,30 @@ class Publisher:
                 body += [f"### `{e['concept']}` — {_code_ref(repo, e['path'], e['line'])}", "",
                          f"```{lang}", e["snippet"].replace("```","` ` `"), "```", ""]
             if not payload.get("evidence"):
-                body.append("*Nenhum símbolo da lista rastreada encontrado.*")
+                body.append("*Nenhum conceito da lista rastreada encontrado.*")
+            # Names declared in source code (including course-specific service
+            # classes and interfaces) make the repository useful for studying,
+            # even when no predefined terminology pattern matches it.
+            symbols=payload.get("symbols",[])
+            if isinstance(symbols,list) and symbols:
+                body += ["", "## Classes, interfaces e funções presentes no código", "",
+                         "> Nomes e linhas obtidos dos arquivos do commit; não significam "
+                         "que o professor explicou estas declarações ou que o aluno as escreveu."]
+                seen_symbols=set()
+                for item in symbols:
+                    if not isinstance(item,dict):
+                        continue
+                    name=item.get("name","")
+                    path=item.get("path","")
+                    line=item.get("line",0)
+                    if not name or not path or (path,line) in seen_symbols:
+                        continue
+                    seen_symbols.add((path,line))
+                    body.append(f"- **`{_escape_md(name)}`** — {_code_ref(repo,path,line)}")
+                    if len(seen_symbols)>=35:
+                        body.append("*Outras declarações permanecem no índice local; "
+                                    "veja o repositório para o código completo.*")
+                        break
             body += ["", "## Conexões com aulas", ""]
             linked = False
             for src, note in lesson_links:
