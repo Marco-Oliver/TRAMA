@@ -1010,6 +1010,33 @@ class Bridge:
             return {'ok':False,'message':'Não foi possível salvar o favorito no Windows.'}
         return {'ok':True,'favorites':self.settings['favorites']}
 
+    def compare_proposal(self, proposal_id):
+        """Read-only diff between one protected .PROPOSTA and its original note."""
+        if not isinstance(proposal_id,str) or len(proposal_id)>500:
+            return {'ok':False,'message':'Escolha uma proposta válida.'}
+        idx=self._index()
+        if idx is None:
+            return {'ok':False,'message':'Conecte o Obsidian primeiro.'}
+        proposal=idx.by_relative.get(proposal_id.casefold())
+        if proposal is None:
+            return {'ok':False,'message':'Proposta não encontrada.'}
+        name=Path(proposal.relative).name
+        match=re.fullmatch(r'(.+)\.PROPOSTA(?:-\d+)?\.md',name,re.I)
+        if not match:
+            return {'ok':False,'message':'Este arquivo não é uma proposta de atualização.'}
+        original_rel=(Path(proposal.relative).parent/(match.group(1)+'.md')).as_posix()
+        original=idx.by_relative.get(original_rel.casefold())
+        if original is None:
+            return {'ok':False,'message':'A nota original desta proposta não foi encontrada.'}
+        from difflib import unified_diff
+        from itertools import islice
+        lines=unified_diff(original.content.splitlines(),proposal.content.splitlines(),
+                           fromfile=original.relative,tofile=proposal.relative,lineterm='')
+        bounded=list(islice(lines,501))
+        return {'ok':True,'original':original.relative,'proposal':proposal.relative,
+                'diff':'\n'.join(bounded[:500])[:28000],
+                'truncated':len(bounded)>500}
+
     def copy_note_link(self, note_id):
         """Copy an indexed Obsidian wiki link using the native Windows clipboard.
 
@@ -1349,6 +1376,9 @@ class PublicApi:
 
     def copy_note_link(self, note_id):
         return self._bridge.copy_note_link(note_id)
+
+    def compare_proposal(self, proposal_id):
+        return self._bridge.compare_proposal(proposal_id)
 
     def open_note(self, note_id):
         return self._bridge.open_note(note_id)
