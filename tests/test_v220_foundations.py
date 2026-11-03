@@ -295,6 +295,57 @@ class IncrementalAutomationFoundationsTests(unittest.TestCase):
 
 
 
+class ObsidianFullTextSearchTests(unittest.TestCase):
+    def test_search_finds_text_inside_notes_and_shows_short_excerpts(self):
+        from unittest.mock import patch
+        from knowledge_bridge.bridge import Bridge
+        with tempfile.TemporaryDirectory(prefix="trama-v220-search-") as folder:
+            vault=Path(folder)/"Vault"
+            section=vault/"02-Minhas-Aulas"
+            section.mkdir(parents=True)
+            (section/"Aula-031.md").write_text(
+                "# Aula 031\n\nExemplo de Angular com HttpClient usado nas requisições.",
+                encoding="utf-8"
+            )
+            (section/"Aula-050.md").write_text(
+                "# Aula 050\n\nNenhuma relação com o conceito pesquisado.",
+                encoding="utf-8"
+            )
+            bridge=Bridge()
+            bridge.settings={"vault":str(vault)}
+            with patch("knowledge_bridge.bridge.webbrowser.open",
+                       side_effect=AssertionError("Search must not open URLs")):
+                matches=bridge.search_notes("HttpClient")
+            self.assertTrue(matches["ok"])
+            self.assertEqual(matches["total"],1)
+            self.assertEqual(len(matches["matches"]),1)
+            self.assertEqual(matches["matches"][0]["id"],
+                             "02-Minhas-Aulas/Aula-031.md")
+            self.assertIn("HttpClient",matches["matches"][0]["snippet"])
+            self.assertNotIn("Aula 050",str(matches))
+            self.assertTrue(matches["matches"][0]["in_content"])
+            self.assertFalse(bridge.search_notes("../bad\nname")["ok"])
+            self.assertFalse(bridge.search_notes("x"*121)["ok"])
+            self.assertFalse(bridge.search_notes("HttpClient",101)["ok"])
+
+    def test_search_never_follows_symlinks_outside_vault(self):
+        from knowledge_bridge.bridge import Bridge
+        with tempfile.TemporaryDirectory(prefix="trama-v220-search-symlink-") as folder:
+            base=Path(folder)
+            vault=base/"Obsidian"
+            vault.mkdir()
+            outside=base/"PRIVATE.md"
+            outside.write_text("SENHA_SUPER_SECRETA_PARA_TESTE",encoding="utf-8")
+            try:
+                (vault/"link.md").symlink_to(outside)
+            except (OSError,NotImplementedError):
+                self.skipTest("Symlinks not available for this account")
+            bridge=Bridge()
+            bridge.settings={"vault":str(vault)}
+            found=bridge.search_notes("SENHA_SUPER_SECRETA_PARA_TESTE")
+            self.assertEqual(found["total"],0)
+
+
 class LargeLocalLibraryTests(unittest.TestCase):
     def test_150_lessons_enter_six_at_a_time_without_losing_structure(self):
         """Simulate the user's gradual import rhythm without an external API."""
