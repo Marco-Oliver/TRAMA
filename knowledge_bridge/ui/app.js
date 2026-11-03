@@ -187,8 +187,13 @@ function renderNoteBody(){const n=app.note;if(!n)return;const box=$('note-conten
      empty('Ainda não há referências verificáveis nesta nota.'),'summary');
    box.querySelectorAll('[data-lib-note]').forEach(el=>el.addEventListener('click',async event=>{
      event.preventDefault();libraryState.search='';
+     const anchor=el.dataset.libAnchor||'';
      app.selected=el.dataset.libNote;app.view='library';
      app.note=await call('note',app.selected);await render();
+     if(/^min-(?:\d+-)*\d+$/.test(anchor)){
+       const target=$('library-workspace').querySelector('#'+anchor);
+       if(target)target.scrollIntoView({block:'center',behavior:'auto'});
+     }
    }));
    return;
  }
