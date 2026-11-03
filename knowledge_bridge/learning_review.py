@@ -52,7 +52,7 @@ def _index_source_terms(raw: str) -> dict:
     keys=sorted({norm(term) for name,(_pattern,aliases) in CONCEPTS.items()
                  for term in (name,*aliases) if norm(term)})
     terms={term for term in keys
-           if re.search(r"(?<!\\w)" + re.escape(term) + r"(?!\\w)",normalized)}
+           if re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)",normalized)}
     anchors={}
     for stamp,excerpt in timed_lines(raw):
         for term in terms:
