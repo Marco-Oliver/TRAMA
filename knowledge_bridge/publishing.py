@@ -41,6 +41,34 @@ def _term_in_source(term: str, source: str) -> bool:
     return bool(literal_technical_mention(term, source))
 
 
+
+def _literal_timed_evidence(label: str, source_rows: list[tuple[str, str]],
+                            preferred: str = "", limit: int = 2) -> list[tuple[str, str, str]]:
+    """Only cite timestamps when the same original TXT segment contains the literal term.
+
+    Expanded IA labels may match a spoken abbreviation (LTS, SDK), but this
+    alone does not validate the explanation, exercise or student mastery.
+    """
+    matches = []
+    seen = set()
+    for stamp, sentence in source_rows:
+        if stamp == "sem horário" or not sentence.strip():
+            continue
+        term = literal_technical_mention(label, sentence)
+        if term and stamp not in seen:
+            matches.append((stamp, sentence, term))
+            seen.add(stamp)
+    if preferred:
+        matches.sort(key=lambda row: row[0] != preferred)
+    return matches[:max(0, limit)]
+
+
+def _source_quote(value: object, limit: int = 260) -> str:
+    """Safely display transcript excerpts as inert Markdown blockquotes."""
+    return (_escape_md(str(value)[:limit]).replace("&", "&amp;")
+            .replace("<", "&lt;").replace(">", "&gt;")
+            .replace("[[", "［［").replace("]]", "］］"))
+
 def _code_ref(repo, path: str, line: int) -> str:
     """Link to the immutable GitHub revision; local repos retain path:line."""
     location = f"{_escape_md(path)}:{line}"
@@ -285,7 +313,7 @@ class Publisher:
                         rows.append(f"- Material publicado: <{link}>")
         else:
             rows.append('*Nenhuma publicação do Classroom relacionada a esta aula foi cadastrada.*')
-        rows += ['', '## Pessoas e assuntos mencionados', '']
+        rows += ['', '## Pessoas citadas', '']
         person_links=[]; concept_links=[]
         for item in contexts:
             for line in str(item.get('pessoas','')).splitlines():
@@ -308,8 +336,8 @@ class Publisher:
                 if not name:continue
                 link=f"[[{concept_slug(name)}|{_escape_md(name)}]]"
                 if link not in concept_links:concept_links.append(link)
-        rows.extend(['**Pessoas (conforme fontes):**', ''] +
-                    ([f'- {link} — confira o contexto na fonte' for link in person_links] if person_links else ['*Ainda sem pessoas associadas com evidência.*']))
+        rows.extend([f'- {link} — confira o contexto na fonte' for link in person_links]
+                    if person_links else ['*Ainda sem pessoas associadas com evidência.*'])
         variant_warnings=[]
         for src, _note in recordings:
             analysis=self.db.analysis(src['id'],src['digest']) or {}
@@ -319,7 +347,8 @@ class Publisher:
         if variant_warnings:
             rows.extend(['', '**Grafias de nomes a conferir:**', ''])
             rows.extend('- '+_escape_md(w) for w in variant_warnings)
-        rows.extend(['', '**Conceitos identificados pela IA (conferir na fonte):**', ''] +
+        rows.extend(['', '## Conhecimentos técnicos citados', '',
+                     '> Classificação assistida por IA: confira a explicação na fonte.', ''] +
                     ([f'- {link}' for link in concept_links] if concept_links else
                      ['*Ainda não há conceitos técnicos classificados com evidência suficiente pela análise.*']))
         # Legacy cached notes can still contain abbreviated technical labels
@@ -618,8 +647,17 @@ class Publisher:
                     for item in analysis.get(category, [])
                     if isinstance(item, dict))
         referenced_times.update(t for t, _sentence in evidence_excerpt(text))
+        source_rows = timed_lines(text)
+        # A missing/invalid model timestamp is not an absence of timestamp
+        # in the preserved TXT. Anchor literal mentions locally, without IA.
+        for concept in concepts:
+            if isinstance(concept, dict):
+                referenced_times.update(
+                    stamp for stamp, _sentence, _term in
+                    _literal_timed_evidence(str(concept.get("nome", "")), source_rows)
+                )
         indexed = {}
-        for stamp, sentence in timed_lines(text):
+        for stamp, sentence in source_rows:
             if stamp in referenced_times and stamp != "sem horário" and stamp not in indexed:
                 indexed[stamp] = sentence
         if indexed:
@@ -886,15 +924,36 @@ class Publisher:
             for (_, src, note, concept), literal in zip(entries, observed):
                 raw = (self.vault / src["stored_path"]).read_text(
                     encoding="utf-8-sig", errors="replace")
-                valid_times = {t for t, _ in timed_lines(raw) if t != "sem horário"}
-                stamp = str(concept.get("tempo", "")).strip()
+                recorded = str(concept.get("tempo", "")).strip()
+                matches = _literal_timed_evidence(
+                    name, timed_lines(raw), preferred=recorded)
                 where = f"[[{Path(note).with_suffix('').as_posix()}|{_escape_md(src['label'])}]]"
-                timestamp_link = (f" · [[{Path(note).with_suffix('').as_posix()}#^{_time_id(stamp)}|{stamp}]]"
-                                  if stamp in valid_times else " · horário não localizado")
-                evidence_status = ("termo encontrado literalmente na transcrição"
-                                   if literal else "interpretação da IA; termo não encontrado literalmente")
-                body.append(f"- **{_escape_md(concept.get('explicacao', ''))}** — {where}"
-                            f"{timestamp_link} · *{evidence_status}*.")
+                explanation = _escape_md(concept.get("explicacao", ""))
+                body.extend(["", f"### {_escape_md(src['label'])}", "",
+                             "- **Explicação sugerida pela IA (conferir):** " +
+                             (explanation or "*Não fornecida pela análise.*"),
+                             f"- **Fonte:** {where}."])
+                if matches:
+                    for stamp, sentence, form in matches:
+                        target = (f"{Path(note).with_suffix('').as_posix()}"
+                                  f"#^{_time_id(stamp)}")
+                        body.append(
+                            f"- **Menção literal na transcrição:** "
+                            f"[[{target}|{stamp}]] — forma observada: "
+                            f"{chr(96)}{_escape_md(form)}{chr(96)}.")
+                        body.append(f"  > {_source_quote(sentence)}")
+                    if not recorded or recorded not in {r[0] for r in matches}:
+                        body.append(
+                            "- **Horário da análise da IA:** ausente ou não associado "
+                            "à menção; horários acima recuperados diretamente do TXT.")
+                elif literal:
+                    body.append(
+                        "- **Menção no TXT:** termo encontrado literalmente, "
+                        "mas sem trecho com horário verificável nesta fonte.")
+                else:
+                    body.append(
+                        "- **Sem evidência literal:** o termo não foi localizado "
+                        "na transcrição; confira a interpretação da IA na fonte.")
             body += ["", "## Evidências e aprendizagem", "",
                      "- **Mencionado:** confira a fala original antes de considerar o conceito confirmado.",
                      "- **Ensinado:** requer explicação verificável na fonte; termo citado não basta.",
