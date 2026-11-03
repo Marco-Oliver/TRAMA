@@ -23,7 +23,7 @@ $setup = Join-Path (Get-Location) 'release\TRAMA_Preview_Setup.exe'
 if (-not (Test-Path -LiteralPath $setup)) { throw 'Preview installer not found' }
 $installDir = Join-Path $env:RUNNER_TEMP 'TRAMA-Preview-Install-Test'
 $stableDir = Join-Path $env:LOCALAPPDATA 'TRAMA'
-$previewDir = Join-Path $env:LOCALAPPDATA 'TRAMA-Preview-PR4'
+$previewDir = Join-Path $env:LOCALAPPDATA 'TRAMA-Preview'
 $exe = Join-Path $installDir 'TRAMA.exe'
 
 New-Item -ItemType Directory -Force -Path $stableDir | Out-Null
@@ -38,6 +38,10 @@ try {
         $arguments = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/DIR=' + $installDir))
         Invoke-BoundedProcess $setup $arguments "Preview install #$attempt"
         if (-not (Test-Path -LiteralPath $exe)) { throw 'Installed Preview TRAMA.exe missing' }
+        $marker = Join-Path $installDir '_internal\assets\trama-preview.marker'
+        if (-not (Test-Path -LiteralPath $marker)) {
+            throw 'Preview data-isolation marker missing from installed executable bundle'
+        }
         Invoke-BoundedProcess $exe @('--self-test') "Preview executable self-test #$attempt" 90
         if (-not (Test-Path -LiteralPath $sentinel)) { throw 'Stable local data removed by Preview' }
         if ((Get-FileHash -LiteralPath $stableSettings -Algorithm SHA256).Hash -ne $before) {
