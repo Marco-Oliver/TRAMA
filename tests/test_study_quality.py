@@ -29,6 +29,23 @@ class ClassroomStudyQualityTests(unittest.TestCase):
         self.assertIn("nomes_a_conferir", SYSTEM_INSTRUCTIONS)
         self.assertIn("comandos", SYSTEM_INSTRUCTIONS)
 
+    def test_misclassified_model_names_do_not_become_programming_doubts(self):
+        # Adversarial model response: intentionally WRONG categories.
+        raw = ("[0:02] O apelido do professor é Thagão e citaram Rash.\\n"
+               "[0:10] O comando mostrado no terminal ficou inaudível.\\n")
+        result = Application._clean_result({
+            "resumo": "Falaram de apelidos e do terminal.",
+            "pessoas": [{"nome": "Thagão", "papel": "professor"}],
+            "nomes_a_conferir": ["Rash"],
+            "conceitos": [
+                {"nome": "Rash", "explicacao": "falso conceito criado pela IA"},
+                {"nome": "terminal", "explicacao": "Ambiente de comandos"}
+            ],
+            "duvidas": ["Thagão", "Rash?", "Qual foi o comando digitado?"],
+        }, raw)
+        self.assertEqual([x["nome"] for x in result["conceitos"]], ["terminal"])
+        self.assertEqual(result["duvidas"], ["Qual foi o comando digitado?"])
+
     def test_non_ai_timeline_joins_neighboring_transcript_lines(self):
         transcript = "\n".join(
             f"[0:{i:02d}] Palavra {i} sobre SDK e terminal."
