@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines, study_windows
 from .store import Store
-from .memory_atlas import make_atlas, render_atlas, lesson_order, norm, note_for
+from .memory_atlas import make_atlas, render_atlas, lesson_order, norm, note_for, literal_technical_mention
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections
 from .learning_review import refresh_uncertainties, render_uncertainties
 
@@ -38,9 +38,7 @@ def _time_id(timestamp: str) -> str:
 
 def _term_in_source(term: str, source: str) -> bool:
     """Literal, punctuation-aware presence; an IA interpretation isn't proof."""
-    needle = norm(term)
-    haystack = norm(source)
-    return bool(needle and re.search(r"(?<!\w)" + re.escape(needle) + r"(?!\w)", haystack))
+    return bool(literal_technical_mention(term, source))
 
 
 def _code_ref(repo, path: str, line: int) -> str:
@@ -322,7 +320,35 @@ class Publisher:
             rows.extend(['', '**Grafias de nomes a conferir:**', ''])
             rows.extend('- '+_escape_md(w) for w in variant_warnings)
         rows.extend(['', '**Conceitos identificados pela IA (conferir na fonte):**', ''] +
-                    ([f'- {link}' for link in concept_links] if concept_links else ['*Nenhum conceito técnico comprovado nesta aula.*']))
+                    ([f'- {link}' for link in concept_links] if concept_links else
+                     ['*Ainda não há conceitos técnicos classificados com evidência suficiente pela análise.*']))
+        # Legacy cached notes can still contain abbreviated technical labels
+        # that are present in the TXT but were rejected by strict whole-label
+        # matching. Surface them in the overview as observations, not as
+        # generated explanatory concept pages.
+        observed_terms=[]
+        for src,_note in recordings:
+            analysis=self.db.analysis(src['id'],src['digest']) or {}
+            if not analysis.get('conceitos_a_conferir'):
+                continue
+            original=self.vault/src['stored_path']
+            if not original.is_file() or original.is_symlink():
+                continue
+            raw=original.read_text(encoding='utf-8-sig',errors='replace')
+            for candidate in analysis.get('conceitos_a_conferir',[])[:12]:
+                if not isinstance(candidate,dict):
+                    continue
+                label=str(candidate.get('nome','')).strip()
+                match=literal_technical_mention(label,raw)
+                pair=(label,match)
+                if match and pair not in observed_terms:
+                    observed_terms.append(pair)
+        if observed_terms:
+            rows.extend(['', '**Termos técnicos presentes no TXT, ainda sem explicação validada:**', '',
+                         '> Este levantamento é local e não consome IA. '
+                         'Uma menção não comprova que o conceito foi ensinado por completo.', ''])
+            rows.extend('- `'+_escape_md(label)+'` (menção: `'+_escape_md(match)+'`)'
+                        for label,match in observed_terms[:24])
         rows += ['', '## Evolução e relações com aulas anteriores', '',
                  '> As conexões abaixo vêm de conceitos identificados pela IA em fontes cadastradas. '
                  'São **candidatas**, não comprovação de aprendizado, domínio ou autoria.',
@@ -468,19 +494,34 @@ class Publisher:
                         continue
                     tempo = f" ({c['tempo']})" if c.get("tempo") else ""
                     body.append(f"- **{_escape_md(name)}**{tempo}: {_escape_md(c.get('explicacao',''))}")
-            # Unsupported model labels remain hypotheses, never exported as
-            # verified concepts or navigable concept pages.
+            # Reconcile legacy cached analyses locally, without another API
+            # call: a spoken abbreviation can back a mention even when the
+            # whole expanded model label was not said. Do NOT auto-create a
+            # concept note: no explanation has been checked for this label.
             suggested=[c for c in analysis.get("conceitos_a_conferir",[])
                        if isinstance(c,dict) and c.get("nome")]
-            if suggested:
+            observed=[]
+            unsupported=[]
+            for candidate in suggested[:12]:
+                mentioned=literal_technical_mention(candidate["nome"],text)
+                if mentioned:
+                    observed.append((candidate["nome"],mentioned))
+                else:
+                    unsupported.append(candidate["nome"])
+            if observed:
+                body += ["", "## Termos técnicos mencionados — explicação a conferir", "",
+                         "> Os nomes abaixo aparecem no TXT de forma abreviada ou normalizada. "
+                         "Isso não valida as explicações da IA nem comprova domínio."]
+                for label,found in observed:
+                    body.append("- `"+_escape_md(label)+"` — forma observada: `"+
+                                _escape_md(found)+"`; conferir o contexto na transcrição.")
+            if unsupported:
                 body += ["", "## Termos sugeridos pela IA para conferir", "",
-                         "> Os nomes abaixo NÃO foram encontrados literalmente no TXT. "
-                         "Podem ser erro de transcrição, interpretação indevida ou "
-                         "termo visto apenas no código. Confira a fonte antes de aceitar."]
-                for candidate in suggested[:12]:
-                    body.append("- `" + _escape_md(candidate.get("nome","")) +
-                                "` — conferir na transcrição e, se disponível, "
-                                "no repositório relacionado.")
+                         "> Não foi encontrada menção literal nem abreviação verificável "
+                         "para estes rótulos na transcrição. Não são conhecimentos confirmados."]
+                for label in unsupported:
+                    body.append("- `"+_escape_md(label)+
+                                "` — conferir com a transcrição e os materiais associados.")
             if analysis.get("exemplos"):
                 body += ["", "## Exemplos mencionados"] + [
                     f"- {_escape_md(x)}" for x in analysis.get("exemplos",[])]
