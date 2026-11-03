@@ -425,7 +425,8 @@ class Application:
                             "-c", "credential.helper="]
             run = subprocess.run(["git", *sandbox_opts, *args], capture_output=True,
                                  text=True, timeout=180, check=False, encoding="utf-8",
-                                 errors="replace", env=env)
+                                 errors="replace", env=env,
+                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise RuntimeError("Git indisponível ou operação demorou demais") from exc
         if run.returncode:
