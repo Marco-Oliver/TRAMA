@@ -154,6 +154,31 @@ class Publisher:
         self.db.register_write(rel, hashlib.sha256(data).hexdigest())
         return "written"
 
+    def _published_anchor_target(self, note: str, anchor: str) -> tuple[str, bool]:
+        """Link only to an actual anchored note, including protected proposals.
+
+        A manually edited note may lack generated anchors. In that case the
+        safe publisher writes a .PROPOSTA.md rather than replacing it. Point
+        to that proposed Markdown (clearly labeled), never a broken link.
+        """
+        path = self.vault / note
+        marker = re.compile(r"\^" + re.escape(anchor) + r"(?=\s|$)")
+        def has_anchor(candidate: Path) -> bool:
+            if (candidate.is_symlink() or not candidate.is_file() or
+                    candidate.stat().st_size > 2 * 1024 * 1024):
+                return False
+            return bool(marker.search(candidate.read_text(
+                encoding="utf-8", errors="replace")))
+
+        if has_anchor(path):
+            current_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+            if current_hash == self.db.last_write_hash(note):
+                return Path(note).with_suffix("").as_posix(), False
+        for proposal in sorted(path.parent.glob(path.stem + ".PROPOSTA*.md")):
+            if has_anchor(proposal):
+                return proposal.relative_to(self.vault).with_suffix("").as_posix(), True
+        return "", False
+
     def attachment(self, original: Path, kind: str) -> str:
         if kind == "video":
             raise ValueError("Vídeos não são copiados. Registre o link no contexto do Classroom.")
@@ -969,12 +994,20 @@ class Publisher:
                              f"- **Fonte:** {where}."])
                 if matches:
                     for stamp, sentence, form, anchor in matches:
-                        target = (f"{Path(note).with_suffix('').as_posix()}"
-                                  f"#^{anchor}")
+                        target_note, is_proposal = self._published_anchor_target(
+                            note, anchor)
+                        source_time = (
+                            f"[[{target_note}#^{anchor}|{stamp}]]"
+                            if target_note else f"**{stamp}** (âncora ainda não publicada)"
+                        )
                         body.append(
                             f"- **Menção literal na transcrição:** "
-                            f"[[{target}|{stamp}]] — forma observada: "
+                            f"{source_time} — forma observada: "
                             f"{chr(96)}{_escape_md(form)}{chr(96)}.")
+                        if is_proposal:
+                            body.append(
+                                "  > A referência abre uma **proposta de atualização**; "
+                                "sua nota editada manualmente não foi substituída.")
                         body.append(f"  > {_source_quote(sentence, term=form)}")
                     if not recorded or recorded not in {r[0] for r in matches}:
                         body.append(
