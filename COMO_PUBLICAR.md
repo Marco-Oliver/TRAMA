@@ -1,17 +1,16 @@
 # Como publicar o TRAMA
 
-A automação de compilação está preparada, mas o código-fonte completo ainda precisa ser importado.
+O código-fonte do projeto já está no GitHub. A **v2.0.1 foi publicada e testada** em [Releases](https://github.com/Marco-Oliver/TRAMA/releases/tag/v2.0.1).
 
-## Importação única
-1. Baixe o pacote TRAMA_GitHub_Source_1_9.tar.gz disponível na conversa.
-2. Acesse este repositório e escolha Add file > Upload files.
-3. Envie o pacote sem extrair, na raiz do repositório, e confirme o commit.
-4. O GitHub Actions verifica o SHA-256 do pacote, extrai o código auditado, roda os testes, publica as fontes e dispara a compilação Windows.
-5. Se a compilação e os testes passarem, um release disponibilizará TRAMA_Setup.exe.
+## Fluxo para as próximas versões
 
-Link permanente depois da publicação bem-sucedida:
-https://github.com/Marco-Oliver/TRAMA/releases/latest/download/TRAMA_Setup.exe
+1. Desenvolva em branch própria e abra um pull request para a `main`.
+2. Execute os testes de regressão e segurança e, para releases Windows, a auditoria completa (incluindo instalador, navegador e migração da versão pública anterior).
+3. Atualize a versão de forma consistente no Python, no instalador Inno Setup e na interface. Revise o teste de upgrade para partir da versão oficial anterior.
+4. Após os testes, integre o pull request. A publicação oficial é iniciada por uma alteração deliberada em `tools/release-trigger.txt` na `main`.
+5. O workflow `.github/workflows/release.yml` compila, verifica o SHA-256, testa instalação/upgrade e cria a tag e os artefatos. **Ele não sobrescreve uma versão já publicada.**
+6. Confirme o resultado em [GitHub Actions](https://github.com/Marco-Oliver/TRAMA/actions) e [Releases](https://github.com/Marco-Oliver/TRAMA/releases).
 
-O link NÃO funciona antes da primeira publicação de release.
+**Nunca publique** chaves de API reais, vaults do Obsidian, transcrições pessoais, bancos SQLite, arquivos de configuração local ou credenciais.
 
-Nunca envie: chaves de API, cofre Obsidian, transcrições privadas, banco SQLite, arquivos .env ou credenciais.
+O usuário pode baixar o [instalador mais recente](https://github.com/Marco-Oliver/TRAMA/releases/latest/download/TRAMA_Setup.exe) sem usar Python ou terminal. O programa mantém credenciais e materiais localmente; APIs externas só recebem conteúdo autorizado.

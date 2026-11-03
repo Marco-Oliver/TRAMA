@@ -1,7 +1,7 @@
 # TRAMA — Como o sistema funciona
 
 **Estado documentado:** 2 de novembro de 2026  
-**Versão pública atual:** 2.0.0 (Windows), publicada em 31/10/2026. **Versão anterior:** 1.9.0. [Instalador e SHA-256](https://github.com/Marco-Oliver/TRAMA/releases/tag/v2.0.0)  
+**Versão pública atual:** 2.0.1 (Windows). **Versão anterior:** 2.0.0. [Instalador e SHA-256](https://github.com/Marco-Oliver/TRAMA/releases/tag/v2.0.1)  
 **Projeto:** [GitHub — TRAMA](https://github.com/Marco-Oliver/TRAMA)
 
 Este documento descreve a finalidade do TRAMA, as funcionalidades existentes, o caminho dos materiais até o Obsidian e as melhorias previstas. **Recursos disponíveis hoje e ideias futuras estão separados.**
@@ -318,9 +318,8 @@ Um explorador de arquivos dos repositórios dentro do TRAMA e, no futuro, uma ve
 
 ## 11. Revisão de qualidade após o lançamento 2.0.0
 
-Esta seção descreve o funcionamento da **revisão ainda não publicada**, guardada na branch
-[`fix/quality-personas-ui-security-20261031`](https://github.com/Marco-Oliver/TRAMA/tree/fix/quality-personas-ui-security-20261031).
-A versão pública permanece **2.0.0** até a revisão ser integrada e uma nova distribuição ser aprovada.
+As melhorias de privacidade, leitura segura do cofre e experiência desktop foram integradas pela
+[PR #2](https://github.com/Marco-Oliver/TRAMA/pull/2) e distribuídas na **v2.0.1**, após a auditoria de Linux, Windows, navegador e atualização de instalador.
 
 ### 11.1 Estudo com a IA Professor
 
@@ -391,9 +390,7 @@ pedagógica nem prometer ausência total de bugs ou vulnerabilidades.
 
 ## 12. Segurança adicional — revisão após a v2.0.0
 
-Esta revisão **ainda não integra o instalador público**. O código fica em
-[`fix/security-hardening-20261102`](https://github.com/Marco-Oliver/TRAMA/tree/fix/security-hardening-20261102),
-sobre a auditoria de interface e automação anterior.
+Esta revisão de segurança já integra a **v2.0.1 publicada**, a partir da PR #2, sem impedir a leitura local do Obsidian nem exigir credenciais no GitHub.
 
 ### Proteção de arquivos e atualização
 
@@ -420,8 +417,7 @@ O GitHub Actions também executa verificações de dependências e análise est�
 externos podem revelar o contexto autorizado ao provedor, mesmo quando não contêm
 credenciais óbvias; o próprio aluno deve selecionar fontes adequadas.
 
-**Status de distribuição:** ainda não publicado; a v2.0.0 permanece como última
-versão estável enquanto a revisão aguarda testes automatizados e avaliação manual.
+**Status de distribuição:** publicado na **v2.0.1** após testes automatizados completos. O teste real com cofre pessoal e modelo de IA externo permanece uma validação manual separada.
 
 ### 12.1 Cobertura visual contra falsos resultados
 
@@ -458,7 +454,7 @@ WebView ou de componentes nativos; por isso o usuário continua responsável por
 evitar materiais ou links suspeitos e o código deve manter suas validações de entrada.
 
 
-### 11.5 Endurecimento de privacidade e execução dos testes
+### 12.2 Endurecimento de privacidade e execução dos testes
 
 - A consulta da IA Professor agora indexa **somente** as três pastas de ensino
   (conhecimento, aulas e projetos). Notas pessoais e anexos não são abertos
@@ -487,7 +483,7 @@ contra outro programa com permissões do usuário modificando arquivos ao mesmo
 tempo. Qualidade com modelos de IA reais e assinatura de executáveis também
 exigem validação posterior.
 
-### 11.6 Proteção complementar do Classroom e robustez
+### 12.3 Proteção complementar do Classroom e robustez
 
 Os JSONs de materiais associados ao Classroom são limitados a 2 MB, lidos
 apenas dentro do cofre, com bloqueio de links simbólicos e validação de
@@ -500,7 +496,7 @@ URLs privadas; quando a assinatura SHA-256 do instalador diverge, a mensagem
 de integridade é específica e não revela dados internos.
 
 
-### 11.7 Reforço do acesso à IA e documentos Word
+### 12.4 Reforço do acesso à IA e documentos Word
 
 As requisições à API são feitas somente para hosts oficiais de
 Gemini/Groq/OpenRouter, com HTTPS, sem redirecionamentos e resposta de até 2 MB.
@@ -509,6 +505,6 @@ destinos diferentes. O DOCX usa o parser defusedxml para recusar entidades
 XML hostis, com teste que garante que documentos normais continuam legíveis.
 
 
-### 13. Candidata v2.0.1 — não publicada
+## 13. TRAMA v2.0.1 — versão publicada
 
-A versão de manutenção 2.0.1 inclui as correções de segurança, privacidade do Professor, importação e navegação. A candidata exige testes completos em Windows, Linux, navegador e atualização do instalador oficial v2.0.0 para a nova versão. O teste de migração verifica notas manuais, SQLite, preferências e um arquivo sintético de credenciais. Nenhuma chave real é enviada ao GitHub.
+A [v2.0.1](https://github.com/Marco-Oliver/TRAMA/releases/tag/v2.0.1) foi gerada pelo [GitHub Actions oficial](https://github.com/Marco-Oliver/TRAMA/actions/runs/41568287697). O pipeline validou 167 testes em Windows e 167 em Linux, 10 cenários adversariais em cada ambiente, testes visuais do navegador e o instalador Windows. A atualização **v2.0.0 → v2.0.1** foi executada com um cofre fictício: notas, SQLite, preferências e arquivo sintético de chaves permaneceram intactos. O instalador público permanece sem assinatura digital; devem-se conferir a origem oficial e o SHA-256. A fidelidade das explicações com IA real e a integridade do cofre pessoal exigem avaliação do usuário no próprio computador.
