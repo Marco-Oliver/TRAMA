@@ -43,6 +43,26 @@ def _source_text(store, source) -> str | None:
     return path.read_text(encoding="utf-8-sig", errors="replace")
 
 
+def _index_source_terms(raw: str) -> dict:
+    """Locally cache source terminology and original timestamped excerpts.
+
+    These are literal observations, never an AI-generated correction.
+    """
+    normalized=norm(raw)
+    keys=sorted({norm(term) for name,(_pattern,aliases) in CONCEPTS.items()
+                 for term in (name,*aliases) if norm(term)})
+    terms={term for term in keys
+           if re.search(r"(?<!\\w)" + re.escape(term) + r"(?!\\w)",normalized)}
+    anchors={}
+    for stamp,excerpt in timed_lines(raw):
+        for term in terms:
+            if term not in anchors and _contains_term(excerpt,term):
+                anchors[term]=[stamp,excerpt[:200]]
+        if len(anchors)>=len(terms):
+            break
+    return {"terms":sorted(terms),"anchors":anchors}
+
+
 def _later_evidence(question, candidate, original, later, repositories):
     """Evidence always cites raw future transcript or real repository index."""
     result = []
@@ -51,15 +71,18 @@ def _later_evidence(question, candidate, original, later, repositories):
         # Do not use only a doubtful phonetic spelling as independent evidence.
         candidates = [t for t in terms if norm(t) == norm(candidate) or
                       not _contains_term(original, t)]
-        for source, raw in later:
-            if not any(_contains_term(raw, term) for term in candidates):
+        for source, indexed in later:
+            present=set(indexed.get("terms",[]))
+            observed=[norm(t) for t in candidates if norm(t) in present]
+            if not observed:
                 continue
-            anchors = [(stamp, excerpt[:200]) for stamp, excerpt in timed_lines(raw)
-                       if any(_contains_term(excerpt, t) for t in candidates)]
+            anchors=indexed.get("anchors",{})
+            first=next((anchors[t] for t in observed if t in anchors),None)
             result.append({"kind": "aula_posterior", "source_id": source["id"],
                            "lesson": source["lesson"], "label": source["label"],
-                           "digest": source["digest"], "timestamp": anchors[0][0] if anchors else "",
-                           "excerpt": anchors[0][1] if anchors else ""})
+                           "digest": source["digest"],
+                           "timestamp": first[0] if first else "",
+                           "excerpt": first[1] if first else ""})
             if len(result) >= 5:
                 break
         for repository in repositories:
@@ -79,7 +102,25 @@ def refresh_uncertainties(store) -> dict:
     """Idempotent incremental reconciliation; never consumes API calls."""
     sources = sorted(store.sources("transcript"),
                      key=lambda s: (lesson_order(s["lesson"] or ""), s["video"] or "", s["label"]))
-    loaded = [(s, raw) for s in sources if (raw := _source_text(store, s)) is not None]
+    # Reuse verified source-term indexes after the first pass. A new class
+    # only requires reading its own transcript for unresolved term matches.
+    vocabulary_revision=hashlib.sha256(json.dumps(
+        [(name,aliases) for name,(_pattern,aliases) in CONCEPTS.items()],
+        ensure_ascii=False,sort_keys=True).encode()).hexdigest()[:12]
+    loaded=[]
+    for source in sources:
+        index_digest=source["digest"]+":"+vocabulary_revision
+        index=store.review_source_index(source["id"],index_digest)
+        if index is None:
+            raw=_source_text(store,source)
+            if raw is None:
+                continue
+            index=_index_source_terms(raw)
+            store.save_review_source_index(source["id"],index_digest,index)
+        stored=store.vault/(source["stored_path"] or "")
+        if stored.is_symlink() or not stored.is_file():
+            continue
+        loaded.append((source,index))
     repositories = []
     for repo in store.repositories():
         try:
@@ -99,7 +140,7 @@ def refresh_uncertainties(store) -> dict:
             uid = hashlib.sha256((src["id"] + "\0" + question.casefold()).encode()).hexdigest()[:32]
             active.add(uid)
             candidate = _candidate(question)
-            later = [(s, text) for s, text in loaded
+            later = [(s, index) for s, index in loaded
                      if src["lesson"] and s["lesson"] and
                      lesson_order(s["lesson"]) > lesson_order(src["lesson"])]
             evidence = _later_evidence(question, candidate, question, later, repositories)
