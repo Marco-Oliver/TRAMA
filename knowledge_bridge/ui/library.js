@@ -172,7 +172,7 @@ function libWire(){const root=$('library-workspace');
   if(a==='reveal'&&app.note)await call('reveal_note',app.note.id);
   if(a==='copy'&&app.note){const text='[['+app.note.id.replace(/\.md$/i,'')+']]';try{await navigator.clipboard.writeText(text);notify('Link interno copiado.');}catch(_){notify('Não foi possível copiar automaticamente.');}}
   if(a==='organize'){
-    if(!confirm('Organizar aulas e notas geradas a partir das fontes existentes? Não usa IA, não apaga arquivos nem substitui notas editadas.'))return;
+    if(!await askTramaConfirm('Organizar biblioteca','Atualizar as notas a partir das fontes cadastradas, sem usar IA e sem sobrescrever alterações pessoais.','Organizar aulas'))return;
     notify('Organizando a biblioteca local…',7500);
     const r=await call('organize_library',true);
     notify(r?.message||'Não foi possível atualizar a organização.',7000);
