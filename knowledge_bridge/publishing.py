@@ -500,7 +500,7 @@ class Publisher:
                     question = _escape_md(row["question"])[:340]
                     status = row["status"]
                     body.append(f"### {question}")
-                    body.append(f"- Estado: \`{status}\`.")
+                    body.append(f"- Estado: `{status}`.")
                     body.append(f"- [[{row['id']}|Abrir registro e histórico desta dúvida]]")
                     if status != "NOVA_EVIDENCIA_PARA_REVISAR":
                         body.append("- Nenhuma explicação posterior identificada nas fontes cadastradas.")
@@ -510,7 +510,11 @@ class Publisher:
                         items = json.loads(row["evidence_json"])
                     except (ValueError, TypeError):
                         items = []
+                    if not isinstance(items, list):
+                        items = []
                     for evidence in items[:8]:
+                        if not isinstance(evidence, dict):
+                            continue
                         if evidence.get("kind") == "aula_posterior":
                             later = self.db.get_source(evidence.get("source_id", ""))
                             if later is None:
