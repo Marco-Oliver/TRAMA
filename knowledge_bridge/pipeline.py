@@ -200,6 +200,15 @@ class Application:
                 doubt for doubt in clean["duvidas"]
                 if normalized_name(doubt) not in known_names
             ]
+        # A shallow or empty summary is not silently promoted as complete
+        # knowledge. Do not spend a second paid/free call automatically:
+        # preserve the original and mark the deficiency for later review.
+        review=[]
+        if len(raw_text.strip())>=1600 and len(clean["resumo"])<160:
+            review.append("Resumo curto para o volume da transcrição; revisar fidelidade e detalhes.")
+        if len(raw_text.strip())>=400 and not clean["resumo"]:
+            review.append("A IA não forneceu síntese; consultar a transcrição original.")
+        clean["qualidade_pendente"]=review
         return clean
 
     def process(self, lesson_filter: str | None = None, force: bool = False):
@@ -285,6 +294,10 @@ class Application:
                 combined["duvidas"].extend(result.get("duvidas", []))
                 combined["nomes_a_conferir"].extend(result.get("nomes_a_conferir", []))
             combined['_context_revision']=context_digest
+            # Preserve warnings from each analyzed segment for the published note.
+            combined['qualidade_pendente']=list(dict.fromkeys(
+                warning for part in all_results for warning in
+                part.get('qualidade_pendente',[]) if isinstance(warning,str)))[:8]
             meta = self.store.conn.execute("SELECT provider,model FROM chunks WHERE source_id=? AND digest=? ORDER BY segment LIMIT 1",
                                            (src["id"],segment_digest)).fetchone()
             self.store.save_analysis(src["id"], src["digest"],meta["provider"] if meta else "unknown",
