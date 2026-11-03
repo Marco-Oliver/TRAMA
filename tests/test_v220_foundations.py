@@ -83,6 +83,31 @@ class RestoreBackupFoundationsTests(unittest.TestCase):
         self.assertFalse(target.exists())
         self.assertFalse((self.root / "escape.txt").exists())
 
+class DesktopExperienceFoundationsTests(unittest.TestCase):
+    def test_github_import_and_confirmations_are_embedded_in_trama(self):
+        from knowledge_bridge.bridge import load_local_ui
+        html = load_local_ui()
+        self.assertIn('id="repo-dialog"', html)
+        self.assertIn('id="trama-confirm-dialog"', html)
+        self.assertIn('function askTramaConfirm', html)
+        self.assertNotIn("const url=prompt(", html)
+        self.assertNotIn("if(!confirm(", html)
+        self.assertIn("Cole uma captura de tela ou imagem diretamente aqui.", html)
+        self.assertNotIn("Não precisa abrir o Paint.", html)
+
+    def test_git_process_does_not_spawn_console_on_windows(self):
+        import subprocess
+        from unittest.mock import patch
+        from knowledge_bridge.pipeline import Application
+        with patch("knowledge_bridge.pipeline.subprocess.run") as run:
+            run.return_value.returncode = 0
+            run.return_value.stdout = "git version test"
+            self.assertIn("git version test", Application._git(["--version"]))
+            self.assertEqual(
+                run.call_args.kwargs.get("creationflags"),
+                getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
