@@ -103,7 +103,7 @@ class Bridge:
         db=path/'.base-conhecimento'/'estado.sqlite3'
         if not db.is_file():return output
         try:
-            with closing(sqlite3.connect(f'file:{quote(db.as_posix())}?mode=ro',uri=True,timeout=2)) as con:
+            with closing(sqlite3.connect(db.as_uri() + '?mode=ro',uri=True,timeout=2)) as con:
                 for kind,count in con.execute('SELECT kind,COUNT(*) FROM sources GROUP BY kind'):
                     if kind=='transcript':output['transcriptions']=count
                     if kind=='video':output['videos']=count
@@ -157,7 +157,7 @@ class Bridge:
         lesson=note.metadata.get('aula','')
         if not lesson:return out
         try:
-            with closing(sqlite3.connect(f'file:{quote(db.as_posix())}?mode=ro',uri=True,timeout=2)) as con:
+            with closing(sqlite3.connect(db.as_uri() + '?mode=ro',uri=True,timeout=2)) as con:
                 for kind,label,stored,video in con.execute('SELECT kind,label,stored_path,video FROM sources WHERE lesson=?',(lesson,)):
                     if kind in ('video', 'transcript') and stored:
                         out[kind].append({'label':label,'stored':stored,'video_id':video or ''})
@@ -906,7 +906,7 @@ class Bridge:
             return {'ok':False,'message':'Link não registrado no cofre.'}
         allowed=False
         try:
-            with closing(sqlite3.connect(f'file:{quote(db.as_posix())}?mode=ro',uri=True,timeout=2)) as con:
+            with closing(sqlite3.connect(db.as_uri() + '?mode=ro',uri=True,timeout=2)) as con:
                 for (stored,) in con.execute("SELECT stored_path FROM sources WHERE kind='classroom'"):
                     record=self._safe_classroom_record(vault,stored)
                     rows=record.get('videos',[]) if record else []
@@ -940,7 +940,7 @@ class Bridge:
             return {'ok':False}
         try:
             with closing(sqlite3.connect(
-                    f'file:{quote(db.as_posix())}?mode=ro',uri=True,timeout=2)) as con:
+                    db.as_uri() + '?mode=ro',uri=True,timeout=2)) as con:
                 registered=con.execute(
                     "SELECT 1 FROM sources WHERE stored_path=? "
                     "AND kind IN ('video','transcript','material') LIMIT 1",
