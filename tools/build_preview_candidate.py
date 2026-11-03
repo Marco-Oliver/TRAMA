@@ -46,18 +46,18 @@ def prepare():
     )
     replace_exact(
         ROOT / "knowledge_bridge" / "ui" / "app.js",
-        "TRAMA v2.0.1  │  ",
+        "TRAMA v2.1.0  │  ",
         PREVIEW_LABEL + "  │  ",
     )
     replace_exact(
         ROOT / "knowledge_bridge" / "ui" / "app.js",
-        "Versão instalada: 2.0.1.",
+        "Versão instalada: 2.1.0.",
         "Versão experimental: TRAMA Preview 2.1.",
     )
     iss = (ROOT / "TRAMA_Instalador.iss").read_text(encoding="utf-8")
     changes = [
         ('#define MyAppName "TRAMA"', '#define MyAppName "TRAMA Preview"'),
-        ('#define MyAppVersion "2.0.1"', '#define MyAppVersion "2.1.0-preview"'),
+        ('#define MyAppVersion "2.1.0"', '#define MyAppVersion "2.1.0-preview"'),
         ("AppId={{9819EDB4-FC18-4D9E-99F6-8CB6D9914407}",
          "AppId={{7BFC6C0A-8574-48E2-A496-A0B0E030FCAF}"),
         (r"DefaultDirName={localappdata}\Programs\TRAMA",
