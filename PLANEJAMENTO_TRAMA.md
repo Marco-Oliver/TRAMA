@@ -524,3 +524,82 @@ Na aba Aulas, o botão de análise de uma aula envia somente as transcrições d
 ### 14.1 Pesquisa local no TXT
 
 A aba Transcrição oferece busca textual local por termo, apresentando trechos curtos com timestamps da fonte original cadastrada. Não consome API, nem altera o TXT. A busca por `dotnet` procura também palavras como `net`, úteis quando a transcrição registra “ponto net”. O arquivo fica acessível pelo botão **Abrir original**. Fontes fora do catálogo, links simbólicos, hashes alterados e TXT acima de 2 MB não são utilizados.
+
+
+## 15. TRAMA 2.2.0 — Automação primeiro (branch experimental)
+
+**Esta seção documenta trabalho em desenvolvimento na PR #5 e substitui
+afirmações de estado sobre releases 2.0.x ou 2.1.0 apenas no contexto dessa
+branch. Ela não representa uma nova versão pública instalada.**
+
+### 15.1 A dor original
+
+O TRAMA foi criado para eliminar a necessidade de enviar aulas individualmente
+para uma IA e depois copiar manualmente seus resumos para o Obsidian.
+O fluxo principal é: **arquivos TXT, PDFs, imagens, vídeos por link e repositórios
+GitHub → identificação das fontes → análise fiel → notas Markdown no Obsidian**.
+
+A pessoa importa algumas aulas quando tiver tempo (como seis por dia, mas não
+obrigatoriamente todos os dias). O acervo deve crescer até centenas de aulas,
+sem reprocessar todo o material antigo a cada sessão.
+
+A IA Professor continua experimental e **não substitui** os serviços externos de
+estudo que o usuário poderá conectar ao Obsidian posteriormente.
+
+### 15.2 Garantias de processamento incremental
+
+- Análises anteriores, identificadas pelo hash da fonte e contexto, são
+  reutilizadas sem novas chamadas externas.
+- Trechos já analisados têm cache persistente no SQLite.
+- Adicionar repositório pode criar evidência de código sem sobrescrever
+  transcrições; novas evidências devem atualizar apenas notas derivadas
+  relevantes ou propostas quando o usuário editou a nota.
+- Dúvidas de uma aula anterior continuam abertas até haver evidência específica.
+  Uma aula posterior pode adicionar referência **à dúvida original** sem
+  reivindicar confirmação automática da explicação.
+- Testar escala com 150 aulas fictícias em 25 sessões de seis.
+
+### 15.3 Qualidade das notas
+
+A IA recebe instruções para produzir explicações didáticas, sequenciais,
+fieis às falas e aos exemplos comprovados. A análise separa pessoas, conceitos,
+exemplos e dúvidas. Uma síntese muito curta para uma transcrição longa ganha
+um aviso de revisão; não dispara requisições adicionais sem necessidade.
+
+Notas de aula não devem listar seções vazias repetitivamente. Um termo inferido,
+uma palavra transcrita de forma incerta ou um código indexado não são apresentados
+como fala literal do professor. A transcrição original continua preservada.
+
+A indexação de GitHub distribui suas evidências entre conceitos e arquivos,
+evitando saturar os limites com exemplos repetidos do início do repositório.
+Links para trechos de código só são abertos quando repositório, commit, arquivo e
+linha correspondem à evidência do catálogo local.
+
+### 15.4 Interface e privacidade
+
+O visual clássico do TRAMA é mantido, sem sacrificar legibilidade. Importação de
+Github possui campo próprio; pop-ups padrão do navegador são substituídos por
+modais internos. Operações de Git no Windows não exibem console. Botão Atualizar,
+mensagens maiores, chat com rolagem interna e busca por conteúdo no Markdown
+corrigem problemas detectados nos testes manuais.
+
+A autorização de envio à IA pode ficar salva em Ajustes e ser revogada. Ela
+permite somente operações que o usuário inicia explicitamente: não há monitor
+de pastas, execução automática ou envio em segundo plano. O aplicativo pode ser
+usado localmente sem essa autorização. Chaves continuam armazenadas somente na
+máquina.
+
+Configurações são gravadas por substituição atômica, e favoritos usam o caminho
+canônico da nota. A cópia de wikilinks utiliza a área de transferência nativa
+do Windows, sem exigir permissão do WebView.
+
+### 15.5 Regra de release
+
+A branch permanece separada da `main` e o instalador estável. É necessário
+validar regressão e segurança no Linux e no Windows, simular importação
+incremental, testar restauração com caminhos longos e instalar/reinstalar/
+desinstalar o instalador QA em runner isolado. Isso não substitui validar o
+software visualmente nem avaliar resumos gerados por IA real em uma amostra
+controlada. **Não declarar como concluído o que ainda não foi testado.**
+
+Plano técnico específico: `docs/TRAMA_V220_PLANO_E_VALIDACAO.md`.
