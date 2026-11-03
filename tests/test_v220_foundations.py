@@ -304,8 +304,8 @@ class ProposedNoteComparisonTests(unittest.TestCase):
             lesson.mkdir(parents=True)
             note=lesson/"resumo.md"
             draft=lesson/"resumo.PROPOSTA.md"
-            note.write_text("# Aula 031\\n\\nO conceito ainda não foi explicado.",encoding="utf-8")
-            draft.write_text("# Aula 031\\n\\nA Aula 050 trouxe uma evidência.",encoding="utf-8")
+            note.write_text("# Aula 031\n\nO conceito ainda não foi explicado.",encoding="utf-8")
+            draft.write_text("# Aula 031\n\nA Aula 050 trouxe uma evidência.",encoding="utf-8")
             before=(note.read_bytes(),draft.read_bytes())
             bridge=Bridge()
             bridge.settings={"vault":str(vault)}
