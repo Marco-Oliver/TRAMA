@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from .content import timed_lines
+from .memory_atlas import literal_technical_mention
 
 
 def _normalize(text):
@@ -42,7 +43,8 @@ def audit_lesson(vault: Path, lesson: str) -> dict:
             analyses={r['source_id']:r for r in con.execute('SELECT * FROM analyses') if r['source_id'] in {s['id'] for s in sources}}
             findings=[]
             counters={'transcricoes':0,'com_resumo':0,'contextos':0,'materiais':0,'videos_links':0,
-                      'horarios_validos':0,'referencias_duvidosas':0,'arquivos_integros':0}
+                      'horarios_validos':0,'horarios_recuperados_txt':0,
+                      'referencias_duvidosas':0,'arquivos_integros':0}
             for src in sources:
                 if src['kind']=='classroom':
                     counters['contextos']+=1
@@ -71,7 +73,8 @@ def audit_lesson(vault: Path, lesson: str) -> dict:
                 else:
                     findings.append(f"Transcrição modificada em relação ao arquivo importado: {src['label'][:80]}")
                 raw=file.read_text(encoding='utf-8-sig',errors='replace')
-                timestamps={t for t,_ in timed_lines(raw)}
+                segments=timed_lines(raw)
+                timestamps={t for t,_ in segments if t!='sem horário'}
                 result=analyses.get(src['id'])
                 if not result or result['digest']!=src['digest']:
                     findings.append(f"Ainda sem resumo atualizado: {src['label'][:90]}")
@@ -93,9 +96,25 @@ def audit_lesson(vault: Path, lesson: str) -> dict:
                                 findings.append(f'Horário não encontrado na transcrição: {stamp[:20]}')
                         if category=='conceitos':
                             name=str(item.get('nome','')).strip()
-                            if len(name)>=4 and _normalize(name) not in _normalize(raw):
-                                counters['referencias_duvidosas']+=1
-                                findings.append(f'Conceito precisa de conferência na fala: {name[:85]}')
+                            if len(name)>=3:
+                                literal=literal_technical_mention(name,raw)
+                                if not literal:
+                                    counters['referencias_duvidosas']+=1
+                                    findings.append(f'Conceito sem menção literal verificável: {name[:85]}')
+                                else:
+                                    grounded=[t for t,line in segments
+                                              if t!='sem horário' and
+                                              literal_technical_mention(name,line)]
+                                    if grounded and (not stamp or stamp not in grounded):
+                                        counters['horarios_recuperados_txt']+=1
+                                    if stamp in timestamps and not any(
+                                            t==stamp and literal_technical_mention(name,line)
+                                            for t,line in segments):
+                                        counters['referencias_duvidosas']+=1
+                                        findings.append(
+                                            f'Horário informado pela IA não contém o termo literal: '
+                                            f'{name[:65]} ({stamp[:20]}).'
+                                        )
             if counters['transcricoes']==0:
                 findings.append('Aula sem transcrição: ainda é possível registrar a agenda e as pessoas do Classroom.')
             if counters['transcricoes'] and counters['com_resumo']<counters['transcricoes']:
