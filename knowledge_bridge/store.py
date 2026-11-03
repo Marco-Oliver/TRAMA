@@ -53,6 +53,12 @@ CREATE TABLE IF NOT EXISTS uncertainty_events (
  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
  FOREIGN KEY(uncertainty_id) REFERENCES uncertainties(id)
 );
+-- Deterministic local term evidence for a verified transcript digest.
+-- It avoids reparsing earlier lessons when only a new lesson arrives.
+CREATE TABLE IF NOT EXISTS review_source_index (
+ source_id TEXT PRIMARY KEY, digest TEXT NOT NULL, payload TEXT NOT NULL,
+ updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 CREATE INDEX IF NOT EXISTS idx_uncertainties_source ON uncertainties(source_id);
 CREATE INDEX IF NOT EXISTS idx_uncertainty_events_lookup ON uncertainty_events(uncertainty_id, id);
 """
@@ -166,6 +172,28 @@ class Store:
             "AND status != 'ARQUIVADA_FONTE_ALTERADA' ORDER BY id",
             (source_id,)
         ).fetchall()
+
+    def review_source_index(self, source_id: str, digest: str):
+        row=self.conn.execute(
+            "SELECT payload FROM review_source_index WHERE source_id=? AND digest=?",
+            (source_id,digest)
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            data=json.loads(row["payload"])
+        except (TypeError,ValueError):
+            return None
+        return data if isinstance(data,dict) else None
+
+    def save_review_source_index(self, source_id: str, digest: str, payload: dict):
+        with self.conn:
+            self.conn.execute("""
+                INSERT INTO review_source_index(source_id,digest,payload)
+                VALUES(?,?,?)
+                ON CONFLICT(source_id) DO UPDATE SET digest=excluded.digest,
+                  payload=excluded.payload,updated_at=CURRENT_TIMESTAMP
+            """,(source_id,digest,json.dumps(payload,ensure_ascii=False,sort_keys=True)))
 
     def uncertainty_events(self, uncertainty_id: str):
         return self.conn.execute(
