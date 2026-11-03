@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines, study_windows
 from .store import Store
-from .memory_atlas import make_atlas, render_atlas, lesson_order, norm
+from .memory_atlas import make_atlas, render_atlas, lesson_order, norm, note_for
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections
 from .learning_review import refresh_uncertainties, render_uncertainties
 
@@ -486,6 +486,49 @@ class Publisher:
                                     (f"(**{_escape_md(entry.get('tempo', ''))}**)" if entry.get('tempo') else "(sem horário confirmado)"))
                 if body[-1].startswith('> Extração'):
                     body.append('*Não identificado nesta aula.*')
+        # Only the original lesson receives targeted follow-up evidence. New
+        # lessons do not overwrite the former explanation or the source TXT.
+        # A local match is a lead to review, never automatic proof of learning.
+        if analysis:
+            pending = self.db.uncertainties_for_source(src["id"])
+            if pending:
+                body += ["", "## Dúvidas da aula e retomadas posteriores", "",
+                         "> Esta seção acompanha somente questões levantadas nesta fonte. "
+                         "Novas aulas e códigos são pistas; não comprovam que a dúvida foi resolvida.",
+                         ""]
+                for row in pending[:30]:
+                    question = _escape_md(row["question"])[:340]
+                    status = row["status"]
+                    body.append(f"### {question}")
+                    body.append(f"- Estado: \`{status}\`.")
+                    body.append(f"- [[{row['id']}|Abrir registro e histórico desta dúvida]]")
+                    if status != "NOVA_EVIDENCIA_PARA_REVISAR":
+                        body.append("- Nenhuma explicação posterior identificada nas fontes cadastradas.")
+                        body.append("")
+                        continue
+                    try:
+                        items = json.loads(row["evidence_json"])
+                    except (ValueError, TypeError):
+                        items = []
+                    for evidence in items[:8]:
+                        if evidence.get("kind") == "aula_posterior":
+                            later = self.db.get_source(evidence.get("source_id", ""))
+                            if later is None:
+                                continue
+                            link = Path(note_for(later)).with_suffix("").as_posix()
+                            stamp = _escape_md(evidence.get("timestamp") or "sem horário confirmado")
+                            excerpt = _escape_md(evidence.get("excerpt") or "")[:230]
+                            body.append(
+                                f"- **Aula posterior:** [[{link}|{_escape_md(later['lesson'] or later['label'])}]] "
+                                f"({stamp}) — trecho observado: “{excerpt}”.")
+                        elif evidence.get("kind") == "codigo":
+                            ref = _code_ref({"url":evidence.get("repo", ""),
+                                             "sha":evidence.get("sha", "")},
+                                            str(evidence.get("path", "")),
+                                            evidence.get("line", 0))
+                            body.append("- **Código relacionado:** " + ref +
+                                        " (relação candidata, sem comprovar autoria ou aprendizagem).")
+                    body.append("")
         self._append_context(body, lesson)
         # Source-grounded anchors make timestamps navigable without
         # modifying the preserved transcript in 99-Anexos.
