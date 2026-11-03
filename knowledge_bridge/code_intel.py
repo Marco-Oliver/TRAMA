@@ -41,8 +41,8 @@ MAX_EVIDENCE = 160
 MAX_DOCS = 12
 MAX_SYMBOLS = 240
 SYMBOL_DECLARATION = re.compile(
-    r"\\b(?:class|interface|enum|struct|record|function|def)\\s+"
-    r"([A-Za-z_][A-Za-z0-9_]*)\\b"
+    r"\b(?:class|interface|enum|struct|record|function|def)\s+"
+    r"([A-Za-z_][A-Za-z0-9_]*)\b"
 )
 
 
