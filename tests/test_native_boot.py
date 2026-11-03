@@ -13,7 +13,7 @@ class NativeBootTests(TestCase):
         self.assertEqual(set(public), {
             'snapshot','note','graph','audit_note','organize_library','select_vault','backup_vault','restore_vault','import_materials','auto_import',
             'staged_items','stage_files','stage_clipboard_image','remove_staged','clear_staged','process_staged',
-            'process','add_repo','toggle_favorite','reveal_note','open_note',
+            'process','process_lesson','add_repo','toggle_favorite','reveal_note','open_note',
             'open_obsidian','open_attachment','open_video_link','window_action',
             'save_classroom_context','import_classroom_materials',
             'ai_status','save_ai_key','remove_ai_key',

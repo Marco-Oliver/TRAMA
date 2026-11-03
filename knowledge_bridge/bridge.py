@@ -793,7 +793,7 @@ class Bridge:
         vault=self._vault()
         if not vault:
             return {'ok':False,'message':'Selecione o cofre do Obsidian primeiro.'}
-        if not self.settings.get('confirmed_free') or not self._key_vault.configured():
+        if not self.settings.get('confirmed_free') or not any(self._key_vault.configured().values()):
             return {'ok':False,'message':'Configure e confirme sua chave Free em Ajustes.'}
         if not self._write_lock.acquire(blocking=False):
             return {'ok':False,'message':'Outro processamento está em andamento.'}
