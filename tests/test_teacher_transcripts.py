@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 
 from knowledge_bridge.ai import AIResult
+from knowledge_bridge.bridge import Bridge
 from knowledge_bridge.store import Store
 from knowledge_bridge.teacher import select_sources, make_prompt, teacher_answer
 from knowledge_bridge.teacher_transcripts import _load_verified
@@ -70,6 +71,19 @@ class TranscriptGroundingTests(unittest.TestCase):
         self.private = self.vault/"05-Anotacoes-Pessoais"/"secrets.txt"
         self.private.parent.mkdir()
         self.private.write_text("Token pessoal nunca enviado", encoding="utf-8")
+
+    def test_dashboard_counts_and_media_work_with_windows_sqlite_uri(self):
+        bridge = Bridge()
+        bridge.settings = {"vault": str(self.vault)}
+        snapshot = bridge.snapshot()
+        self.assertTrue(snapshot["connected"])
+        self.assertEqual(snapshot["stats"]["transcriptions"], 1)
+        note = bridge.note(self.note.relative_to(self.vault).as_posix())
+        self.assertNotIn("error", note)
+        media = note["media"]["transcript"]
+        self.assertEqual(len(media), 1)
+        self.assertEqual(media[0]["stored"],
+                         "99-Anexos/Transcricoes-Originais/recording-002.txt")
 
     def test_lesson_002_retrieves_original_timestamped_context(self):
         docs = select_sources(self.vault,
