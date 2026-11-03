@@ -18,6 +18,53 @@ from knowledge_bridge.recovery import (
 )
 
 
+class ObsidianLessonPublicationQualityTests(unittest.TestCase):
+    def test_overview_does_not_silently_cut_summary_and_projects_show_classes(self):
+        from knowledge_bridge.pipeline import Application
+
+        with tempfile.TemporaryDirectory(prefix="trama-v220-quality-publication-") as folder:
+            base=Path(folder)
+            app=Application(base/"Obsidian",base/"unused.env",log=lambda *_:None)
+            try:
+                source=base/"Aula-012-V01.txt"
+                source.write_text(
+                    "[0:01] O CertificateService faz parte do exemplo da aula. "
+                    "A interface e o serviço são discutidos no contexto do projeto.",
+                    encoding="utf-8"
+                )
+                self.assertTrue(app.add_file(source))
+                registered=next(row for row in app.store.sources("transcript")
+                                if row["label"]==source.name)
+                summary=("Explicação fundamentada do exemplo da aula. " * 36 +
+                         "A conclusão deve continuar aparecendo na visão geral.")
+                self.assertGreater(len(summary),1250)
+                app.store.save_analysis(registered["id"],registered["digest"],
+                    "fixture","offline",{"resumo":summary,"tipo_aula":"tecnica",
+                    "conceitos":[],"exemplos":[],"duvidas":[]})
+                sha="a"*40
+                app.store.save_repo("https://github.com/unit/certificates",
+                    "certificates",sha,{"files":[],"documentation":[],
+                    "technologies":["TypeScript"],"history":[],"evidence":[],
+                    "symbols":[{"name":"CertificateService","concept":"CertificateService",
+                                "path":"src/certificate.service.ts","line":7,
+                                "snippet":"7: export class CertificateService {}"}]},
+                    "INDEXED")
+                app.publisher.rebuild()
+                overview=(app.store.vault/"02-Minhas-Aulas/Aula-012/00-Visao-geral.md"
+                         ).read_text(encoding="utf-8")
+                self.assertIn("A conclusão deve continuar aparecendo",overview)
+                project=(app.store.vault/"03-Meus-Projetos/certificates-aaaaaaa.md"
+                        ).read_text(encoding="utf-8")
+                self.assertIn("Classes, interfaces e funções presentes no código",project)
+                self.assertIn("CertificateService",project)
+                self.assertIn("src/certificate.service.ts",project)
+                linked_note=next(x for x in (app.store.vault/"02-Minhas-Aulas/Aula-012").glob("*.md")
+                                 if x.name!="00-Visao-geral.md")
+                self.assertIn("CertificateService",linked_note.read_text(encoding="utf-8"))
+            finally:
+                app.close()
+
+
 class RestoreBackupFoundationsTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="trama-220-test-")
