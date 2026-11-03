@@ -784,6 +784,42 @@ class Bridge:
                 self._write_lock.release()
         return {'ok':True,'logs':logs[-8:]}
 
+    def process_lesson(self, lesson, confirmed=False):
+        """Explicitly refresh one lesson only, respecting existing local keys."""
+        if confirmed is not True:
+            return {'ok':False,'message':'Confirme o envio dos trechos desta aula à API configurada.'}
+        if not isinstance(lesson,str) or not re.fullmatch(r'Aula-\d{3,4}',lesson):
+            return {'ok':False,'message':'Identificador de aula inválido.'}
+        vault=self._vault()
+        if not vault:
+            return {'ok':False,'message':'Selecione o cofre do Obsidian primeiro.'}
+        if not self.settings.get('confirmed_free') or not self._key_vault.configured():
+            return {'ok':False,'message':'Configure e confirme sua chave Free em Ajustes.'}
+        if not self._write_lock.acquire(blocking=False):
+            return {'ok':False,'message':'Outro processamento está em andamento.'}
+        logs=[]
+        app=None
+        try:
+            app=self._make_application(vault,log=lambda text:logs.append(redact_sensitive(str(text))[:600]))
+            matches=[src for src in app.store.sources("transcript") if src["lesson"]==lesson]
+            if not matches:
+                return {'ok':False,'message':'Nenhuma transcrição cadastrada para esta aula.'}
+            app.process(lesson_filter=lesson,force=True)
+            remaining=[src for src in app.store.sources("transcript")
+                       if src["lesson"]==lesson and src["status"]!="PUBLISHED"]
+            if remaining:
+                return {'ok':False,'message':'A análise não terminou. Confira a cota da API e tente novamente.',
+                        'logs':logs[-6:]}
+            return {'ok':True,'message':'Análise da aula concluída; notas do Obsidian atualizadas.',
+                    'logs':logs[-8:]}
+        except Exception:
+            return {'ok':False,'message':'Não foi possível reanalisar a aula. As transcrições originais foram preservadas.'}
+        finally:
+            try:
+                if app is not None:app.close()
+            finally:
+                self._write_lock.release()
+
     def add_repo(self,url):
         if not self._vault():return {'ok':False,'message':'Configure o cofre primeiro.'}
         if not isinstance(url,str) or not url.strip() or len(url)>1000:return {'ok':False,'message':'URL inválida'}
@@ -1002,6 +1038,9 @@ class PublicApi:
 
     def process(self, confirmed=False):
         return self._bridge.process(confirmed)
+
+    def process_lesson(self, lesson, confirmed=False):
+        return self._bridge.process_lesson(lesson, confirmed)
 
     def add_repo(self, url):
         return self._bridge.add_repo(url)
