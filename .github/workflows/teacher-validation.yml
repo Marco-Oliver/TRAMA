@@ -11,6 +11,8 @@ on:
       - 'TRAMA.spec'
       - 'TRAMA_Instalador.iss'
       - '.github/workflows/teacher-validation.yml'
+      - 'tools/build_preview_candidate.py'
+      - 'tools/windows_preview_smoke.ps1'
   workflow_dispatch:
 permissions:
   contents: read
@@ -77,6 +79,48 @@ jobs:
       - name: Instalar reinstalar e desinstalar
         shell: pwsh
         run: ./tools/windows_installer_smoke.ps1
+
+      - name: Preparar Preview em area de trabalho isolada
+        shell: pwsh
+        run: python tools/build_preview_candidate.py
+      - name: Compilar executavel da Preview
+        run: python -m PyInstaller --clean --noconfirm TRAMA.spec
+      - name: Validar executavel da Preview
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path '.\dist\TRAMA\TRAMA.exe').Path
+          $proc = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru
+          if (-not $proc.WaitForExit(90000)) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            throw 'Preview executable self-test timed out'
+          }
+          $proc.Refresh()
+          if ($proc.ExitCode -ne 0) { throw "Preview executable failed: $($proc.ExitCode)" }
+      - name: Compilar instalador Preview exclusivo
+        shell: pwsh
+        run: |
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' 'TRAMA_Preview_Instalador.iss'
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path 'release\TRAMA_Preview_Setup.exe')) {
+            throw 'Preview installer compilation failed'
+          }
+      - name: Testar instalacao paralela e retencao de dados estaveis
+        shell: pwsh
+        run: ./tools/windows_preview_smoke.ps1
+      - name: Conferir checksum da Preview
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash 'release\TRAMA_Preview_Setup.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  TRAMA_Preview_Setup.exe" | Set-Content 'release\SHA256SUMS-Preview.txt' -Encoding ASCII
+          Get-Content 'release\SHA256SUMS-Preview.txt'
+      - name: Disponibilizar instalador experimental sem publicar release
+        uses: actions/upload-artifact@v4
+        with:
+          name: TRAMA-Preview-2.1-PR4-Installer
+          path: |
+            release/TRAMA_Preview_Setup.exe
+            release/SHA256SUMS-Preview.txt
+          if-no-files-found: error
+          retention-days: 14
 
   browser:
     if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'feat/teacher-')
