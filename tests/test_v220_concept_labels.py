@@ -212,6 +212,68 @@ class EvidenceNavigationRegressionTests(unittest.TestCase):
             finally:
                 app.close()
 
+    def test_repeated_timestamp_links_to_the_specific_spoken_line(self):
+        from knowledge_bridge.content import concept_slug
+        from knowledge_bridge.memory_atlas import note_for
+        with tempfile.TemporaryDirectory(prefix="trama-duplicate-timestamps-") as folder:
+            base = Path(folder)
+            transcript = (
+                "[0:04] Primeiro falamos de uma apresentação administrativa.\n"
+                "[0:04] LTS é suporte prolongado nas versões .NET.\n"
+                "[0:05] SDK é o kit de desenvolvimento.\n"
+            )
+            label = "LTS (Long-Term Support)"
+            app, source, original = self._create(
+                base, transcript,
+                [{"nome": label, "explicacao": "Conceito citado, analisar.", "tempo": "0:04"}]
+            )
+            try:
+                vault = app.store.vault
+                concept = (vault/"01-Meu-Conhecimento/Conceitos"/
+                           (concept_slug(label)+".md")).read_text(encoding="utf-8")
+                note = (vault/note_for(source)).read_text(encoding="utf-8")
+                self.assertIn("#^min-0-04-2|0:04", concept)
+                self.assertIn("^min-0-04-1", note)
+                self.assertIn("^min-0-04-2", note)
+                self.assertIn("apresentação administrativa.", note)
+                self.assertIn("LTS é suporte prolongado", note)
+                self.assertNotIn("#^min-0-04-1|0:04", concept)
+                self.assertEqual(original.read_text(encoding="utf-8"), transcript)
+                app.publisher.rebuild()
+                self.assertEqual(note, (vault/note_for(source)).read_text(encoding="utf-8"))
+            finally:
+                app.close()
+
+    def test_long_source_sentence_cites_context_near_the_observed_term(self):
+        from knowledge_bridge.content import concept_slug
+        from knowledge_bridge.memory_atlas import note_for
+        with tempfile.TemporaryDirectory(prefix="trama-long-mention-") as folder:
+            base = Path(folder)
+            transcript = (
+                "[0:08] " + ("histórico de instalação e preparação do ambiente. " * 22)
+                + " LTS é a sigla de suporte prolongado.\n"
+            )
+            label = "LTS (Long-Term Support)"
+            app, source, original = self._create(
+                base, transcript,
+                [{"nome": label, "explicacao": "Interpretação para revisar."}]
+            )
+            try:
+                vault = app.store.vault
+                concept = (vault/"01-Meu-Conhecimento/Conceitos"/
+                           (concept_slug(label)+".md")).read_text(encoding="utf-8")
+                note = (vault/note_for(source)).read_text(encoding="utf-8")
+                self.assertIn("#^min-0-08|0:08", concept)
+                self.assertIn("LTS é a sigla de suporte prolongado", concept)
+                excerpt = next(
+                    line for line in note.splitlines() if " ^min-0-08" in line
+                )
+                self.assertIn("LTS", excerpt)
+                self.assertIn("…", excerpt)
+                self.assertEqual(original.read_text(encoding="utf-8"), transcript)
+            finally:
+                app.close()
+
     def test_transcript_quote_escapes_markup(self):
         from knowledge_bridge.content import concept_slug
         with tempfile.TemporaryDirectory(prefix="trama-safe-evidence-") as folder:
