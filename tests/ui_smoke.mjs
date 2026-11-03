@@ -19,12 +19,13 @@ await mkdir(screenshots, { recursive: true });
 const notes = [
   {id:'02-Minhas-Aulas/Aula-001/00-Visao-geral.md', title:'Hello World em C#', lesson:'Aula-001',
    section:'02-Minhas-Aulas',kind:'visao_geral',state:'resumida_com_ia',
-   updated:'28/10/2026',content:'# Hello World em C#\n\nO professor explicou **Console.WriteLine** para escrever uma mensagem no terminal.\n\n## Código\n\n```csharp\nConsole.WriteLine("Olá!");\n```\n\n[[01-Meu-Conhecimento/Conceitos/console|Console]]'},
+   updated:'28/10/2026',content:'# Hello World em C#\n\nO professor explicou **Console.WriteLine** para escrever uma mensagem no terminal.\n\n## Código\n\n```csharp\nConsole.WriteLine("Olá!");\n```\n\n[[01-Meu-Conhecimento/Conceitos/console|Console]]\n\n## Trechos da transcrição com horários verificáveis\n\n- **0:10** — Console.WriteLine mostra saída. ^min-0-10'},
   {id:'02-Minhas-Aulas/Aula-025/00-Visao-geral.md', title:'Angular — componentes',lesson:'Aula-025',
    section:'02-Minhas-Aulas',kind:'visao_geral',state:'resumida_com_ia',
    updated:'30/10/2026',content:'# Angular — componentes\n\nUm componente Angular organiza a interface.'},
   {id:'01-Meu-Conhecimento/Conceitos/console.md',title:'Console',section:'01-Meu-Conhecimento',
    kind:'conceito',state:'resumida_com_ia', updated:'27/10/2026',
+   summary:'### Aula-001\n\n- **Explicação sugerida pela IA:** Console é um exemplo de saída.\n- **Menção literal na transcrição:** [[02-Minhas-Aulas/Aula-001/00-Visao-geral#^min-0-10|0:10]]',
    content:'# Console\n\nConceito de saída usado nos exemplos C#.'},
   {id:'01-Meu-Conhecimento/Conceitos/console.PROPOSTA.md',title:'Console',
    section:'01-Meu-Conhecimento',kind:'conceito',state:'resumida_com_ia',
@@ -203,6 +204,20 @@ try{
       throw Error('Recent filter must sort real Brazilian DD/MM/YYYY dates');
     await page.locator('[data-list-filter="all"]').click();
     await page.screenshot({path:path.join(screenshots,`${prefix}lessons-${width}.png`),fullPage:true});
+    // A technical profile must show its own explanation, not the empty
+    // generic lesson cards. The source time must open its matching block.
+    await page.locator('.nav-item[data-view="knowledge"]').click();
+    await page.locator('#note-heading .note-title').getByText('Console').waitFor();
+    await page.locator('#note-tabs .tab').getByText('Resumo',{exact:true}).click();
+    await page.locator('#note-content').getByText('Explicações e fontes das aulas').waitFor();
+    if((await page.locator('#note-content').innerText()).includes('Principais conceitos'))
+      throw Error('Technical concept summary still shows generic lesson cards');
+    await page.locator('#note-content [data-lib-anchor="min-0-10"]').click();
+    await page.locator('#library-workspace').waitFor({state:'visible'});
+    await page.locator('#library-workspace #min-0-10').waitFor({state:'attached'});
+    await page.locator('.lib-title').getByText('Hello World em C#').waitFor();
+    await assertNoUiError('concept source anchor navigation');
+
     await page.locator('#search-all').fill('Angular');
     await page.locator('#btn-search-all').click();
     await page.locator('#library-workspace').waitFor({state:'visible'});
