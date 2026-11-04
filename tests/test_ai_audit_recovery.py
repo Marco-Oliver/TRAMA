@@ -5,6 +5,8 @@ No real lessons, provider keys, API calls, network access or private vaults.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -151,6 +153,20 @@ class RecoveryTests(unittest.TestCase):
             self.assertEqual(self.router(MAX_REQUESTS_PER_RUN=value).max_requests, 12)
         self.assertEqual(self.router(MAX_REQUESTS_PER_RUN="0").max_requests, 1)
         self.assertEqual(self.router(MAX_REQUESTS_PER_RUN="999").max_requests, 100)
+
+
+class OptionalGuiImportTests(unittest.TestCase):
+    def test_bridge_import_does_not_require_tkinter(self):
+        script = (
+            "import sys; sys.modules['tkinter'] = None;"
+            "from knowledge_bridge.bridge import Bridge;"
+            "from knowledge_bridge.paths import CONFIG_FILE, PREVIEW_BUNDLE;"
+            "print('BRIDGE_WITHOUT_TK_OK')"
+        )
+        proc = subprocess.run([sys.executable, "-c", script],
+                              capture_output=True, text=True, timeout=30)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("BRIDGE_WITHOUT_TK_OK", proc.stdout)
 
 
 class LectureBatchTests(unittest.TestCase):
