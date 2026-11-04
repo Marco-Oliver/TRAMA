@@ -6,8 +6,10 @@ on:
     paths:
       - 'docs/preview-publish-request.json'
 
+# Validation uses the standard read-only token. Publication uses only the
+# short-lived repo-scoped secret TRAMA_PREVIEW_RELEASE_TOKEN, in one step.
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 concurrency:
@@ -18,69 +20,101 @@ jobs:
   publish:
     if: github.repository == 'Marco-Oliver/TRAMA' && github.ref == 'refs/heads/feat/v2.2.0-automation-foundations'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
+    env:
+      SOURCE_RUN: '41894709679'
+      UPGRADE_RUN: '41896753352'
+      RELEASE_TAG: 'v2.2.0-preview.207'
+      SOURCE_SHA: 'a78b61e50bb65c752575564f81b59b1076cfdffa'
+      EXPECTED_SHA: 'a6966cf0d8baeac0c797ccb09490b7170593863d7c31a7630e74a0fe54748144'
     steps:
       - uses: actions/checkout@v4
-      - name: Conferir autorização explícita e build aprovado
+        with:
+          persist-credentials: false
+
+      - name: Verificar autorização, compilação, upgrade e integridade SEM token privilegiado
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          REQUEST=docs/preview-publish-request.json
-          RUN_ID=41894709679
-          RELEASE_TAG=v2.2.0-preview.207
-          SOURCE_SHA=a78b61e50bb65c752575564f81b59b1076cfdffa
-          EXPECTED_SHA=a6966cf0d8baeac0c797ccb09490b7170593863d7c31a7630e74a0fe54748144
-          jq -e --arg run "$RUN_ID" --arg tag "$RELEASE_TAG" --arg src "$SOURCE_SHA" --arg hash "$EXPECTED_SHA" \
-            '.authorized == true and (.run_id | tostring) == $run and .tag == $tag and .source_sha == $src and .sha256 == $hash' "$REQUEST"
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" | jq -e --arg src "$SOURCE_SHA" \
-            '.status == "completed" and .conclusion == "success" and .head_sha == $src and .run_number == 207 and .head_branch == "feat/v2.2.0-automation-foundations"'
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" | jq -e \
-            '[.jobs[].conclusion] | length == 4 and all(. == "success")'
-          # Require an independent Windows test of the real 189 -> 207 installer upgrade.
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/41896753352" | jq -e \
-            '.status == "completed" and .conclusion == "success" and .head_branch == "feat/v2.2.0-automation-foundations"'
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/41896753352/jobs?per_page=100" | jq -e \
-            '.total_count == 1 and .jobs[0].conclusion == "success"'
+          jq -e --arg run "$SOURCE_RUN" --arg tag "$RELEASE_TAG" --arg src "$SOURCE_SHA" --arg hash "$EXPECTED_SHA" \
+            '.authorized == true and (.run_id | tostring) == $run and .tag == $tag and .source_sha == $src and .sha256 == $hash' \
+            docs/preview-publish-request.json
+
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" |
+            jq -e --arg src "$SOURCE_SHA" \
+              '.status == "completed" and .conclusion == "success" and .head_sha == $src and .run_number == 207 and .head_branch == "feat/v2.2.0-automation-foundations"'
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/jobs?per_page=100" |
+            jq -e '.total_count == 4 and ([.jobs[].conclusion] | all(. == "success"))'
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$UPGRADE_RUN" |
+            jq -e '.status == "completed" and .conclusion == "success" and .head_branch == "feat/v2.2.0-automation-foundations"'
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$UPGRADE_RUN/jobs?per_page=100" |
+            jq -e '.total_count == 1 and .jobs[0].conclusion == "success"'
+
           if gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'Essa prerelease já existe; não substituir assets.' >&2
+            echo 'A prerelease já existe; não substituir nem sobrescrever.' >&2
             exit 1
           fi
-          mkdir -p "$RUNNER_TEMP/preview"
-          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" \
-            --name TRAMA-v220-PR5-Preview-ISOLADA-NAO-RELEASE --dir "$RUNNER_TEMP/preview"
-          echo 'Arquivos recuperados do artefato validado:'
-          find "$RUNNER_TEMP/preview" -type f -printf '%P\n'
-          test "$(find "$RUNNER_TEMP/preview" -type f | wc -l)" -eq 2
-          SETUP_PATH="$(find "$RUNNER_TEMP/preview" -type f -name TRAMA_Preview_Setup.exe -print -quit)"
-          CHECK_PATH="$(find "$RUNNER_TEMP/preview" -type f -name SHA256SUMS-Preview.txt -print -quit)"
-          test -n "$SETUP_PATH"
-          test -n "$CHECK_PATH"
-          test "$(dirname "$SETUP_PATH")" = "$(dirname "$CHECK_PATH")"
-          cd "$(dirname "$SETUP_PATH")"
-          # Windows PowerShell wrote the manifest with CRLF; keep the
-          # published original, normalize line endings only for CI checks.
-          tr -d '\r' < SHA256SUMS-Preview.txt | grep -Eqi "^${EXPECTED_SHA}  TRAMA_Preview_Setup.exe$"
-          sha256sum --check <(tr -d '\r' < SHA256SUMS-Preview.txt)
-          # A release targeting a workflow-changing commit requires a token
-          # with Workflows:write. GITHUB_TOKEN cannot get that permission.
-          # Pre-create the exact lightweight tag via Git refs (Contents:write),
-          # verify it is immutably anchored, and publish using the existing tag.
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" | jq -e --arg src "$SOURCE_SHA" '.object.type == "commit" and .object.sha == $src'
-          else
-            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$SOURCE_SHA" | jq -e --arg src "$SOURCE_SHA" '.object.type == "commit" and .object.sha == $src'
+          # Refuse to publish on an unrelated or unverified existing tag.
+          if tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.sha' 2>/dev/null)"; then
+            test "$tag_sha" = "$SOURCE_SHA" || { echo 'Tag com SHA incorreto.' >&2; exit 1; }
           fi
-          gh release create "$RELEASE_TAG" TRAMA_Preview_Setup.exe SHA256SUMS-Preview.txt \
-            --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
+          publish_dir="$RUNNER_TEMP/trama-validated-preview"
+          mkdir -p "$publish_dir"
+          gh run download "$SOURCE_RUN" -R "$GITHUB_REPOSITORY" \
+            --name TRAMA-v220-PR5-Preview-ISOLADA-NAO-RELEASE --dir "$publish_dir"
+          test "$(find "$publish_dir" -type f | wc -l)" -eq 2
+          setup="$(find "$publish_dir" -type f -name TRAMA_Preview_Setup.exe -print -quit)"
+          manifest="$(find "$publish_dir" -type f -name SHA256SUMS-Preview.txt -print -quit)"
+          test -n "$setup" && test -n "$manifest"
+          test "$(dirname "$setup")" = "$(dirname "$manifest")"
+          cd "$(dirname "$setup")"
+          tr -d '\r' < SHA256SUMS-Preview.txt | grep -Eqi "^$EXPECTED_SHA  TRAMA_Preview_Setup.exe$"
+          sha256sum --check <(tr -d '\r' < SHA256SUMS-Preview.txt)
+          test "$(stat -c %s TRAMA_Preview_Setup.exe)" -ge 1000000
+          echo 'PASS: origem, testes Windows e SHA-256 do instalador conferidos.'
+
+      - name: Publicar release DRAFT com autorização limitada ao TRAMA
+        env:
+          GH_TOKEN: ${{ secrets.TRAMA_PREVIEW_RELEASE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::Falta configurar o segredo TRAMA_PREVIEW_RELEASE_TOKEN no repositório."
+            exit 1
+          fi
+          cd "$RUNNER_TEMP/trama-validated-preview"
+          # Using the exact validated commit is mandatory. A target on main
+          # would be incorrect and could point to different program bytes.
+          gh release create "$RELEASE_TAG" \
+            TRAMA_Preview_Setup.exe SHA256SUMS-Preview.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --draft --prerelease \
             --title 'TRAMA 2.2.0 Preview — build 207' \
-            --notes 'Preview experimental isolada. Inclui revisão da aula A137, proteções adicionais e atualização pelo aplicativo. O upgrade real da 189 foi testado; não é versão estável.'
-          gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft,assets | jq -e \
-            --arg tag "$RELEASE_TAG" '.tagName == $tag and .isPrerelease == true and .isDraft == false and ([.assets[].name] | sort) == (["SHA256SUMS-Preview.txt", "TRAMA_Preview_Setup.exe"] | sort)'
-          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" | jq -e --arg src "$SOURCE_SHA" '.object.sha == $src'
-          # Verify that the actual public app updater discovers and downloads
-          # this release, checks the SHA, and ignores the stable channel.
+            --notes 'Preview experimental. Atualização 189 → 207 testada em Windows isolado, com dados estáveis e cofre de teste preservados. Não é a versão estável.'
+          # Do not expose an incomplete release if assets failed to upload.
+          gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,isPrerelease,assets |
+            jq -e --arg tag "$RELEASE_TAG" '.tagName == $tag and .isDraft == true and
+              ([.assets[].name] | sort) == (["SHA256SUMS-Preview.txt","TRAMA_Preview_Setup.exe"] | sort)'
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" |
+            jq -e --arg sha "$SOURCE_SHA" '.object.type == "commit" and .object.sha == $sha'
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
+          echo 'PASS: prerelease publicada com dois assets, sem alterar a versão estável.'
+
+      - name: Confirmar canal público, download SHA-256 e isolamento da versão estável
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" |
+            jq -e --arg tag "$RELEASE_TAG" --arg sha "$SOURCE_SHA" '
+              .tag_name == $tag and .target_commitish == $sha and
+              .prerelease == true and .draft == false and
+              ([.assets[].name] | sort) ==
+              (["SHA256SUMS-Preview.txt","TRAMA_Preview_Setup.exe"] | sort)'
           python - <<'PY'
           import hashlib
           from pathlib import Path
@@ -89,24 +123,21 @@ jobs:
               check_preview_release, download_verified_preview_installer,
               check_release, VERSION,
           )
-
           repo = "Marco-Oliver/TRAMA"
-          target = "v2.2.0-preview.207"
+          tag = "v2.2.0-preview.207"
           expected = "a6966cf0d8baeac0c797ccb09490b7170593863d7c31a7630e74a0fe54748144"
-          update = check_preview_release(repo, "2.2.0-preview.189")
-          assert update["ok"] and update["available"] and update["version"] == target, update
-          assert not check_preview_release(repo, "2.2.0-preview.207")["available"]
-          with TemporaryDirectory(prefix="trama-public-preview-check-") as td:
-              downloaded = download_verified_preview_installer(
-                  repo, "2.2.0-preview.189", td)
-              assert downloaded["ok"], downloaded
-              path = Path(downloaded["path"])
-              assert path.name == "TRAMA_Preview_Setup_v2.2.0-preview.207.exe"
-              assert downloaded["sha256"] == expected
-              assert hashlib.sha256(path.read_bytes()).hexdigest() == expected
+          check = check_preview_release(repo, "2.2.0-preview.189")
+          assert check.get("ok") and check.get("available") and check["version"] == tag, check
+          latest = check_preview_release(repo, "2.2.0-preview.207")
+          assert latest.get("ok") and not latest.get("available"), latest
+          with TemporaryDirectory(prefix="trama-preview-public-") as folder:
+              result = download_verified_preview_installer(repo, "2.2.0-preview.189", folder)
+              assert result.get("ok") and result.get("sha256") == expected, result
+              path = Path(result["path"])
+              with path.open("rb") as file:
+                  assert hashlib.file_digest(file, "sha256").hexdigest() == expected
           stable = check_release(repo)
-          assert stable["ok"] and stable["version"] == "v2.1.0" and not stable["available"], stable
+          assert stable.get("ok") and stable.get("version") == "v2.1.0" and not stable.get("available"), stable
           assert VERSION == "2.1.0"
-          print("PASS: public updater discovers and downloads 207 with verified SHA-256; stable 2.1.0 unchanged.")
+          print("PASS: atualizador Preview 189 encontra 207 e verifica EXE; stable 2.1.0 intacta.")
           PY
-
