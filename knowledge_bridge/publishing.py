@@ -74,7 +74,7 @@ def _transcript_seconds(stamp: str) -> int | None:
 
 def _nearby_transcript_context(
     source_rows: list[tuple[str, str]], anchor: str,
-    max_seconds: int = 32, max_rows: int = 4,
+    max_seconds: int = 32, max_rows: int = 7,
     indexed: list[tuple[str, str, str]] | None = None,
     position: int | None = None
 ) -> list[tuple[str, str]]:
@@ -108,7 +108,8 @@ def _nearby_transcript_context(
 _EXPLANATION_CLUES = re.compile(
     r"\b(?:significa|significam|quer dizer|se chama|é um|é uma|serve para|"
     r"permite|funciona como|tem suporte|suporte de longo|duração|"
-    r"anos de suporte|development kit|long.term support)\b",
+    r"anos de suporte|development kit|long.term support|"
+    r"o que(?: que)? é|que significa)\b",
     re.I,
 )
 
@@ -138,10 +139,18 @@ def _literal_timed_evidence(label: str, source_rows: list[tuple[str, str]],
                          for _, fragment in context[1:]) else 0
             )
             matches.append((stamp, sentence, term, anchor, explanation_score))
-    # Keep verified model timestamps relevant, but never force a bare mention
-    # above better sourced context. Stable ordering breaks ties by TXT order.
+    # Do not dilute an explanatory passage with an unrelated earlier mention.
+    # Explicit verified times are retained even if heuristic wording is weak:
+    # the same concept may be explained differently in separate AI chunks.
+    best = max((row[4] for row in matches), default=0)
+    if best >= 2:
+        matches = [row for row in matches
+                   if row[4] >= 2 or (preferred and row[0] == preferred)]
+    elif best == 1:
+        matches = [row for row in matches
+                   if row[4] >= 1 or (preferred and row[0] == preferred)]
     matches.sort(key=lambda row: (
-        -row[4], -int(bool(preferred and row[0] == preferred))
+        -int(bool(preferred and row[0] == preferred)), -row[4]
     ))
     return [(stamp, sentence, term, anchor)
             for stamp, sentence, term, anchor, _ in matches[:max(0, limit)]]
@@ -149,7 +158,8 @@ def _literal_timed_evidence(label: str, source_rows: list[tuple[str, str]],
 
 def _group_timed_evidence(
     source_rows: list[tuple[str, str]],
-    matches: list[tuple[str, str, str, str]]
+    matches: list[tuple[str, str, str, str]],
+    preferred: str = ""
 ) -> list[tuple[tuple[str, str, str, str], list[tuple[str, str]]]]:
     """Present nearby verified mentions as one chronological study passage.
 
@@ -174,7 +184,12 @@ def _group_timed_evidence(
         else:
             groups.append([start, end, match])
     return [
-        (first, [(stamp, sentence) for stamp, sentence, _ in indexed[start:end + 1]])
+        (
+            next((item for item in matches
+                  if item[0] == preferred and start <= positions[item[3]] <= end),
+                 first),
+            [(stamp, sentence) for stamp, sentence, _ in indexed[start:end + 1]],
+        )
         for start, end, first in groups
     ]
 
@@ -1087,7 +1102,7 @@ class Publisher:
                 source_rows = timed_lines(raw)
                 matches = _literal_timed_evidence(
                     name, source_rows, preferred=recorded)
-                groups = _group_timed_evidence(source_rows, matches)
+                groups = _group_timed_evidence(source_rows, matches, preferred=recorded)
                 where = f"[[{Path(note).with_suffix('').as_posix()}|{_escape_md(src['label'])}]]"
                 explanation = _escape_md(concept.get("explicacao", ""))
                 body.extend(["", f"### {_escape_md(src['label'])}", "",
@@ -1113,7 +1128,7 @@ class Publisher:
                         body.extend([
                             "",
                             "  > **Contexto próximo do TXT (para conferência):** "
-                            "trechos originais em sequência, não uma validação da explicação da IA.",
+                            "trechos originais em sequência; isso não valida automaticamente a explicação da IA.",
                             "  >",
                         ])
                         for context_stamp, context_sentence in nearby:
