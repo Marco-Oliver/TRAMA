@@ -99,10 +99,14 @@ jobs:
           fi
           # Require exact tag, target SHA and both original assets before
           # turning the validated draft into a publicly visible prerelease.
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" |
+          # REST GET /releases/tags/{tag} does not resolve unpublished
+          # draft releases, even with a scoped Actions token. The gh CLI
+          # release command resolves drafts by tag through the releases list.
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,targetCommitish,isDraft,isPrerelease,assets |
             jq -e --arg tag "$RELEASE_TAG" --arg src "$SOURCE_SHA" '
-              .tag_name == $tag and .target_commitish == $src and
-              .draft == true and .prerelease == true and
+              .tagName == $tag and .targetCommitish == $src and
+              .isDraft == true and .isPrerelease == true and
               ([.assets[].name] | sort) ==
               (["SHA256SUMS-Preview.txt","TRAMA_Preview_Setup.exe"] | sort)'
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
