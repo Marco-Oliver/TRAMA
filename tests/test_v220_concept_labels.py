@@ -313,6 +313,76 @@ class EvidenceNavigationRegressionTests(unittest.TestCase):
             finally:
                 app.close()
 
+    def test_sdk_and_lts_prefer_explanations_with_original_neighboring_lines(self):
+        from knowledge_bridge.content import concept_slug
+        from knowledge_bridge.memory_atlas import note_for
+        with tempfile.TemporaryDirectory(prefix="trama-full-context-") as folder:
+            root = Path(folder)
+            raw = (
+                "[0:40] Estes programas aqui, o DNET SDK, o VS.\n"
+                "[2:07] Fazer o .NET SDK, eu vou entrar aqui no.\n"
+                "[3:05] O SDK se chama Software Development Kit.\n"
+                "[3:10] É um conjunto de ferramentas do ambiente de desenvolvimento.\n"
+                "[3:16] Você instala esse kit antes de compilar seu primeiro projeto.\n"
+                "[6:11] LTS significa que a Microsoft vai estender.\n"
+                "[6:18] O suporte desta versão por um período mais longo.\n"
+                "[6:27] Compare as versões antes de escolher qual instalar.\n"
+                "[10:00] Voltamos para outro assunto sem relação.\n"
+            )
+            concepts = [
+                {"nome": "SDK (Software Development Kit)",
+                 "explicacao": "Kit de desenvolvimento, interpretação da IA.", "tempo": ""},
+                {"nome": "LTS (Long-Term Support)",
+                 "explicacao": "Três anos de suporte, não confirmados na fonte.",
+                 "tempo": ""},
+            ]
+            app, source, original = self._create(root, raw, concepts)
+            try:
+                vault = app.store.vault
+                sdk = (vault/"01-Meu-Conhecimento/Conceitos"/
+                       (concept_slug(concepts[0]["nome"])+".md")).read_text(
+                           encoding="utf-8")
+                lts = (vault/"01-Meu-Conhecimento/Conceitos"/
+                       (concept_slug(concepts[1]["nome"])+".md")).read_text(
+                           encoding="utf-8")
+                source_note = (vault/note_for(source)).read_text(encoding="utf-8")
+                # The explanatory SDK sentence must outrank the earlier
+                # "we are installing programs" mentions.
+                sdk_pos = sdk.index("Menção literal na transcrição")
+                self.assertIn("#^min-3-05|3:05",sdk[sdk_pos:sdk_pos+210])
+                self.assertIn("3:10 — É um conjunto de ferramentas",sdk)
+                self.assertIn("3:16 — Você instala esse kit",sdk)
+                # LTS source context crosses short ASR-timestamp segments.
+                lts_pos = lts.index("Menção literal na transcrição")
+                self.assertIn("#^min-6-11|6:11",lts[lts_pos:lts_pos+210])
+                self.assertIn("6:18 — O suporte desta versão",lts)
+                self.assertIn("6:27 — Compare as versões",lts)
+                self.assertNotIn("10:00 — Voltamos",lts)
+                self.assertIn("a sequência abaixo não valida",lts)
+                self.assertIn("^min-3-05",source_note)
+                self.assertIn("^min-6-11",source_note)
+                self.assertEqual(raw,original.read_text(encoding="utf-8"))
+            finally:
+                app.close()
+
+    def test_context_does_not_join_distant_segments_or_invent_explanation(self):
+        from knowledge_bridge.content import concept_slug
+        with tempfile.TemporaryDirectory(prefix="trama-gap-context-") as folder:
+            label="LTS (Long-Term Support)"
+            raw=("[0:01] Falamos de uma versão LTS.\n"
+                 "[12:34] Mudamos de assunto e demonstramos outro recurso.\n")
+            app,_,_=self._create(Path(folder),raw,[
+                {"nome":label,"explicacao":"Interpretação que requer conferência."}
+            ])
+            try:
+                content=(app.store.vault/"01-Meu-Conhecimento/Conceitos"/
+                         (concept_slug(label)+".md")).read_text(encoding="utf-8")
+                self.assertIn("0:01 — Falamos de uma versão LTS",content)
+                self.assertNotIn("12:34 — Mudamos",content)
+                self.assertIn("não valida automaticamente a explicação",content)
+            finally:
+                app.close()
+
     def test_audit_recognizes_literal_abbreviations_and_recovered_times(self):
         from knowledge_bridge.audit import audit_lesson
         with tempfile.TemporaryDirectory(prefix="trama-audit-real-label-") as folder:
