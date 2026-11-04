@@ -52,10 +52,8 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$UPGRADE_RUN/jobs?per_page=100" |
             jq -e '.total_count == 1 and .jobs[0].conclusion == "success"'
 
-          if gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'A prerelease já existe; não substituir nem sobrescrever.' >&2
-            exit 1
-          fi
+          # Existing DRAFT is intentionally reusable after a failed workflow.
+          # The privileged publish step refuses an already-public release.
           # Refuse to publish on an unrelated or unverified existing tag.
           if tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.sha' 2>/dev/null)"; then
             test "$tag_sha" = "$SOURCE_SHA" || { echo 'Tag com SHA incorreto.' >&2; exit 1; }
