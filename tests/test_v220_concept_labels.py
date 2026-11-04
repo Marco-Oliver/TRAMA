@@ -365,6 +365,71 @@ class EvidenceNavigationRegressionTests(unittest.TestCase):
             finally:
                 app.close()
 
+    def test_source_passages_are_chronological_readable_and_not_repeated(self):
+        from knowledge_bridge.content import concept_slug
+        with tempfile.TemporaryDirectory(prefix="trama-reading-passages-") as folder:
+            base=Path(folder)
+            transcript=(
+                "[0:40] Estes programas aqui, o SDK, o VS.\n"
+                "[3:06] Bem específico, SDK. O que é SDK?\n"
+                "[3:10] SDK se chama Software Development Kit.\n"
+                "[3:15] O que nós vamos instalar.\n"
+                "[3:17] Vai ser um kit de desenvolvimento.\n"
+                "[3:18] De software do .NET.\n"
+                "[6:11] LTS significa que a Microsoft vai estar.\n"
+                "[6:14] Suportando essa versão por alguns.\n"
+                "[6:15] Anos, geralmente o suporte dessa.\n"
+                "[6:18] Versão LTS, aliás, tá?\n"
+                "[6:20] Elas duram mais ou menos 3 anos.\n"
+                "[6:24] E depois vamos para outra versão.\n"
+            )
+            names=["SDK (Software Development Kit)", "LTS (Long-Term Support)"]
+            app,source,original=self._create(base,transcript,[
+                {"nome":name,"explicacao":"Hipótese de definição da IA.", "tempo":""}
+                for name in names])
+            try:
+                folder=app.store.vault/"01-Meu-Conhecimento/Conceitos"
+                sdk=(folder/(concept_slug(names[0])+".md")).read_text(encoding="utf-8")
+                lts=(folder/(concept_slug(names[1])+".md")).read_text(encoding="utf-8")
+                self.assertEqual(sdk.count("Menção literal na transcrição"), 1)
+                self.assertIn("#^min-3-06|3:06",sdk)
+                self.assertIn("  > - 3:06 —",sdk)
+                self.assertIn("  > - 3:10 —",sdk)
+                self.assertIn("  > - 3:18 —",sdk)
+                self.assertLess(sdk.index("  > - 3:06"),sdk.index("  > - 3:10"))
+                self.assertEqual(sdk.count("  > - 3:10 —"),1)
+                self.assertEqual(lts.count("Menção literal na transcrição"),1)
+                self.assertIn("#^min-6-11|6:11",lts)
+                self.assertIn("  > - 6:18 —",lts)
+                self.assertIn("  > - 6:24 —",lts)
+                self.assertEqual(lts.count("  > - 6:18 —"),1)
+                self.assertIn("trechos originais em sequência",lts)
+                self.assertEqual(original.read_text(encoding="utf-8"),transcript)
+            finally:
+                app.close()
+
+    def test_separate_distant_explanations_stay_independent(self):
+        from knowledge_bridge.content import concept_slug
+        with tempfile.TemporaryDirectory(prefix="trama-separated-explanations-") as folder:
+            label="SDK (Software Development Kit)"
+            raw=(
+                "[1:00] SDK significa kit de desenvolvimento.\n"
+                "[1:04] Primeiro instalamos as ferramentas.\n"
+                "[12:00] No segundo exemplo SDK permite compilar o projeto.\n"
+                "[12:05] Este é outro assunto da mesma aula.\n"
+            )
+            app,_,_=self._create(Path(folder),raw,[{
+                "nome":label,"explicacao":"Definição para conferir.", "tempo":""}])
+            try:
+                result=(app.store.vault/"01-Meu-Conhecimento/Conceitos"/
+                    (concept_slug(label)+".md")).read_text(encoding="utf-8")
+                self.assertEqual(result.count("Menção literal na transcrição"),2)
+                self.assertIn("#^min-1-00|1:00",result)
+                self.assertIn("#^min-12-00|12:00",result)
+                self.assertLess(result.index("  > - 1:00"),result.index("  > - 12:00"))
+            finally:
+                app.close()
+
     def test_context_does_not_join_distant_segments_or_invent_explanation(self):
         from knowledge_bridge.content import concept_slug
         with tempfile.TemporaryDirectory(prefix="trama-gap-context-") as folder:
