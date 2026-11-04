@@ -22,13 +22,15 @@ import webbrowser
 import threading
 
 from .pipeline import Application
-from .update_service import check_release, download_verified_installer
+from .update_service import (check_release, download_verified_installer,
+                             check_preview_release, download_verified_preview_installer,
+                             preview_build_number)
 from .secure_keys import KeyVault, PROVIDERS
 from .ai import FreeAIRouter, ALLOWED, ProviderError, NoFreeProvider, BudgetStopped
 from .diagnostic import run_ai_diagnostic, format_diagnostic_report, MissingTestSources
 from .vault_index import VaultIndex
 from .code_intel import redact_sensitive
-from .gui_legacy import DATA_HOME, SETTINGS_FILE, CONFIG_FILE
+from .gui_legacy import DATA_HOME, SETTINGS_FILE, CONFIG_FILE, PREVIEW_BUNDLE
 
 ALLOWED_ATTACHMENTS={'.txt','.md','.mp4','.mkv','.mov','.webm','.png','.jpg','.jpeg','.webp','.pdf','.docx'}
 
@@ -669,8 +671,28 @@ class Bridge:
         except (OSError,ValueError):
             return ''
 
+    def _preview_update_version(self):
+        """Preview channel is embedded in its isolated binary, never user settings."""
+        if not PREVIEW_BUNDLE:
+            return ''
+        base = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
+        try:
+            metadata = json.loads((base / 'release_channel.json').read_text(encoding='utf-8'))
+            if (not isinstance(metadata, dict) or metadata.get('channel') != 'preview'
+                    or metadata.get('github_repo') != self._release_repo()):
+                return ''
+            version = metadata.get('version','')
+            return version if preview_build_number(version) is not None else ''
+        except (OSError, ValueError, TypeError):
+            return ''
+
     def check_updates(self):
-        """Consulta apenas metadados do GitHub; não instala código."""
+        """Consulta somente metadados GitHub do canal desta instalação."""
+        if PREVIEW_BUNDLE:
+            installed = self._preview_update_version()
+            if not installed:
+                return {'ok':False,'message':'Canal Preview não configurado neste instalador.'}
+            return check_preview_release(self._release_repo(), installed)
         return check_release(self._release_repo())
 
     def prepare_update(self, confirmed=False):
@@ -680,7 +702,14 @@ class Bridge:
         if sys.platform != 'win32':
             return {'ok':False,'message':'O instalador está disponível somente no Windows.'}
         self._verified_installer=None
-        result=download_verified_installer(self._release_repo(), DATA_HOME/'updates')
+        if PREVIEW_BUNDLE:
+            installed=self._preview_update_version()
+            if not installed:
+                return {'ok':False,'message':'Canal Preview não configurado neste instalador.'}
+            result=download_verified_preview_installer(
+                self._release_repo(),installed, DATA_HOME/'updates')
+        else:
+            result=download_verified_installer(self._release_repo(), DATA_HOME/'updates')
         if result.get('ok'):
             self._verified_installer=(result['path'], result['sha256'])
         return result
@@ -691,8 +720,11 @@ class Bridge:
             return {'ok':False,'message':'Confirmação do Windows necessária.'}
         updates=(DATA_HOME/'updates').resolve()
         candidate=Path(str(path)).resolve()
+        expected_name = (r'TRAMA_Preview_Setup_v2\.2\.0-preview\.[1-9][0-9]{0,7}\.exe'
+                         if PREVIEW_BUNDLE and self._preview_update_version() else
+                         r'TRAMA_Setup_v\d+\.\d+\.\d+\.exe' if not PREVIEW_BUNDLE else '')
         if (not candidate.is_file() or candidate.parent!=updates
-                or not re.fullmatch(r'TRAMA_Setup_v\d+\.\d+\.\d+\.exe',candidate.name)
+                or not re.fullmatch(expected_name,candidate.name)
                 or not self._verified_installer or str(candidate)!=self._verified_installer[0]):
             return {'ok':False,'message':'Instalador não reconhecido ou não verificado nesta sessão.'}
         try:
@@ -712,11 +744,12 @@ class Bridge:
         from .update_service import version_tuple
         repo=self._release_repo()
         prefix=f'https://github.com/{repo}/releases/tag/' if repo else ''
-        # Exact version-tag route: reject path traversal, query fragments,
-        # spoofed release pages and malformed/untrusted browser URLs.
-        if (not prefix or not isinstance(address,str) or
-                not address.startswith(prefix) or
-                not version_tuple(address[len(prefix):])):
+        tag=address[len(prefix):] if prefix and isinstance(address,str) and address.startswith(prefix) else ''
+        valid = (preview_build_number(tag) is not None and bool(self._preview_update_version())
+                 if PREVIEW_BUNDLE else
+                 bool(re.fullmatch(r'v?\d+\.\d+\.\d+',tag) and version_tuple(tag)))
+        # Exact release route. The Preview never opens stable releases here.
+        if not valid:
             return {'ok':False, 'message':'Página de atualização não reconhecida.'}
         webbrowser.open(address)
         return {'ok':True}
