@@ -60,12 +60,60 @@ def _indexed_source_rows(source_rows: list[tuple[str, str]]):
         yield stamp, sentence, anchor
 
 
+def _transcript_seconds(stamp: str) -> int | None:
+    """Use only literal timestamp syntax parsed from the original TXT."""
+    parts = stamp.split(":")
+    if len(parts) not in (2, 3) or not all(x.isdigit() for x in parts):
+        return None
+    numbers = [int(x) for x in parts]
+    if numbers[-1] >= 60 or (len(numbers) == 3 and numbers[-2] >= 60):
+        return None
+    return numbers[0] * 60 + numbers[1] if len(numbers) == 2 else (
+        numbers[0] * 3600 + numbers[1] * 60 + numbers[2])
+
+
+def _nearby_transcript_context(
+    source_rows: list[tuple[str, str]], anchor: str,
+    max_seconds: int = 32, max_rows: int = 4
+) -> list[tuple[str, str]]:
+    """Adjacent original transcript fragments, without joining distant topics.
+
+    A timestamped fragment can be only a few words. Nearby rows help review
+    what was said, but are never certified as a model explanation.
+    """
+    indexed = list(_indexed_source_rows(source_rows))
+    position = next((i for i, (_, _, ref) in enumerate(indexed)
+                     if ref == anchor), None)
+    if position is None:
+        return []
+    original_time = _transcript_seconds(indexed[position][0])
+    if original_time is None:
+        return [(indexed[position][0], indexed[position][1])]
+    selected = [indexed[position]]
+    for item in indexed[position + 1:]:
+        if len(selected) >= max_rows:
+            break
+        seconds = _transcript_seconds(item[0])
+        if seconds is None or seconds < original_time or seconds - original_time > max_seconds:
+            break
+        selected.append(item)
+    return [(stamp, sentence) for stamp, sentence, _ in selected]
+
+
+_EXPLANATION_CLUES = re.compile(
+    r"\b(?:significa|significam|quer dizer|se chama|é um|é uma|serve para|"
+    r"permite|funciona como|tem suporte|suporte de longo|duração|"
+    r"anos de suporte|development kit|long.term support)\b",
+    re.I,
+)
+
+
 def _literal_timed_evidence(label: str, source_rows: list[tuple[str, str]],
                             preferred: str = "", limit: int = 2) -> list[tuple[str, str, str, str]]:
-    """Match each technical name to a specific literal segment of the TXT.
+    """Prefer reviewable explanatory context over the first literal mentions.
 
-    A timestamp match confirms only a literal mention, not that the professor
-    explained the idea or that the student learned it.
+    Heuristics only prioritize *where to read*. They never certify that the
+    model's explanation was actually taught, demonstrated or learned.
     """
     matches = []
     for stamp, sentence, anchor in _indexed_source_rows(source_rows):
@@ -73,10 +121,22 @@ def _literal_timed_evidence(label: str, source_rows: list[tuple[str, str]],
             continue
         term = literal_technical_mention(label, sentence)
         if term:
-            matches.append((stamp, sentence, term, anchor))
-    if preferred:
-        matches.sort(key=lambda row: row[0] != preferred)
-    return matches[:max(0, limit)]
+            context = _nearby_transcript_context(source_rows, anchor, max_rows=3)
+            # A clue near the literal mention is more useful for studying
+            # than a passing mention. Never infer an explanation from this.
+            explanation_score = (
+                2 if _EXPLANATION_CLUES.search(sentence) else
+                1 if any(_EXPLANATION_CLUES.search(fragment)
+                         for _, fragment in context[1:]) else 0
+            )
+            matches.append((stamp, sentence, term, anchor, explanation_score))
+    # Keep verified model timestamps relevant, but never force a bare mention
+    # above better sourced context. Stable ordering breaks ties by TXT order.
+    matches.sort(key=lambda row: (
+        -row[4], -int(bool(preferred and row[0] == preferred))
+    ))
+    return [(stamp, sentence, term, anchor)
+            for stamp, sentence, term, anchor, _ in matches[:max(0, limit)]]
 
 
 def _source_quote(value: object, limit: int = 260, term: str = "") -> str:
@@ -1008,7 +1068,14 @@ class Publisher:
                             body.append(
                                 "  > A referência abre uma **proposta de atualização**; "
                                 "sua nota editada manualmente não foi substituída.")
-                        body.append(f"  > {_source_quote(sentence, term=form)}")
+                        nearby = _nearby_transcript_context(
+                            timed_lines(raw), anchor)
+                        body.append(
+                            "  > **Contexto próximo do TXT (para conferência):** "
+                            "a sequência abaixo não valida automaticamente a explicação da IA.")
+                        for context_stamp, context_sentence in nearby:
+                            body.append(
+                                f"  > {context_stamp} — {_source_quote(context_sentence, 300, form)}")
                     if not recorded or recorded not in {r[0] for r in matches}:
                         body.append(
                             "- **Horário da análise da IA:** ausente ou não associado "
