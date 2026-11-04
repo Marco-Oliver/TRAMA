@@ -5,6 +5,7 @@ import json
 import base64
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
@@ -33,8 +34,10 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class ProviderError(Exception):
-    def __init__(self, provider: str, message: str, quota: bool = False):
+    def __init__(self, provider: str, message: str, quota: bool = False,
+                 fatal: bool = False, retryable: bool = False):
         self.provider, self.quota = provider, quota
+        self.fatal, self.retryable = fatal, retryable
         super().__init__(f"{provider}: {message}")
 
 class NoFreeProvider(Exception):
@@ -89,12 +92,14 @@ def _send(url: str, body: dict, headers: dict[str, str], provider: str) -> dict:
         if e.code == 429:
             raise ProviderError(provider, "limite gratuito atingido (429)", quota=True) from e
         if e.code in (401, 402, 403):
-            raise ProviderError(provider, f"acesso/faturamento não autorizado ({e.code}); provedor bloqueado") from e
-        raise ProviderError(provider, f"falha HTTP {e.code}") from e
+            raise ProviderError(provider, f"acesso/faturamento não autorizado ({e.code}); provedor bloqueado",
+                                fatal=True) from e
+        raise ProviderError(provider, f"falha HTTP {e.code}",
+                            retryable=e.code in (408, 425, 500, 502, 503, 504)) from e
     except (OSError, TimeoutError) as e:
-        raise ProviderError(provider, "erro de conexão ou tempo esgotado") from e
+        raise ProviderError(provider, "erro de conexão ou tempo esgotado", retryable=True) from e
     except (ValueError, KeyError) as e:
-        raise ProviderError(provider, "resposta inválida do serviço") from e
+        raise ProviderError(provider, "resposta inválida do serviço", retryable=True) from e
 
 
 def _extract_json(text: str) -> dict:
@@ -115,6 +120,33 @@ def _extract_json(text: str) -> dict:
     return payload
 
 
+def _gemini_text(result: dict, provider: str) -> str:
+    """Reject truncated, blocked and reasoning-only output before parsing JSON."""
+    if not isinstance(result, dict):
+        raise ProviderError(provider, "resposta inesperada da API", retryable=True)
+    feedback = result.get("promptFeedback") or {}
+    if isinstance(feedback, dict) and feedback.get("blockReason"):
+        raise ProviderError(provider, "prompt bloqueado: " + str(feedback["blockReason"])[:55])
+    candidates = result.get("candidates") or []
+    if not isinstance(candidates, list) or not candidates or not isinstance(candidates[0], dict):
+        raise ProviderError(provider, "resposta sem candidato; verificar bloqueio de segurança")
+    cand = candidates[0]
+    reason = str(cand.get("finishReason") or "")
+    if reason == "MAX_TOKENS":
+        raise ProviderError(provider, "resposta cortada pelo limite de saída (MAX_TOKENS)")
+    if reason and reason != "STOP":
+        raise ProviderError(provider, f"geração interrompida pelo serviço ({reason[:40]})")
+    content = cand.get("content") or {}
+    parts = content.get("parts") if isinstance(content, dict) else None
+    if not isinstance(parts, list):
+        raise ProviderError(provider, "resposta sem texto utilizável", retryable=True)
+    answer = "".join(p["text"] for p in parts if isinstance(p, dict) and not p.get("thought")
+                     and isinstance(p.get("text"), str))
+    if not answer.strip():
+        raise ProviderError(provider, "resposta sem texto utilizável", retryable=True)
+    return answer
+
+
 def _completion(provider: str, model: str, key: str, prompt: str, media: tuple[str, bytes] | None = None) -> dict:
     if provider == "gemini":
         parts = [{"text": prompt}]
@@ -126,12 +158,11 @@ def _completion(provider: str, model: str, key: str, prompt: str, media: tuple[s
         result = _send(
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
             {"contents": [{"parts": parts}],
-             "generationConfig": {"temperature": 0.15, "responseMimeType": "application/json", "maxOutputTokens": 2800}},
+             "generationConfig": {"responseMimeType": "application/json",
+                                  "maxOutputTokens": 8192,
+                                  "thinkingConfig": {"thinkingLevel": "minimal"}}},
             {"x-goog-api-key": key}, provider)
-        try:
-            answer = "".join(p.get("text", "") for p in result["candidates"][0]["content"]["parts"])
-        except (KeyError, IndexError, TypeError) as exc:
-            raise ProviderError(provider, "resposta sem texto (modelo recusou ou truncou)") from exc
+        answer = _gemini_text(result, provider)
     else:
         if media is not None:
             raise ProviderError(provider, "leitura visual automatizada disponível somente para Gemini neste modo")
@@ -155,15 +186,11 @@ def _teacher_completion(provider: str, model: str, key: str, prompt: str) -> dic
         response = _send(
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
             {"contents": [{"parts": [{"text": prompt}]}],
-             "generationConfig": {"temperature": 0.3,
-                                  "responseMimeType": "application/json",
-                                  "maxOutputTokens": 3600}},
+             "generationConfig": {"responseMimeType": "application/json",
+                                  "maxOutputTokens": 8192,
+                                  "thinkingConfig": {"thinkingLevel": "minimal"}}},
             {"x-goog-api-key": key}, provider)
-        try:
-            body = "".join(part.get("text", "")
-                           for part in response["candidates"][0]["content"]["parts"])
-        except (KeyError, TypeError, IndexError) as exc:
-            raise ProviderError(provider, "resposta do professor vazia ou inválida") from exc
+        body = _gemini_text(response, provider)
     else:
         url = ("https://api.groq.com/openai/v1/chat/completions" if provider == "groq"
                else "https://openrouter.ai/api/v1/chat/completions")
@@ -230,7 +257,11 @@ class FreeAIRouter:
         self.env = env
         self.blocked: set[str] = set()
         self.attempts = 0
-        self.max_requests = max(1, min(100, int(env.get("MAX_REQUESTS_PER_RUN", "12"))))
+        try:
+            configured_limit = int(env.get("MAX_REQUESTS_PER_RUN") or "12")
+        except (ValueError, TypeError):
+            configured_limit = 12
+        self.max_requests = max(1, min(100, configured_limit))
         self.order = [x.strip().lower() for x in env.get("FREE_PROVIDER_ORDER", "gemini,groq,openrouter").split(",")]
 
     def active(self) -> list[str]:
@@ -272,7 +303,7 @@ Não extraia dados pessoais sensíveis desnecessários nem faça reconhecimento 
                                   f"{prompt}\nNome do arquivo: {filename[:170]}\nIndicação do lote: {hint[:120]}",
                                   (mime, binary))
         except ProviderError as exc:
-            if exc.quota or "faturamento" in str(exc):
+            if exc.quota or exc.fatal:
                 self.blocked.add("gemini")
             raise
         return AIResult(payload=payload, provider="gemini", model=model)
