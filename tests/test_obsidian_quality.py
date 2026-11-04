@@ -118,22 +118,27 @@ class QualityTests(unittest.TestCase):
             + "\n[10:04] Uma classe pode incluir comportamentos.\n",
         )
         counter = [0]
-        def analyze(_piece, _context):
+        def analyze(piece, _context):
             counter[0] += 1
-            stamp = "0:04" if counter[0] == 1 else "10:04"
+            # Very long ASR rows may split into a continuation with no
+            # literal concept or timestamp. Do not credit that middle block
+            # with a made-up concept.
+            stamp = "0:04" if "[0:04]" in piece else (
+                "10:04" if "[10:04]" in piece else "")
+            part = 1 if stamp == "0:04" else 2 if stamp == "10:04" else 0
             return AIResult({
                 "resumo": f"Parte {counter[0]} sobre classe.",
                 "tipo_aula": "tecnica",
-                "conceitos": [{"nome": "classe",
-                              "explicacao": f"Explicação distinta {counter[0]}",
-                              "tempo": stamp}],
+                "conceitos": ([{"nome": "classe",
+                               "explicacao": f"Explicação distinta {part}",
+                               "tempo": stamp}] if part else []),
                 "exemplos": [], "duvidas": [],
             }, "mock", "fake")
         self.app.ai.analyze = analyze
         self.app.process()
         result = self.app.store.analysis(source["id"], source["digest"])
         self.assertGreaterEqual(counter[0], 2)
-        self.assertEqual(len(result["conceitos"]), counter[0])
+        self.assertEqual(len(result["conceitos"]), 2)
         concepts = (self.vault / "01-Meu-Conhecimento/Conceitos/classe.md").read_text(encoding="utf-8")
         self.assertIn("Explicação distinta 1", concepts)
         self.assertIn("Explicação distinta 2", concepts)
