@@ -6,6 +6,6 @@
   "sha256": "a6966cf0d8baeac0c797ccb09490b7170593863d7c31a7630e74a0fe54748144",
   "upgrade_ci_run": 41896753352,
   "scope": "User-approved experimental Preview release only. Stable main and vault stay unchanged.",
-  "retry": 4,
-  "retry_context": "User configured scoped release secret; reuse the existing 207 draft after its release asset check; validate Git tag after publish."
+  "retry": 5,
+  "retry_context": "Scoped secret confirmed; reuse existing draft. Query unpublished release through gh release view; tag check only after publishing."
 }
