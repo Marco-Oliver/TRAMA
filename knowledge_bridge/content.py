@@ -142,6 +142,53 @@ def opening_lesson_number_mismatch(
     return None
 
 
+
+# These are REVIEW HINTS for common speech-recognition homophones, not proof
+# of the words spoken. Never rewrite the original TXT or create a concept
+# note just because one of these hints exists.
+_ASR_SUSPECTS = (
+    (re.compile(r"\b(?:rapit|rabit|ravit|rabim)\s*(?:m\s*q|mq)\b", re.I), "RabbitMQ"),
+    (re.compile(r"\bmessage\s+transit\b", re.I), "MassTransit"),
+    (re.compile(r"\bmessage\s+kill\b", re.I), "message queue"),
+    (re.compile(r"\bmessage\s+booker\b", re.I), "message broker"),
+)
+
+
+def suspected_technical_transcription(text: str, cap: int = 8) -> list[tuple[str, str, str]]:
+    """Return first timed occurrence of each reviewable phonetic ambiguity.
+
+    A suspicion is not a correction; audio or source code must be checked.
+    Never contact a provider or mutate the transcript. A close mention of
+    "Accepted" and "204" also flags possible confusion of HTTP status codes.
+    """
+    rows = timed_lines(text)
+    results: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for i, (stamp, sentence) in enumerate(rows):
+        if stamp == "sem horário":
+            continue
+        for pattern, candidate in _ASR_SUSPECTS:
+            if candidate in seen:
+                continue
+            match = pattern.search(sentence)
+            if match:
+                results.append((stamp, match.group(0), candidate))
+                seen.add(candidate)
+                if len(results) >= cap:
+                    return results
+        if "HTTP Accepted / 204" not in seen and re.search(r"\baccepted\b", sentence, re.I):
+            nearby = " ".join(row[1] for row in rows[i:i + 6])
+            if re.search(r"(?<!\d)204(?!\d)", nearby):
+                results.append((
+                    stamp, "Accepted ... 204",
+                    "conferir HTTP 202 Accepted / HTTP 204 No Content",
+                ))
+                seen.add("HTTP Accepted / 204")
+                if len(results) >= cap:
+                    return results
+    return results
+
+
 def guess_modules(text: str) -> list[str]:
     haystack = text.lower()
     matches = sorted(((sum(haystack.count(word) for word in words), module)
