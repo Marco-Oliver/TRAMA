@@ -110,6 +110,38 @@ def chunks(text: str, max_chars: int = 11500) -> list[str]:
     return output or [text]
 
 
+
+def opening_lesson_number_mismatch(
+    text: str, lesson: str, max_seconds: int = 90
+) -> tuple[str, int] | None:
+    """Flag conflicting opening lesson labels; never renumber user sources.
+
+    Early speech-to-text can be wrong, and a professor may reference a past
+    lesson. This is only a review hint, not a factual correction.
+    """
+    expected = re.fullmatch(r"Aula-(\d{1,3})", str(lesson))
+    if not expected:
+        return None
+    expected_number = int(expected.group(1))
+    for stamp, spoken in timed_lines(text)[:100]:
+        parts = stamp.split(":")
+        if len(parts) not in (2, 3) or not all(part.isdigit() for part in parts):
+            continue
+        sec = (int(parts[0]) * 60 + int(parts[1]) if len(parts) == 2
+               else int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2]))
+        if sec > max_seconds:
+            break
+        match = re.search(
+            r"\b(?:aula|aulinha)\s*(?:n(?:ú|u)mero\s*)?(\d{1,3})\b",
+            spoken, flags=re.IGNORECASE)
+        if match:
+            spoken_number = int(match.group(1))
+            if spoken_number != expected_number:
+                return stamp, spoken_number
+            return None
+    return None
+
+
 def guess_modules(text: str) -> list[str]:
     haystack = text.lower()
     matches = sorted(((sum(haystack.count(word) for word in words), module)
