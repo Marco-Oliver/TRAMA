@@ -133,9 +133,12 @@ class Application:
 
     def _verified_transcript(self, src) -> str:
         """Refuse missing or modified cached sources before sending content to AI."""
-        file = (self.store.vault / (src["stored_path"] or "")).resolve()
-        if (not file.is_relative_to(self.store.vault) or not file.is_file() or
-                file.is_symlink()):
+        # Check the STORED path before resolving it: Path.resolve() follows
+        # symbolic links, so checking file.is_symlink() afterwards is ineffective.
+        stored = self.store.vault / (src["stored_path"] or "")
+        file = stored.resolve()
+        if (stored.is_symlink() or not file.is_relative_to(self.store.vault)
+                or not file.is_file()):
             raise ValueError("Fonte original ausente ou caminho inseguro: " + src["label"])
         if file_hash(file) != src["digest"]:
             self.store.update_status(src["id"], "NEEDS_REVIEW")
