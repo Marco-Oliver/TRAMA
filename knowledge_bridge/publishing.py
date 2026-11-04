@@ -443,7 +443,13 @@ class Publisher:
                 preview=text if len(text)<=4500 else text[:4500].rsplit(' ',1)[0]
                 if len(preview)<len(text):
                     preview += "\n\n*Resumo abreviado nesta visão geral; a explicação completa está na nota vinculada acima.*"
-                rows.extend(['', f"### [[{Path(note).stem}|{label}]]", '', preview])
+                rows.extend(['', f"### [[{Path(note).stem}|{label}]]", '',
+                         "> **Síntese assistida por IA; conferir no TXT original.**", '', preview])
+            if analysis.get("qualidade_pendente"):
+                rows.append(
+                    "> **Fidelidade a conferir:** há alertas de qualidade na nota "
+                    "desta gravação. Abra a nota vinculada antes de tratar a "
+                    "síntese como conteúdo confirmado.")
         else:
             rows.append('**Pendente:** a IA ainda não gerou o resumo desta aula. Os materiais abaixo permanecem disponíveis.')
         rows += ['', '## Gravações e transcrições', '']
@@ -695,6 +701,10 @@ class Publisher:
             ]
         body.append("## Resumo da aula")
         if analysis:
+            body.append(
+                "> **Síntese assistida por IA — conferir na transcrição original.** "
+                "Termos técnicos, exemplos e afirmações de implementação podem exigir "
+                "revisão; a síntese não prova que algo foi demonstrado nem aprendido.")
             body.append(analysis.get("resumo") or "*Resumo da aula ainda incompleto; confira a transcrição original.*")
             warnings=[w for w in analysis.get("qualidade_pendente",[])
                       if isinstance(w,str) and w.strip()][:8]
