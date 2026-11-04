@@ -176,7 +176,7 @@ class Application:
             "atividades": entries("atividades", {"descricao": 380}, 8),
             "ferramentas": entries("ferramentas", {"nome": 110, "contexto": 360}, 8),
             "marcos": entries("marcos", {"descricao": 420}, 8),
-            "conceitos": entries("conceitos", {"nome": 90, "explicacao": 700}, 12),
+            "conceitos": entries("conceitos", {"nome": 90, "explicacao": 700, "evidencia": 260}, 12),
             "exemplos": [safe(x, 350) for x in payload.get("exemplos", []) if isinstance(x, str)][:7],
             "duvidas": [safe(x, 350) for x in payload.get("duvidas", []) if isinstance(x, str)][:7],
             "nomes_a_conferir": [safe(x, 180) for x in payload.get("nomes_a_conferir", [])
@@ -216,10 +216,26 @@ class Application:
                 # A literal abbreviation confirms a mention, NOT the model's
                 # explanation or a claim that the learner mastered the topic.
                 grounded.append(concept)
-            else:
+            elif label:
+                # Keep a legitimate interpretation reviewable instead of
+                # discarding the model's explanation when the teacher used
+                # everyday language rather than the technical label.
+                # ONLY a verbatim quote from this exact chunk can be shown
+                # as an observed source; it does not validate semantics.
+                quote = concept.get("evidencia", "").strip()
+                normalized_quote = re.sub(r"\s+", " ", quote).casefold()
+                normalized_source = re.sub(r"\s+", " ", raw_text).casefold()
+                verified_quote = (
+                    quote if len(normalized_quote) >= 18
+                    and normalized_quote in normalized_source else ""
+                )
                 unverified.append({
-                    "nome":label,
-                    "motivo":"Nome ou abreviação não encontrado na transcrição original.",
+                    "nome": label,
+                    "motivo": "Rótulo técnico inferido pela IA; nome não localizado no TXT.",
+                    "evidencia_literal": verified_quote,
+                    "explicacao_sugerida": (
+                        concept.get("explicacao", "")[:500] if verified_quote else ""),
+                    "tempo": concept.get("tempo", "") if verified_quote else "",
                 })
         clean["conceitos"]=grounded
         clean["conceitos_a_conferir"]=unverified[:12]
