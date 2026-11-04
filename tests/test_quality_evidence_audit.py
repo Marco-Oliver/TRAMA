@@ -13,6 +13,7 @@ from pathlib import Path
 
 from knowledge_bridge.ai import AIResult
 from knowledge_bridge.content import chunks, timed_lines
+from knowledge_bridge.code_intel import match_lesson_to_repository
 from knowledge_bridge.pipeline import Application
 
 
@@ -223,6 +224,22 @@ class EvidenceLinkTests(unittest.TestCase):
             [x["conceito"] for x in analysis["novidades"]], ["interval"])
         self.assertTrue(all(x["status"].startswith("SUGESTÃO")
                             for x in analysis["relacoes"]))
+
+    def test_hallucinated_legacy_ai_label_does_not_generate_code_candidate(self):
+        """A real code occurrence + an imaginary AI concept is insufficient."""
+        false_analysis = {"conceitos": [
+            {"nome": "exhaustMap", "explicacao": "Falsamente dito pela IA"},
+            {"nome": "StatusService", "explicacao": "Nome inventado"}
+        ]}
+        raw = "[0:01] Esta aula discute apenas tabelas SQL e migrations."
+        self.assertEqual(
+            match_lesson_to_repository(raw, false_analysis, self.repo), [])
+        # Genuine phonetic speech can still point to real code as a cautious
+        # link: no proof that the professor pronounced the canonical name.
+        matched = match_lesson_to_repository(self.raw, false_analysis, self.repo)
+        self.assertIn("exhaustMap", [x["concept"] for x in matched])
+        self.assertIn("StatusService", [x["name"] for x in matched
+                                        if "name" in x])
 
     def test_unrelated_source_cannot_be_linked_as_teacher_code(self):
         raw = ("[0:01] Falamos de SQL e banco de dados.\n"
