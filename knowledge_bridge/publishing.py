@@ -74,16 +74,21 @@ def _transcript_seconds(stamp: str) -> int | None:
 
 def _nearby_transcript_context(
     source_rows: list[tuple[str, str]], anchor: str,
-    max_seconds: int = 32, max_rows: int = 4
+    max_seconds: int = 32, max_rows: int = 4,
+    indexed: list[tuple[str, str, str]] | None = None,
+    position: int | None = None
 ) -> list[tuple[str, str]]:
     """Adjacent original transcript fragments, without joining distant topics.
 
     A timestamped fragment can be only a few words. Nearby rows help review
-    what was said, but are never certified as a model explanation.
+    what was said, but are never certified as a model explanation. Preindexed
+    rows avoid rescanning a long lesson for every term occurrence.
     """
-    indexed = list(_indexed_source_rows(source_rows))
-    position = next((i for i, (_, _, ref) in enumerate(indexed)
-                     if ref == anchor), None)
+    if indexed is None:
+        indexed = list(_indexed_source_rows(source_rows))
+    if position is None:
+        position = next((i for i, (_, _, ref) in enumerate(indexed)
+                         if ref == anchor), None)
     if position is None:
         return []
     original_time = _transcript_seconds(indexed[position][0])
@@ -116,12 +121,15 @@ def _literal_timed_evidence(label: str, source_rows: list[tuple[str, str]],
     model's explanation was actually taught, demonstrated or learned.
     """
     matches = []
-    for stamp, sentence, anchor in _indexed_source_rows(source_rows):
+    indexed = list(_indexed_source_rows(source_rows))
+    for position, (stamp, sentence, anchor) in enumerate(indexed):
         if not sentence.strip():
             continue
         term = literal_technical_mention(label, sentence)
         if term:
-            context = _nearby_transcript_context(source_rows, anchor, max_rows=3)
+            context = _nearby_transcript_context(
+                source_rows, anchor, max_rows=3, indexed=indexed,
+                position=position)
             # A clue near the literal mention is more useful for studying
             # than a passing mention. Never infer an explanation from this.
             explanation_score = (
