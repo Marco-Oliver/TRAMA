@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 from .ai import BudgetStopped, FreeAIRouter, NoFreeProvider, read_env
 from .content import chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines
-from .code_intel import index_repository, match_lesson_to_repository, find_code_line, concept_from_text
+from .code_intel import index_repository, match_lesson_to_repository, find_code_line, concept_from_text, redact_sensitive
 from .publishing import Publisher
 from .store import Store
 from .memory_atlas import related_prior, norm, literal_technical_mention
@@ -151,7 +151,7 @@ class Application:
         """Limita resultados da IA e valida referências temporais reais."""
         if not isinstance(payload, dict):
             payload = {}
-        real_times = {t for t, _ in timed_lines(raw_text)}
+        real_times = {t for t, _ in timed_lines(raw_text) if t != "sem horário"}
         def safe(value, size):
             return str(value)[:size].strip() if isinstance(value, (str, int, float)) else ""
         def entries(key, fields, cap):
@@ -275,6 +275,7 @@ class Application:
                 continue
             pieces = chunks(text)
             all_results = []
+            lesson_failed = False
             self.store.update_status(src["id"], "PROCESSING")
             self.log(f"Analisando {src['label']} em {len(pieces)} trecho(s).")
             for i, piece in enumerate(pieces):
@@ -324,8 +325,18 @@ class Application:
                     return self.publisher.rebuild()
                 except Exception as exc:
                     self.store.update_status(src["id"], "NEEDS_REVIEW")
-                    self.log(f"Erro controlado em {src['label']}: {type(exc).__name__}. Verifique a configuração.")
-                    return self.publisher.rebuild()
+                    # Never expose original provider payload, HTTP response,
+                    # secrets or full traceback to the user-visible log.
+                    cause = redact_sensitive(str(exc).replace("\n", " ")[:300])
+                    self.log(
+                        f"Falha em {src['label']}: {type(exc).__name__}: "
+                        f"{cause or 'erro não detalhado'}. Aula mantida para revisão.")
+                    lesson_failed = True
+                    break
+            if lesson_failed:
+                # Preserve completed chunks, then continue with other lessons.
+                # Only exhaustion of the free-tier/local budget stops the batch.
+                continue
             # Consolidação estruturada sem requisição adicional.
             combined = {"resumo": (all_results[0]["resumo"] if len(all_results) == 1 else
                          "\n\n".join(f"**Trecho {i+1}:** {x['resumo']}" for i,x in enumerate(all_results))),
@@ -353,9 +364,11 @@ class Application:
                         # Dedup keeps different evidence timestamps if substantive text differs.
                         if item not in combined[category]:
                             combined[category].append(item)
-                combined["exemplos"].extend(result.get("exemplos", []))
-                combined["duvidas"].extend(result.get("duvidas", []))
-                combined["nomes_a_conferir"].extend(result.get("nomes_a_conferir", []))
+                for category, limit in (("exemplos", 7), ("duvidas", 7),
+                                        ("nomes_a_conferir", 7)):
+                    for item in result.get(category, []):
+                        if item and item not in combined[category] and len(combined[category]) < limit:
+                            combined[category].append(item)
                 for caution in result.get("conceitos_a_conferir", []):
                     if caution not in combined["conceitos_a_conferir"]:
                         combined["conceitos_a_conferir"].append(caution)
@@ -384,7 +397,7 @@ class Application:
     @staticmethod
     def _check_comparison(payload: dict, transcript: str, repository: dict) -> dict:
         """Discard fabricated source paths/lines/timestamps. Keep hypotheses as hypotheses."""
-        valid_times={t for t,_ in timed_lines(transcript)}
+        valid_times={t for t,_ in timed_lines(transcript) if t != "sem horário"}
         observed_concepts = concept_from_text(transcript)
         indexed = [item for item in (
             *repository.get("evidence", []), *repository.get("symbols", []))
