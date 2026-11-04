@@ -19,7 +19,7 @@ await mkdir(screenshots, { recursive: true });
 const notes = [
   {id:'02-Minhas-Aulas/Aula-001/00-Visao-geral.md', title:'Hello World em C#', lesson:'Aula-001',
    section:'02-Minhas-Aulas',kind:'visao_geral',state:'resumida_com_ia',
-   updated:'28/10/2026',content:'# Hello World em C#\n\nO professor explicou **Console.WriteLine** para escrever uma mensagem no terminal.\n\n## Código\n\n```csharp\nConsole.WriteLine("Olá!");\n```\n\n[[01-Meu-Conhecimento/Conceitos/console|Console]]\n\n## Trechos da transcrição com horários verificáveis\n\n- **0:10** — Console.WriteLine mostra saída. ^min-0-10'},
+   updated:'28/10/2026',content:'# Hello World em C#\n\nO professor explicou **Console.WriteLine** para escrever uma mensagem no terminal.\n\n## Código\n\n```csharp\nConsole.WriteLine("Olá!");\n```\n\n[[01-Meu-Conhecimento/Conceitos/console|Console]]\n\n## Trechos da transcrição com horários verificáveis\n\n- **0:10** — Console.WriteLine mostra saída. ^min-0-10\n\n> **Contexto próximo do TXT (para conferência):**\n>\n> - 0:10 — Console.WriteLine mostra saída.\n> - 0:12 — O console permite acompanhar o resultado.'},
   {id:'02-Minhas-Aulas/Aula-025/00-Visao-geral.md', title:'Angular — componentes',lesson:'Aula-025',
    section:'02-Minhas-Aulas',kind:'visao_geral',state:'resumida_com_ia',
    updated:'30/10/2026',content:'# Angular — componentes\n\nUm componente Angular organiza a interface.'},
@@ -216,6 +216,14 @@ try{
     await page.locator('#library-workspace').waitFor({state:'visible'});
     await page.locator('#library-workspace #min-0-10').waitFor({state:'attached'});
     await page.locator('.lib-title').getByText('Hello World em C#').waitFor();
+    // Each source timestamp must render as a separate list item; flattening
+    // all blockquote lines makes study notes unreadable in the actual WebView.
+    const quoteTimes=page.locator('#library-workspace .lib-md blockquote ul li');
+    await quoteTimes.first().waitFor({state:'visible'});
+    if(await quoteTimes.count()!==2 ||
+       !(await quoteTimes.nth(0).innerText()).includes('0:10') ||
+       !(await quoteTimes.nth(1).innerText()).includes('0:12'))
+      throw Error('Transcript evidence was flattened instead of readable timestamp bullets');
     await assertNoUiError('concept source anchor navigation');
 
     await page.locator('#search-all').fill('Angular');
