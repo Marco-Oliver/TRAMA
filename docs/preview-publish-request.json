@@ -6,6 +6,6 @@
   "sha256": "a6966cf0d8baeac0c797ccb09490b7170593863d7c31a7630e74a0fe54748144",
   "upgrade_ci_run": 41896753352,
   "scope": "User-approved experimental Preview release only. Stable main and vault stay unchanged.",
-  "retry": 2,
-  "retry_context": "Use GitHub documented existing-tag route, SHA-pinned to already validated 207 source; do not change main."
+  "retry": 3,
+  "retry_context": "User confirmed GH Actions secret TRAMA_PREVIEW_RELEASE_TOKEN configured; request fresh release workflow with scoped publication token."
 }
