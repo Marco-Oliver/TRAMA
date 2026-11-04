@@ -13,7 +13,7 @@ from collections import defaultdict, Counter
 from pathlib import Path
 from urllib.parse import quote
 
-from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines, study_windows, opening_lesson_number_mismatch
+from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines, study_windows, opening_lesson_number_mismatch, suspected_technical_transcription
 from .store import Store
 from .memory_atlas import make_atlas, render_atlas, lesson_order, norm, note_for, literal_technical_mention
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections
@@ -931,7 +931,21 @@ class Publisher:
                 body.append(f"- **HIPÓTESE, não correção automática:** `{_escape_md(hint['heard'])}` pode corresponder a "
                             f"`{hint['candidate']}`, encontrado em {_code_ref(repo, hint['path'], hint['line'])} "
                             f"({repo['name']}); confira o vídeo antes de confirmar.")
-        if not suggested:
+        suspected = suspected_technical_transcription(text)
+        if suspected:
+            body += [
+                "",
+                "> **Grafias suspeitas na transcrição original — somente hipóteses.** "
+                "O áudio não foi conferido. Nenhuma palavra foi substituída "
+                "e nenhuma explicação foi confirmada automaticamente.",
+                "",
+            ]
+            for stamp, observed, candidate in suspected:
+                body.append(
+                    f"- **{_escape_md(stamp)}** — transcrito: "
+                    f"`{_escape_md(observed)}`; possível termo a verificar: "
+                    f"`{_escape_md(candidate)}`. Revise a gravação antes de aceitar.")
+        if not suggested and not suspected:
             body.append("*Nenhuma correção fundamentada encontrada.*")
         self.write(rel, "\n".join(body).strip() + "\n")
         return rel, concepts, modules
