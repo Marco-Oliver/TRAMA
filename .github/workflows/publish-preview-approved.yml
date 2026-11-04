@@ -1,0 +1,60 @@
+name: Publicar Preview aprovada 2.2.0 (somente prerelease)
+
+on:
+  push:
+    branches: [feat/v2.2.0-automation-foundations]
+    paths:
+      - 'release/preview-publish-request.json'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: trama-preview-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Marco-Oliver/TRAMA' && github.ref == 'refs/heads/feat/v2.2.0-automation-foundations'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Conferir autorização explícita e build aprovado
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST=release/preview-publish-request.json
+          RUN_ID=41774775687
+          RELEASE_TAG=v2.2.0-preview.189
+          SOURCE_SHA=315a8d0caaca283d89ec546b35c46ad1868c42cf
+          EXPECTED_SHA=a20ee31284214711b116a4c9a8e72c8561e9a5a8bb75204fb7f525a854ad4093
+          jq -e --arg run "$RUN_ID" --arg tag "$RELEASE_TAG" --arg src "$SOURCE_SHA" --arg hash "$EXPECTED_SHA" \
+            '.authorized == true and (.run_id | tostring) == $run and .tag == $tag and .source_sha == $src and .sha256 == $hash' "$REQUEST"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" | jq -e --arg src "$SOURCE_SHA" \
+            '.status == "completed" and .conclusion == "success" and .head_sha == $src and .run_number == 189 and .head_branch == "feat/v2.2.0-automation-foundations"'
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" | jq -e \
+            '[.jobs[].conclusion] | length == 4 and all(. == "success")'
+          if gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Essa prerelease já existe; não substituir assets.' >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/preview"
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" \
+            --name TRAMA-v220-PR5-Preview-ISOLADA-NAO-RELEASE --dir "$RUNNER_TEMP/preview"
+          cd "$RUNNER_TEMP/preview"
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 2
+          test -f TRAMA_Preview_Setup.exe
+          test -f SHA256SUMS-Preview.txt
+          grep -Eqi "^${EXPECTED_SHA}  TRAMA_Preview_Setup.exe$" SHA256SUMS-Preview.txt
+          sha256sum --check SHA256SUMS-Preview.txt
+          gh release create "$RELEASE_TAG" TRAMA_Preview_Setup.exe SHA256SUMS-Preview.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --prerelease \
+            --title 'TRAMA 2.2.0 Preview — build 189' \
+            --notes 'Preview experimental isolada. Atualizador pelo próprio aplicativo, sem ZIP após instalação inicial. Não é a versão estável.'
+          gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft,assets | jq -e \
+            --arg tag "$RELEASE_TAG" '.tagName == $tag and .isPrerelease == true and .isDraft == false and ([.assets[].name] | sort) == (["SHA256SUMS-Preview.txt", "TRAMA_Preview_Setup.exe"] | sort)'
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" | jq -e --arg src "$SOURCE_SHA" '.object.sha == $src'
