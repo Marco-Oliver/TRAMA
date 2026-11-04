@@ -128,6 +128,34 @@ class MessagingLessonAcceptanceTests(unittest.TestCase):
             finally:
                 app.close()
 
+    def test_transcript_symlink_is_blocked_before_any_model_request(self):
+        """Even matching bytes must not allow a symlinked catalog attachment."""
+        with tempfile.TemporaryDirectory(prefix="trama-transcript-attachment-") as directory:
+            base=Path(directory)
+            original=base/"A137 - V01 - Teste de integridade.txt"
+            original.write_text("[0:01] Um documento fictício seguro.\n",encoding="utf-8")
+            app=Application(base/"cofre-isolado",base/"sem-chave.env",log=lambda *_:None)
+            fake=OfflineLessonAI()
+            app.ai=fake
+            try:
+                self.assertTrue(app.add_file(original))
+                src=app.store.sources("transcript")[0]
+                stored=app.store.vault/src["stored_path"]
+                backup=app.store.vault/"anexo-simulacao-interno.txt"
+                backup.write_bytes(stored.read_bytes())
+                stored.unlink()
+                try:
+                    stored.symlink_to(backup)
+                except (OSError,NotImplementedError):
+                    self.skipTest("This Windows runner disallows symbolic links.")
+                with self.assertRaisesRegex(ValueError,"caminho inseguro"):
+                    app._verified_transcript(src)
+                self.assertEqual(fake.calls,0)
+                self.assertEqual(original.read_text(encoding="utf-8"),
+                                 "[0:01] Um documento fictício seguro.\n")
+            finally:
+                app.close()
+
     def test_no_automated_fact_fix_or_technical_hints_from_unrelated_lessons(self):
         unrelated=(
             "[0:01] Estamos trabalhando com SQL e a interface da aplicação.\n"
