@@ -209,9 +209,11 @@ def _completion(provider: str, model: str, key: str, prompt: str, media: tuple[s
         if media is not None:
             raise ProviderError(provider, "leitura visual automatizada disponível somente para Gemini neste modo")
         url = "https://api.groq.com/openai/v1/chat/completions" if provider == "groq" else "https://openrouter.ai/api/v1/chat/completions"
-        result = _send(url, {"model": model, "messages": [{"role": "user", "content": prompt}],
-                             "temperature": 0.1, "max_tokens": 2800},
-                       {"Authorization": f"Bearer {key}"}, provider)
+        request_body = {"model": model, "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.1, "max_tokens": 8000}
+        if provider == "groq":
+            request_body["response_format"] = {"type": "json_object"}
+        result = _send(url, request_body, {"Authorization": f"Bearer {key}"}, provider)
         try:
             choice = result["choices"][0]
             reason = str(choice.get("finish_reason") or "")
@@ -245,10 +247,11 @@ def _teacher_completion(provider: str, model: str, key: str, prompt: str) -> dic
     else:
         url = ("https://api.groq.com/openai/v1/chat/completions" if provider == "groq"
                else "https://openrouter.ai/api/v1/chat/completions")
-        response = _send(url,
-                         {"model": model, "messages": [{"role": "user", "content": prompt}],
-                          "temperature": 0.3, "max_tokens": 3600},
-                         {"Authorization": f"Bearer {key}"}, provider)
+        request_body = {"model": model, "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.3, "max_tokens": 8000}
+        if provider == "groq":
+            request_body["response_format"] = {"type": "json_object"}
+        response = _send(url, request_body, {"Authorization": f"Bearer {key}"}, provider)
         try:
             choice = response["choices"][0]
             if choice.get("finish_reason") == "length":
