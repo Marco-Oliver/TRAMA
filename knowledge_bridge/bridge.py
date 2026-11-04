@@ -30,7 +30,7 @@ from .ai import FreeAIRouter, ALLOWED, ProviderError, NoFreeProvider, BudgetStop
 from .diagnostic import run_ai_diagnostic, format_diagnostic_report, MissingTestSources
 from .vault_index import VaultIndex
 from .code_intel import redact_sensitive
-from .gui_legacy import DATA_HOME, SETTINGS_FILE, CONFIG_FILE, PREVIEW_BUNDLE
+from .paths import DATA_HOME, SETTINGS_FILE, CONFIG_FILE, PREVIEW_BUNDLE
 
 ALLOWED_ATTACHMENTS={'.txt','.md','.mp4','.mkv','.mov','.webm','.png','.jpg','.jpeg','.webp','.pdf','.docx'}
 
