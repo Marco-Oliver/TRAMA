@@ -6,6 +6,6 @@
   "sha256": "a6966cf0d8baeac0c797ccb09490b7170593863d7c31a7630e74a0fe54748144",
   "upgrade_ci_run": 41896753352,
   "scope": "User-approved experimental Preview release only. Stable main and vault stay unchanged.",
-  "retry": 3,
-  "retry_context": "User confirmed GH Actions secret TRAMA_PREVIEW_RELEASE_TOKEN configured; request fresh release workflow with scoped publication token."
+  "retry": 4,
+  "retry_context": "User configured scoped release secret; reuse the existing 207 draft after its release asset check; validate Git tag after publish."
 }
