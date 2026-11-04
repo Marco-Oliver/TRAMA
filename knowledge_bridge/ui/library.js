@@ -123,7 +123,22 @@ function libRenderMarkdown(markdown,source,title){
   const out=[];let para=[],list=[],listType='',code=[],isCode=false,blockquote=[];
   const flushParagraph=()=>{if(para.length){out.push(`<p>${libWiki(para.join(' '),source)}</p>`);para=[];}};
   const flushList=()=>{if(list.length){out.push(`<${listType}>${list.map(t=>`<li>${libWiki(t,source)}</li>`).join('')}</${listType}>`);list=[];listType='';}};
-  const flushQuote=()=>{if(blockquote.length){out.push(`<blockquote>${libWiki(blockquote.join(' '),source)}</blockquote>`);blockquote=[];}};
+  const flushQuote=()=>{
+   if(!blockquote.length)return;
+   // Quoted transcript timestamps must remain separate study bullets.
+   // Escape through libWiki at each leaf; never concatenate untrusted HTML.
+   const items=[];let paragraph=[],bullets=[];
+   const flushText=()=>{if(paragraph.length){items.push(`<p>${libWiki(paragraph.join(' '),source)}</p>`);paragraph=[];}};
+   const flushBullets=()=>{if(bullets.length){items.push(`<ul>${bullets.map(t=>`<li>${libWiki(t,source)}</li>`).join('')}</ul>`);bullets=[];}};
+   for(const raw of blockquote){
+    const bullet=/^\\s*[-*]\\s+(.+)/.exec(raw);
+    if(bullet){flushText();bullets.push(bullet[1]);}
+    else {flushBullets();if(raw.trim())paragraph.push(raw.trim());else flushText();}
+   }
+   flushText();flushBullets();
+   out.push(`<blockquote>${items.join('')}</blockquote>`);
+   blockquote=[];
+  };
   for(const line of sec.lines){
    if(/^\s*```/.test(line)){flushParagraph();flushList();flushQuote();if(isCode){out.push(`<pre><code>${libE(code.join('\n'))}</code></pre>`);code=[];}isCode=!isCode;continue;}
    if(isCode){code.push(line);continue;}
