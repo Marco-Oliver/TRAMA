@@ -231,6 +231,24 @@ class Application:
             review.append("Resumo curto para o volume da transcrição; revisar fidelidade e detalhes.")
         if len(raw_text.strip())>=400 and not clean["resumo"]:
             review.append("A IA não forneceu síntese; consultar a transcrição original.")
+        # Strongly recognizable technical names are auditable without an
+        # additional AI call. A phonetic ASR spelling may legitimately differ:
+        # report a REVIEW HINT, never silently replace or delete the summary.
+        technical_names = (
+            "RabbitMQ", "MassTransit", "Kafka", "GraphQL", "JWT", "Docker",
+            "HttpClient", "exhaustMap", "takeUntilDestroyed", "RxJS",
+            "Angular", "React", "C#", "SQL",
+        )
+        unsupported = [
+            label for label in technical_names
+            if literal_technical_mention(label, clean["resumo"])
+            and not literal_technical_mention(label, raw_text)
+        ]
+        if unsupported:
+            review.append(
+                "Nomes técnicos da síntese não encontrados literalmente neste trecho "
+                "do TXT: " + ", ".join(unsupported[:8]) +
+                ". Pode ser erro de ASR ou interpretação da IA; conferir áudio/fonte.")
         clean["qualidade_pendente"]=review
         return clean
 
@@ -371,7 +389,6 @@ class Application:
         indexed = [item for item in (
             *repository.get("evidence", []), *repository.get("symbols", []))
             if isinstance(item, dict)]
-        indexed_concepts = {str(item.get("concept", "")) for item in indexed}
 
         def code_supports(label: str, path: str = "", line: int = 0,
                           require_lecture: bool = False) -> bool:
