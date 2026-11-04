@@ -28,17 +28,17 @@ def replace_exact(path: Path, old: str, new: str, *, count: int = 1):
 
 
 def prepare():
-    gui = ROOT / "knowledge_bridge" / "gui_legacy.py"
+    storage = ROOT / "knowledge_bridge" / "paths.py"
     # Bundled marker selects LocalAppData/TRAMA-Preview. The normal checkout
     # and stable installer keep using LocalAppData/TRAMA unchanged.
     marker = ROOT / "assets" / "trama-preview.marker"
     marker.write_text("TRAMA_PREVIEW_ISOLATED_V1" + chr(10), encoding="utf-8")
-    if "_storage_namespace(APP_ROOT)" not in gui.read_text(encoding="utf-8"):
+    if "_storage_namespace(APP_ROOT)" not in storage.read_text(encoding="utf-8"):
         raise RuntimeError("QA source no longer supports isolated preview storage")
     replace_exact(
-        gui,
-        'OLD_DATA_HOME = (Path(os.environ["LOCALAPPDATA"]) / "NEXO" '
-        'if os.environ.get("LOCALAPPDATA") else Path.home() / ".nexo")',
+        storage,
+        'OLD_DATA_HOME = (\n    Path(os.environ["LOCALAPPDATA"]) / "NEXO"\n'
+        '    if os.environ.get("LOCALAPPDATA") else Path.home() / ".nexo"\n)',
         'OLD_DATA_HOME = DATA_HOME  # Preview never migrates/reads stable settings.',
     )
     # Preview checks ONLY explicitly published GitHub prereleases. This
@@ -92,7 +92,7 @@ def prepare():
     if "TRAMA_Instalador.iss" in iss:
         raise RuntimeError("Preview script accidentally references stable setup")
     (ROOT / "TRAMA_Preview_Instalador.iss").write_text(iss, encoding="utf-8")
-    assert marker.is_file() and "_storage_namespace" in gui.read_text(encoding="utf-8")
+    assert marker.is_file() and "_storage_namespace" in storage.read_text(encoding="utf-8")
     assert "TRAMA Preview" in iss and "ACF2B65E" in iss and "UsePreviousAppDir=no" in iss
     assert json.loads(release_channel.read_text(encoding="utf-8")) == {
         "github_repo": "Marco-Oliver/TRAMA",
