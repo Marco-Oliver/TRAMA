@@ -358,7 +358,7 @@ class EvidenceNavigationRegressionTests(unittest.TestCase):
                 self.assertIn("6:18 — O suporte desta versão",lts)
                 self.assertIn("6:27 — Compare as versões",lts)
                 self.assertNotIn("10:00 — Voltamos",lts)
-                self.assertIn("a sequência abaixo não valida",lts)
+                self.assertIn("não valida automaticamente a explicação da IA",lts)
                 self.assertIn("^min-3-05",source_note)
                 self.assertIn("^min-6-11",source_note)
                 self.assertEqual(raw,original.read_text(encoding="utf-8"))
