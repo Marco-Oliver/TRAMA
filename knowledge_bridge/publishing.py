@@ -13,7 +13,7 @@ from collections import defaultdict, Counter
 from pathlib import Path
 from urllib.parse import quote
 
-from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines, study_windows
+from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines, study_windows, opening_lesson_number_mismatch
 from .store import Store
 from .memory_atlas import make_atlas, render_atlas, lesson_order, norm, note_for, literal_technical_mention
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections
@@ -453,6 +453,16 @@ class Publisher:
                 status = 'resumida com IA' if self.db.analysis(src['id'], src['digest']) else 'aguardando análise'
                 rows.append(f"- [[{Path(note).stem}|{label}]] — {status}; "
                             f"transcrição original: `{_escape_md(src['label'])}` (consulte a aba Transcrição)")
+                source_text=(self.vault/src["stored_path"]).read_text(
+                    encoding="utf-8-sig", errors="replace")
+                mismatch=opening_lesson_number_mismatch(source_text, lesson)
+                if mismatch:
+                    stamp, spoken_number = mismatch
+                    rows.append(
+                        f"  - **Numeração a conferir:** o arquivo é "
+                        f"**{_escape_md(lesson)}**, mas no TXT em "
+                        f"**{_escape_md(stamp)}** aparece **aula {spoken_number}**. "
+                        "A identificação original foi preservada.")
         else:
             rows.append('*Nenhuma gravação transcrita importada ainda.*')
         links=[]
@@ -672,7 +682,18 @@ class Publisher:
         times = evidence_excerpt(text)
         head = _frontmatter(tipo="aula", fonte_id=src["id"], aula=lesson,
                             gravacao=video, estado="resumida_com_ia" if analysis else "aguardando_ia")
-        body = [head, f"# {Path(src['label']).stem}", "", "## Resumo da aula"]
+        body = [head, f"# {Path(src['label']).stem}", ""]
+        mismatch = opening_lesson_number_mismatch(text, lesson)
+        if mismatch:
+            stamp, spoken_number = mismatch
+            body += [
+                "## Numeração da aula — conferir", "",
+                f"> O arquivo foi identificado como **{_escape_md(lesson)}**, mas a "
+                f"abertura da transcrição em **{_escape_md(stamp)}** cita "
+                f"**aula {spoken_number}**. Pode ser erro de transcrição ou referência "
+                "a outra aula. A numeração do arquivo não foi alterada.", "",
+            ]
+        body.append("## Resumo da aula")
         if analysis:
             body.append(analysis.get("resumo") or "*Resumo da aula ainda incompleto; confira a transcrição original.*")
             warnings=[w for w in analysis.get("qualidade_pendente",[])
