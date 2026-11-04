@@ -41,6 +41,15 @@ class DistributionContractTests(unittest.TestCase):
         pipeline=(ROOT/'.github/workflows/full-quality-audit.yml').read_text(encoding='utf-8')
         self.assertIn('windows_upgrade_smoke.ps1',pipeline)
 
+    def test_preview_artifact_requires_every_other_quality_gate(self):
+        workflow=(ROOT/'.github/workflows/quality-main.yml').read_text(encoding='utf-8')
+        self.assertIn('needs: [quality, v220-browser, v220-public-course]',workflow)
+        windows=workflow.split('  v220-windows:',1)[1].split('  v220-browser:',1)[0]
+        self.assertLess(windows.index('needs: [quality, v220-browser, v220-public-course]'),
+                        windows.index('actions/upload-artifact@v4'))
+        self.assertIn('windows_preview_smoke.ps1',windows)
+        self.assertIn('SHA256SUMS-Preview.txt',windows)
+
     def test_readme_has_real_screenshots_and_official_download_link(self):
         readme = (ROOT / 'README.md').read_text(encoding='utf-8')
         for name in ('mapa-evolucao.png','biblioteca.png'):
