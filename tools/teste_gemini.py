@@ -1,6 +1,6 @@
 """Live free-tier Gemini batch diagnostic. Does not access the Obsidian vault/database.
 
-Run: python tools/teste_gemini.py --pasta testes/aulas --limite 12 --saida testes/resultado
+Run: python tools/teste_gemini.py --pasta testes/aulas --limite 40 --pausa 4 --saida testes/resultado
 Reports contain course excerpts and must stay local.
 """
 from __future__ import annotations
@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -111,8 +112,27 @@ def failure_kind(exc, calls):
     messages = " ".join(str(c.get("erro", "")) for c in calls) + " " + str(exc)
     upper = messages.upper()
     http = next((c.get("http_status") for c in calls if c.get("http_status")), None)
+    if http == 429 or "429" in messages:
+        # The official Gemini error can contain quotaId and quotaMetric, not
+        # merely a human-readable message. Only infer scope when explicit.
+        details = " ".join(
+            json.dumps(c.get("api_error", ""), ensure_ascii=False) for c in calls
+        ).lower()
+        by_minute = bool(re.search(
+            r"per[\s_-]*minute|requests?[/\s_-]*min(?:ute)?|tokens?[/\s_-]*min(?:ute)?|\b(?:rpm|tpm)\b",
+            details,
+        ))
+        by_day = bool(re.search(
+            r"per[\s_-]*day|\bdaily\b|requests?[/\s_-]*day|tokens?[/\s_-]*day|\b(?:rpd|tpd)\b|per[\s_-]*24[\s_-]*hours?",
+            details,
+        ))
+        if by_minute and not by_day:
+            return "COTA_429_POR_MINUTO"
+        if by_day and not by_minute:
+            return "COTA_429_DIARIA"
+        return "COTA_429_INDETERMINADA"
     if http:
-        return "COTA_429" if http == 429 else f"HTTP_{http}"
+        return f"HTTP_{http}"
     if any(c.get("finishReason") == "MAX_TOKENS" for c in calls) or "MAX_TOKENS" in upper:
         return "MAX_TOKENS"
     if "BLOQUE" in upper or "SAFETY" in upper or "BLOCK" in upper:
@@ -171,6 +191,7 @@ def report_markdown(report):
              f"- Executado em: {report['gerado_em']}",
              f"- Aulas: {len(lessons)}; trechos: {len(entries)}; sucessos: {sum(e['ok'] for e in entries)}; falhas: {sum(not e['ok'] for e in entries)}",
              f"- Chamadas usadas: {len(calls)} / {report['limite']}",
+             f"- Pausa entre trechos: {report.get('pausa', 4)} segundos",
              f"- Tokens totais: prompt={tokens['promptTokenCount']}, resposta={tokens['candidatesTokenCount']}, raciocínio={tokens['thoughtsTokenCount']}",
              f"- Média de tokens de raciocínio: {round(tokens['thoughtsTokenCount'] / len(calls), 2) if calls else 0}",
              f"- Falhas por motivo: {json.dumps(dict(failures), ensure_ascii=False)}",
@@ -194,6 +215,8 @@ def report_markdown(report):
             continue
         error = str(row.get("erro", ""))[:300].replace("|", "/").replace("\n", " ")
         for c in row["chamadas"]:
+            if c.get("http_status") == 429:
+                error += " / API 429: " + str(c.get("api_error", ""))[:500].replace("|", "/").replace("\n", " ")
             if c.get("http_status") == 400:
                 error += " / API 400: " + str(c.get("api_error", ""))[:500].replace("|", "/").replace("\n", " ")
                 error += " / Campos possivelmente recusados: " + ", ".join(c.get("campos_possivelmente_recusados", []))
@@ -214,11 +237,13 @@ def report_markdown(report):
     return "\n".join(lines)
 
 
-def run(pasta: Path, saida: Path, limite: int = 12) -> dict:
+def run(pasta: Path, saida: Path, limite: int = 40, pausa: float = 4) -> dict:
     pasta = Path(pasta).expanduser().resolve()
     saida = Path(saida).expanduser().resolve()
     if not 1 <= limite <= 100:
         raise ValueError("O limite deve ficar entre 1 e 100.")
+    if not math.isfinite(pausa) or pausa < 0:
+        raise ValueError("A pausa deve ser um número finito de segundos, maior ou igual a zero.")
     if not pasta.is_dir() or pasta.is_symlink():
         raise ValueError("Pasta de aulas inexistente ou inválida.")
     if saida == pasta or saida.is_relative_to(pasta):
@@ -229,17 +254,22 @@ def run(pasta: Path, saida: Path, limite: int = 12) -> dict:
     settings = read_env(ROOT / "config.env")
     if os.environ.get("GEMINI_API_KEY"):
         settings["GEMINI_API_KEY"] = os.environ["GEMINI_API_KEY"]
+    if not settings.get("GEMINI_API_KEY"):
+        raise ValueError(
+            "Chave Gemini não encontrada. O script não lê a chave salva no app (protegida pelo Windows). "
+            "No PowerShell, execute:\n"
+            "$env:GEMINI_API_KEY = 'SUA_CHAVE'\n"
+            '$env:FREE_TIER_CONFIRMED = "YES"'
+        )
     if settings.get("FREE_TIER_CONFIRMED") != "YES":
         raise ValueError("Confirme FREE_TIER_CONFIRMED=YES e use um projeto sem faturamento.")
-    if not settings.get("GEMINI_API_KEY"):
-        raise ValueError("GEMINI_API_KEY não configurada.")
     settings["FREE_PROVIDER_ORDER"] = "gemini"
     settings["MAX_REQUESTS_PER_RUN"] = str(limite)
     router = FreeAIRouter(settings)
     secrets = [v for k, v in settings.items() if isinstance(v, str) and
                len(v) >= 8 and ("KEY" in k.upper() or "TOKEN" in k.upper())]
     report = {"gerado_em": datetime.now(timezone.utc).isoformat(),
-              "limite": limite, "trechos": []}
+              "limite": limite, "pausa": pausa, "trechos": []}
     stop = False
     for source in sources:
         if stop:
@@ -251,6 +281,10 @@ def run(pasta: Path, saida: Path, limite: int = 12) -> dict:
             if router.attempts >= router.max_requests or not router.active():
                 stop = True
                 break
+            # Space successive chunks (including across lesson files) on the Free tier.
+            # Never delay the first chunk or a batch already stopped by the quota.
+            if report["trechos"] and pausa:
+                time.sleep(pausa)
             calls = []
             entry = {"aula": source.stem, "trecho": number,
                      "caracteres_trecho": len(piece), "ok": False, "chamadas": calls}
@@ -292,11 +326,13 @@ def run(pasta: Path, saida: Path, limite: int = 12) -> dict:
 def main():
     parser = argparse.ArgumentParser(description="Diagnóstico Gemini gratuito sem abrir TRAMA ou Obsidian.")
     parser.add_argument("--pasta", type=Path, default=Path("testes/aulas"))
-    parser.add_argument("--limite", type=int, default=12)
+    parser.add_argument("--limite", type=int, default=40, help="Máximo de chamadas ao Gemini (1 a 100).")
+    parser.add_argument("--pausa", type=float, default=4, metavar="SEGUNDOS",
+                        help="Intervalo entre trechos, em segundos (padrão: 4).")
     parser.add_argument("--saida", type=Path, default=Path("testes/resultado"))
     args = parser.parse_args()
     try:
-        result = run(args.pasta, args.saida, args.limite)
+        result = run(args.pasta, args.saida, args.limite, args.pausa)
     except (ValueError, OSError) as exc:
         print(f"Teste não iniciado: {str(exc)[:220]}", file=sys.stderr)
         return 2
