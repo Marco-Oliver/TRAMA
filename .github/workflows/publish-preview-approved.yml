@@ -54,8 +54,10 @@ jobs:
           test -n "$CHECK_PATH"
           test "$(dirname "$SETUP_PATH")" = "$(dirname "$CHECK_PATH")"
           cd "$(dirname "$SETUP_PATH")"
-          grep -Eqi "^${EXPECTED_SHA}  TRAMA_Preview_Setup.exe$" SHA256SUMS-Preview.txt
-          sha256sum --check SHA256SUMS-Preview.txt
+          # Windows PowerShell wrote the manifest with CRLF; keep the
+          # published original, normalize line endings only for CI checks.
+          tr -d '\r' < SHA256SUMS-Preview.txt | grep -Eqi "^${EXPECTED_SHA}  TRAMA_Preview_Setup.exe$"
+          sha256sum --check <(tr -d '\r' < SHA256SUMS-Preview.txt)
           gh release create "$RELEASE_TAG" TRAMA_Preview_Setup.exe SHA256SUMS-Preview.txt \
             --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --prerelease \
             --title 'TRAMA 2.2.0 Preview — build 189' \
