@@ -215,9 +215,11 @@ def concept_from_text(text: str) -> set[str]:
 
 def match_lesson_to_repository(transcript: str, analysis: dict | None, repo: dict, cap: int = 8) -> list[dict]:
     """Return conservative links. Code presence + lesson mention only; no authorship inference."""
+    # The transcript, not a model-generated concept list, is the source of
+    # truth for candidate links. Historic caches and manually imported
+    # analyses can contain ungrounded terms. Appending them here allowed a
+    # hallucinated concept to link to real but unrelated code.
     text = transcript[:160_000]
-    if analysis:
-        text += "\n" + "\n".join(str(c.get('nome','')) for c in analysis.get('conceitos',[]) if isinstance(c,dict))
     concepts = concept_from_text(text)
     found = []
     seen=set()
