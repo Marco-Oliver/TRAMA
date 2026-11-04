@@ -131,7 +131,7 @@ function libRenderMarkdown(markdown,source,title){
    const flushText=()=>{if(paragraph.length){items.push(`<p>${libWiki(paragraph.join(' '),source)}</p>`);paragraph=[];}};
    const flushBullets=()=>{if(bullets.length){items.push(`<ul>${bullets.map(t=>`<li>${libWiki(t,source)}</li>`).join('')}</ul>`);bullets=[];}};
    for(const raw of blockquote){
-    const bullet=/^\\s*[-*]\\s+(.+)/.exec(raw);
+    const bullet=/^\s*[-*]\s+(.+)/.exec(raw);
     if(bullet){flushText();bullets.push(bullet[1]);}
     else {flushBullets();if(raw.trim())paragraph.push(raw.trim());else flushText();}
    }
