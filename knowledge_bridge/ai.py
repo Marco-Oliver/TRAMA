@@ -171,13 +171,22 @@ def _completion(provider: str, model: str, key: str, prompt: str, media: tuple[s
                              "temperature": 0.1, "max_tokens": 2800},
                        {"Authorization": f"Bearer {key}"}, provider)
         try:
-            answer = result["choices"][0]["message"]["content"]
+            choice = result["choices"][0]
+            reason = str(choice.get("finish_reason") or "")
+            if reason == "length":
+                raise ProviderError(provider, "resposta cortada por limite de tokens (length)")
+            if reason in ("content_filter", "error"):
+                raise ProviderError(provider, f"geração interrompida ({reason})")
+            answer = choice["message"]["content"]
+            if not isinstance(answer, str):
+                raise TypeError("missing content")
         except (KeyError, IndexError, TypeError) as exc:
-            raise ProviderError(provider, "resposta sem texto") from exc
+            raise ProviderError(provider, "resposta sem texto", retryable=True) from exc
     try:
         return _extract_json(answer)
     except (ValueError, json.JSONDecodeError) as exc:
-        raise ProviderError(provider, "resposta estruturada inválida; nada será publicado") from exc
+        raise ProviderError(provider, "resposta estruturada inválida; nada será publicado",
+                            retryable=True) from exc
 
 
 def _teacher_completion(provider: str, model: str, key: str, prompt: str) -> dict:
@@ -199,9 +208,15 @@ def _teacher_completion(provider: str, model: str, key: str, prompt: str) -> dic
                           "temperature": 0.3, "max_tokens": 3600},
                          {"Authorization": f"Bearer {key}"}, provider)
         try:
-            body = response["choices"][0]["message"]["content"]
+            choice = response["choices"][0]
+            if choice.get("finish_reason") == "length":
+                raise ProviderError(provider, "resposta do professor cortada (length)")
+            if choice.get("finish_reason") in ("content_filter", "error"):
+                raise ProviderError(provider, "resposta do professor bloqueada")
+            body = choice["message"]["content"]
         except (KeyError, TypeError, IndexError) as exc:
-            raise ProviderError(provider, "resposta do professor vazia ou inválida") from exc
+            raise ProviderError(provider, "resposta do professor vazia ou inválida",
+                                retryable=True) from exc
     if not isinstance(body, str) or len(body) > 28_000:
         raise ProviderError(provider, "tamanho de resposta inesperado")
     try:
@@ -348,7 +363,19 @@ No máximo 8 relações, 5 correções e 5 novidades. Campos ausentes devem ser 
                 payload = _teacher_completion(provider, model, self.env[key_var], prompt)
                 return AIResult(payload, provider, model)
             except ProviderError as exc:
-                self.blocked.add(provider)
+                if exc.quota or exc.fatal:
+                    self.blocked.add(provider)
+                elif exc.retryable and self.attempts < self.max_requests:
+                    # One extra request; counts against the local Free budget.
+                    time.sleep(0.25)
+                    self.attempts += 1
+                    try:
+                        payload = _teacher_completion(provider, model, self.env[key_var], prompt)
+                        return AIResult(payload, provider, model)
+                    except ProviderError as later:
+                        if later.quota or later.fatal:
+                            self.blocked.add(provider)
+                        exc = later
                 errors.append(str(exc))
         raise NoFreeProvider("Nenhum provedor Free respondeu: " + "; ".join(errors))
 
@@ -366,6 +393,18 @@ No máximo 8 relações, 5 correções e 5 novidades. Campos ausentes devem ser 
                 payload = _completion(provider, model, self.env[key_var], prompt)
                 return AIResult(payload=payload, provider=provider, model=model)
             except ProviderError as exc:
-                self.blocked.add(provider)  # evita repetição sem fim
+                if exc.quota or exc.fatal:
+                    self.blocked.add(provider)
+                elif exc.retryable and self.attempts < self.max_requests:
+                    # One bounded retry. Temporary errors do not blacklist.
+                    time.sleep(0.25)
+                    self.attempts += 1
+                    try:
+                        payload = _completion(provider, model, self.env[key_var], prompt)
+                        return AIResult(payload=payload, provider=provider, model=model)
+                    except ProviderError as later:
+                        if later.quota or later.fatal:
+                            self.blocked.add(provider)
+                        exc = later
                 errors.append(str(exc))
         raise NoFreeProvider("Todos os provedores falharam ou atingiram cotas: " + "; ".join(errors))
