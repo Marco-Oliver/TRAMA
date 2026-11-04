@@ -1,0 +1,50 @@
+name: Validar upgrade real TRAMA Preview 189 para 207
+
+on:
+  push:
+    branches: [feat/v2.2.0-automation-foundations]
+    paths:
+      - '.github/workflows/preview-upgrade-189-207.yml'
+      - 'tools/windows_preview_upgrade_smoke.ps1'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  upgrade:
+    if: github.repository == 'Marco-Oliver/TRAMA'
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Baixar EXE publico da Preview 189 e artefato VALIDADO da Preview 207
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = 'Marco-Oliver/TRAMA'
+          $run = gh api "repos/$repo/actions/runs/41894709679" | ConvertFrom-Json
+          if ($run.status -ne 'completed' -or $run.conclusion -ne 'success' -or
+              $run.run_number -ne 207 -or
+              $run.head_sha -ne 'a78b61e50bb65c752575564f81b59b1076cfdffa') {
+            throw 'Preview 207 source build not validated.'
+          }
+          $jobs = gh api "repos/$repo/actions/runs/41894709679/jobs?per_page=100" | ConvertFrom-Json
+          if ($jobs.total_count -ne 4 -or @($jobs.jobs | Where-Object conclusion -ne 'success').Count -ne 0) {
+            throw 'Candidate 207 did not pass all 4 jobs.'
+          }
+          $old = gh release view v2.2.0-preview.189 -R $repo --json tagName,isPrerelease,isDraft | ConvertFrom-Json
+          if ($old.tagName -ne 'v2.2.0-preview.189' -or -not $old.isPrerelease -or $old.isDraft) {
+            throw 'Source Preview 189 is not a published prerelease.'
+          }
+          New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'preview-old'),
+            (Join-Path $env:RUNNER_TEMP 'preview-new') | Out-Null
+          gh release download v2.2.0-preview.189 -R $repo --pattern 'TRAMA_Preview_Setup.exe' --dir (Join-Path $env:RUNNER_TEMP 'preview-old')
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to download public Preview 189' }
+          gh run download 41894709679 -R $repo --name 'TRAMA-v220-PR5-Preview-ISOLADA-NAO-RELEASE' --dir (Join-Path $env:RUNNER_TEMP 'preview-new')
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to download verified Preview 207 artifact' }
+      - name: Instalar 189, atualizar para 207, preservar dados e desinstalar
+        shell: pwsh
+        run: ./tools/windows_preview_upgrade_smoke.ps1
