@@ -133,3 +133,143 @@ def download_verified_installer(repo: str, destination, opener=None) -> dict:
         # Network/OS exceptions may embed signed URLs, local paths or tokens.
         # Do not expose raw exception text to the UI or logs.
         return {'ok':False,'message':'Não foi possível baixar a atualização. Verifique a conexão e tente novamente.'}
+
+
+# QA Preview channel: published GitHub *prereleases*, never /releases/latest.
+# A GitHub Actions artifact alone is NOT a public updater endpoint.
+_PREVIEW = re.compile(r'^v?2\.2\.0-preview\.([1-9][0-9]{0,7})$')
+_PREVIEW_INSTALLER = 'TRAMA_Preview_Setup.exe'
+_PREVIEW_CHECKSUMS = 'SHA256SUMS-Preview.txt'
+
+
+def preview_build_number(version: str) -> int | None:
+    match = _PREVIEW.fullmatch(str(version))
+    return int(match.group(1)) if match else None
+
+
+def _latest_preview(repo: str, installed: str, opener=None):
+    """Find an explicitly published prerelease newer than this Preview build.
+
+    This endpoint includes prereleases, unlike GitHub releases/latest. Never
+    select the stable channel or a draft/malformed/foreign-tag release.
+    """
+    if not _REPO.fullmatch(str(repo)) or '..' in repo:
+        raise ValueError('Repositório de Preview inválido.')
+    current = preview_build_number(installed)
+    if current is None:
+        raise ValueError('Versão Preview instalada inválida.')
+    opener = opener or urllib.request.urlopen
+    req = urllib.request.Request(
+        f'https://api.github.com/repos/{repo}/releases?per_page=40',
+        headers={'Accept':'application/vnd.github+json',
+                 'User-Agent':'TRAMA-Preview-Update-Check/1'})
+    with opener(req, timeout=15) as response:
+        data = response.read(1_000_001)
+        if len(data) > 1_000_000:
+            raise ValueError('Listagem de releases grande demais.')
+    releases = json.loads(data)
+    if not isinstance(releases, list):
+        raise ValueError('Resposta de releases inválida.')
+    choices = []
+    for release in releases[:40]:
+        if not isinstance(release, dict) or release.get('prerelease') is not True or release.get('draft') is True:
+            continue
+        tag = release.get('tag_name', '')
+        number = preview_build_number(tag)
+        if number is None or number <= current:
+            continue
+        if release.get('html_url') != f'https://github.com/{repo}/releases/tag/{tag}':
+            continue
+        assets = release.get('assets', [])
+        if not isinstance(assets, list) or len(assets) > 100:
+            continue
+        by_name = {item.get('name'): item for item in assets
+                   if isinstance(item, dict) and isinstance(item.get('name'), str)}
+        required = (_PREVIEW_INSTALLER, _PREVIEW_CHECKSUMS)
+        prefix = f'https://github.com/{repo}/releases/download/{tag}/'
+        if not all(name in by_name and
+                   by_name[name].get('browser_download_url') == prefix + name
+                   for name in required):
+            continue
+        choices.append((number, release))
+    return max(choices, key=lambda item: item[0])[1] if choices else None
+
+
+def check_preview_release(repo: str, installed: str, opener=None) -> dict:
+    """Read-only check for an explicitly published Preview installer."""
+    try:
+        release = _latest_preview(repo, installed, opener=opener)
+        if release is None:
+            return {'ok':True,'configured':True,'available':False,
+                    'installed':installed,
+                    'message':'Nenhuma Preview nova publicada. Você está no canal experimental.'}
+        return {'ok':True,'configured':True,'available':True,
+                'installed':installed, 'version':release['tag_name'],
+                'release_page':release['html_url'],
+                'message':'Nova Preview disponível para atualizar pelo aplicativo.'}
+    except (OSError,ValueError,TypeError,KeyError,urllib.error.URLError):
+        return {'ok':False,
+                'message':'Não foi possível consultar o canal Preview; o aplicativo continua offline.'}
+
+
+def download_verified_preview_installer(repo: str, installed: str, destination, opener=None) -> dict:
+    """Fetch a newer Preview EXE from published prerelease assets, verify SHA256.
+
+    Does not launch anything, and cannot update the stable TRAMA installation.
+    """
+    import hashlib
+    import os
+    import tempfile
+    from pathlib import Path
+
+    opener = opener or urllib.request.urlopen
+    try:
+        release = _latest_preview(repo, installed, opener=opener)
+        if release is None:
+            return {'ok':False,'message':'Nenhuma Preview mais nova publicada.'}
+        tag=release['tag_name']
+        prefix=f'https://github.com/{repo}/releases/download/{tag}/'
+        with opener(urllib.request.Request(prefix+_PREVIEW_CHECKSUMS,
+                    headers={'User-Agent':'TRAMA-Preview-Update-Check/1'}),timeout=20) as response:
+            raw=response.read(4097)
+        if len(raw)>4096:
+            raise ValueError('Manifesto Preview grande demais.')
+        expected=''
+        for row in raw.decode('ascii').splitlines():
+            match=re.fullmatch(r'([a-fA-F0-9]{64})\s+\*?TRAMA_Preview_Setup\.exe',row.strip())
+            if match:
+                expected=match.group(1).lower()
+                break
+        if not expected:
+            return {'ok':False,'message':'Manifesto Preview sem SHA-256 válido.'}
+        folder=Path(destination).expanduser().resolve()
+        folder.mkdir(parents=True,exist_ok=True)
+        fd,temp=tempfile.mkstemp(prefix='.preview-download-',suffix='.part',dir=str(folder))
+        total=0
+        digest=hashlib.sha256()
+        try:
+            with os.fdopen(fd,'wb') as output:
+                with opener(urllib.request.Request(prefix+_PREVIEW_INSTALLER,
+                            headers={'User-Agent':'TRAMA-Preview-Update-Check/1'}),timeout=90) as reply:
+                    while True:
+                        data=reply.read(512*1024)
+                        if not data:
+                            break
+                        total+=len(data)
+                        if total>350*1024*1024:
+                            raise ValueError('Instalador Preview excede tamanho permitido.')
+                        digest.update(data)
+                        output.write(data)
+            if total<1024 or digest.hexdigest()!=expected:
+                raise IntegrityVerificationError('Preview SHA-256 mismatch')
+            final=folder/f'TRAMA_Preview_Setup_{tag}.exe'
+            os.replace(temp,final)
+            return {'ok':True,'path':str(final),'sha256':expected,'version':tag,
+                    'message':'Preview verificada. Confirme a instalação na janela do Windows.'}
+        finally:
+            if os.path.exists(temp):
+                os.unlink(temp)
+    except IntegrityVerificationError:
+        return {'ok':False,'message':'SHA-256 da Preview não confere. Instalação bloqueada.'}
+    except (OSError,ValueError,TypeError,KeyError,UnicodeError,urllib.error.URLError):
+        return {'ok':False,'message':'Não foi possível baixar a Preview; nenhum instalador será executado.'}
