@@ -26,7 +26,7 @@ def long_synthetic_lesson() -> str:
         f"[{i//60}:{i%60:02d}] A aplicação recebe um novo pedido, "
         "faz validações e apresenta a fila de eventos em um desenho "
         "conceitual fictício, sem implementar integrações."
-        for i in range(2, 157)
+        for i in range(2, 112)
     ]
     ending = [
         "[20:05] Agora mostramos a referência literal HttpClient, "
