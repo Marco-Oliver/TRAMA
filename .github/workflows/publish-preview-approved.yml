@@ -45,10 +45,15 @@ jobs:
           mkdir -p "$RUNNER_TEMP/preview"
           gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" \
             --name TRAMA-v220-PR5-Preview-ISOLADA-NAO-RELEASE --dir "$RUNNER_TEMP/preview"
-          cd "$RUNNER_TEMP/preview"
-          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 2
-          test -f TRAMA_Preview_Setup.exe
-          test -f SHA256SUMS-Preview.txt
+          echo 'Arquivos recuperados do artefato validado:'
+          find "$RUNNER_TEMP/preview" -type f -printf '%P\n'
+          test "$(find "$RUNNER_TEMP/preview" -type f | wc -l)" -eq 2
+          SETUP_PATH="$(find "$RUNNER_TEMP/preview" -type f -name TRAMA_Preview_Setup.exe -print -quit)"
+          CHECK_PATH="$(find "$RUNNER_TEMP/preview" -type f -name SHA256SUMS-Preview.txt -print -quit)"
+          test -n "$SETUP_PATH"
+          test -n "$CHECK_PATH"
+          test "$(dirname "$SETUP_PATH")" = "$(dirname "$CHECK_PATH")"
+          cd "$(dirname "$SETUP_PATH")"
           grep -Eqi "^${EXPECTED_SHA}  TRAMA_Preview_Setup.exe$" SHA256SUMS-Preview.txt
           sha256sum --check SHA256SUMS-Preview.txt
           gh release create "$RELEASE_TAG" TRAMA_Preview_Setup.exe SHA256SUMS-Preview.txt \
