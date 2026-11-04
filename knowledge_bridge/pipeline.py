@@ -344,6 +344,13 @@ class Application:
                     # Never expose original provider payload, HTTP response,
                     # secrets or full traceback to the user-visible log.
                     cause = redact_sensitive(str(exc).replace("\n", " ")[:300])
+                    # Include the actual failure category without printing
+                    # raw API key assignments accidentally embedded in an
+                    # exception raised by third-party code.
+                    cause = re.sub(
+                        r"(?i)\b([A-Z0-9_]*(?:API_KEY|ACCESS_TOKEN|CLIENT_SECRET|"
+                        r"PASSWORD|PRIVATE_KEY))\s*[:=]\s*[^\s,;]+",
+                        r"\1=[SEGREDO-OCULTO]", cause)
                     self.log(
                         f"Falha em {src['label']}: {type(exc).__name__}: "
                         f"{cause or 'erro não detalhado'}. Aula mantida para revisão.")
