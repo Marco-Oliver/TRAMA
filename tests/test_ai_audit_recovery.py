@@ -13,7 +13,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from knowledge_bridge import ai
-from knowledge_bridge.ai import AIResult, FreeAIRouter, NoFreeProvider, ProviderError
+from knowledge_bridge.ai import (AIResult, AllProvidersFailed, BudgetStopped,
+                                 FreeAIRouter, NoFreeProvider, ProviderError)
 from knowledge_bridge.pipeline import Application
 
 
@@ -123,7 +124,7 @@ class RecoveryTests(unittest.TestCase):
             ai, "_completion", side_effect=ProviderError(
                 "gemini", "conexão temporariamente indisponível", retryable=True)
         ):
-            with self.assertRaises(NoFreeProvider):
+            with self.assertRaises(AllProvidersFailed):
                 router.analyze("fala teste", "Aula-001")
         self.assertEqual(router.attempts, 2)
         self.assertIn("gemini", router.active())
@@ -143,7 +144,7 @@ class RecoveryTests(unittest.TestCase):
         router = self.router(MAX_REQUESTS_PER_RUN="1")
         with patch.object(ai, "_completion", side_effect=ProviderError(
                 "gemini", "falha 503", retryable=True)) as complete:
-            with self.assertRaises(NoFreeProvider):
+            with self.assertRaises(BudgetStopped):
                 router.analyze("test", "test")
         self.assertEqual(complete.call_count, 1)
         self.assertEqual(router.attempts, 1)

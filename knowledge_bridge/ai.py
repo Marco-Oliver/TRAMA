@@ -431,11 +431,11 @@ No máximo 8 relações, 5 correções e 5 novidades. Campos ausentes devem ser 
                             self.blocked.add(provider)
                         exc = later
                 errors.append(str(exc))
+        if not self.active():
+            raise NoFreeProvider("Nenhum provedor Free respondeu: " + "; ".join(errors))
         if self.attempts >= self.max_requests:
             raise BudgetStopped("Limite local de chamadas atingido; retome depois.")
-        if self.active():
-            raise AllProvidersFailed("Provedores ativos, mas sem conteúdo válido: " + "; ".join(errors))
-        raise NoFreeProvider("Nenhum provedor Free respondeu: " + "; ".join(errors))
+        raise AllProvidersFailed("Provedores ativos, mas sem conteúdo válido: " + "; ".join(errors))
 
 
     def _request(self, prompt: str) -> AIResult:
@@ -465,8 +465,8 @@ No máximo 8 relações, 5 correções e 5 novidades. Campos ausentes devem ser 
                             self.blocked.add(provider)
                         exc = later
                 errors.append(str(exc))
+        if not self.active():
+            raise NoFreeProvider("Todos os provedores falharam ou atingiram cotas: " + "; ".join(errors))
         if self.attempts >= self.max_requests:
             raise BudgetStopped("Limite local de chamadas atingido; retome depois.")
-        if self.active():
-            raise AllProvidersFailed("Provedores ativos, mas sem conteúdo válido: " + "; ".join(errors))
-        raise NoFreeProvider("Todos os provedores falharam ou atingiram cotas: " + "; ".join(errors))
+        raise AllProvidersFailed("Provedores ativos, mas sem conteúdo válido: " + "; ".join(errors))
