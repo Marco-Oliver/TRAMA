@@ -6,6 +6,6 @@
   "sha256": "a6966cf0d8baeac0c797ccb09490b7170593863d7c31a7630e74a0fe54748144",
   "upgrade_ci_run": 41896753352,
   "scope": "User-approved experimental Preview release only. Stable main and vault stay unchanged.",
-  "retry": 1,
-  "retry_context": "Second controlled attempt after GitHub Actions reported 403 Resource not accessible by integration; no asset changes."
+  "retry": 2,
+  "retry_context": "Use GitHub documented existing-tag route, SHA-pinned to already validated 207 source; do not change main."
 }
