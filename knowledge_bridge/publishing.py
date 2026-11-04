@@ -736,7 +736,7 @@ class Publisher:
                 if mentioned:
                     observed.append((candidate["nome"],mentioned))
                 else:
-                    unsupported.append(candidate["nome"])
+                    unsupported.append(candidate)
             if observed:
                 body += ["", "## Termos técnicos mencionados — explicação a conferir", "",
                          "> Os nomes abaixo aparecem no TXT de forma abreviada ou normalizada. "
@@ -748,9 +748,20 @@ class Publisher:
                 body += ["", "## Termos sugeridos pela IA para conferir", "",
                          "> Não foi encontrada menção literal nem abreviação verificável "
                          "para estes rótulos na transcrição. Não são conhecimentos confirmados."]
-                for label in unsupported:
+                for candidate in unsupported:
+                    label=str(candidate.get("nome",""))
                     body.append("- `"+_escape_md(label)+
-                                "` — conferir com a transcrição e os materiais associados.")
+                                "` — hipótese da IA, conferir com transcrição e materiais.")
+                    quote=str(candidate.get("evidencia_literal",""))[:260]
+                    if quote:
+                        stamp=str(candidate.get("tempo","")).strip()
+                        body.append("  - **Citação literal conferida no TXT**" +
+                                    (f" ({_escape_md(stamp)})" if stamp else "") +
+                                    ": “"+_escape_md(quote)+"”.")
+                        hypothesis=str(candidate.get("explicacao_sugerida",""))[:500]
+                        if hypothesis:
+                            body.append("  - **Interpretação da IA, não confirmada:** "+
+                                        _escape_md(hypothesis))
             if analysis.get("exemplos"):
                 body += ["", "## Exemplos mencionados"] + [
                     f"- {_escape_md(x)}" for x in analysis.get("exemplos",[])]
