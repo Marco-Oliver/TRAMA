@@ -72,8 +72,9 @@ class MessagingLessonAcceptanceTests(unittest.TestCase):
         self.assertEqual(labels["RabbitMQ"][0],"0:08")
         self.assertEqual(labels["MassTransit"][0],"0:08")
         self.assertEqual(labels["message queue"][0],"0:12")
-        self.assertIn("HTTP 202 Accepted / HTTP 204 No Content",
-                      labels["conferir HTTP 202 Accepted / HTTP 204 No Content"][1])
+        self.assertEqual(labels[
+            "conferir HTTP 202 Accepted / HTTP 204 No Content"],
+            ("0:16", "Accepted ... 204"))
         self.assertLessEqual(len(hints),8)
         self.assertEqual(len(hints),len(set(x[2] for x in hints)))
         # Correctly transcribed technical terms do not produce corrections.
