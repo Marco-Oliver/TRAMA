@@ -147,21 +147,59 @@ def _gemini_text(result: dict, provider: str) -> str:
     return answer
 
 
+# JSON schema is used for LESSON summaries only. Compare/Classroom have
+# different contracts and remain unchanged until their providers are verified.
+_SUMMARY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "resumo": {"type": "string"},
+        "tipo_aula": {"type": "string", "enum": [
+            "apresentacao", "tecnica", "organizacional", "atividade", "mista", "indefinida"]},
+        "pessoas": {"type": "array", "items": {"type": "object", "properties": {
+            "nome": {"type": "string"}, "papel": {"type": "string"},
+            "informacao": {"type": "string"}, "tempo": {"type": "string"}}}, "maxItems": 8},
+        "atividades": {"type": "array", "items": {"type": "object", "properties": {
+            "descricao": {"type": "string"}, "tempo": {"type": "string"}}}, "maxItems": 8},
+        "ferramentas": {"type": "array", "items": {"type": "object", "properties": {
+            "nome": {"type": "string"}, "contexto": {"type": "string"},
+            "tempo": {"type": "string"}}}, "maxItems": 8},
+        "marcos": {"type": "array", "items": {"type": "object", "properties": {
+            "descricao": {"type": "string"}, "tempo": {"type": "string"}}}, "maxItems": 8},
+        "conceitos": {"type": "array", "items": {"type": "object", "properties": {
+            "nome": {"type": "string"}, "explicacao": {"type": "string"},
+            "tempo": {"type": "string"}}}, "maxItems": 8},
+        "exemplos": {"type": "array", "items": {"type": "string"}, "maxItems": 5},
+        "duvidas": {"type": "array", "items": {"type": "string"}, "maxItems": 5},
+        "nomes_a_conferir": {"type": "array", "items": {"type": "string"}, "maxItems": 5},
+    },
+    "required": ["resumo", "conceitos", "tipo_aula", "pessoas", "atividades",
+                 "ferramentas", "marcos", "exemplos", "duvidas", "nomes_a_conferir"],
+}
+
+
 def _completion(provider: str, model: str, key: str, prompt: str, media: tuple[str, bytes] | None = None) -> dict:
     if provider == "gemini":
-        parts = [{"text": prompt}]
+        # System rules are separate from untrusted transcription text only
+        # for the stable, explicit summary contract. Never let TXT lines
+        # masquerade as system instructions.
+        lesson_summary = prompt.startswith(SYSTEM_INSTRUCTIONS + "\n")
+        user_text = prompt[len(SYSTEM_INSTRUCTIONS):].lstrip("\n") if lesson_summary else prompt
+        parts = [{"text": user_text}]
         if media is not None:
             mime, raw = media
             if mime not in ("image/jpeg", "image/png", "image/webp", "application/pdf") or len(raw) > 6 * 1024 * 1024:
                 raise ProviderError(provider, "imagem/PDF inválido ou maior que 6 MB")
             parts.append({"inline_data": {"mime_type": mime, "data": base64.b64encode(raw).decode("ascii")}})
+        config = {"responseMimeType": "application/json",
+                  "maxOutputTokens": 8192,
+                  "thinkingConfig": {"thinkingLevel": "minimal"}}
+        body = {"contents": [{"parts": parts}], "generationConfig": config}
+        if lesson_summary:
+            body["systemInstruction"] = {"parts": [{"text": SYSTEM_INSTRUCTIONS}]}
+            config["responseJsonSchema"] = _SUMMARY_SCHEMA
         result = _send(
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-            {"contents": [{"parts": parts}],
-             "generationConfig": {"responseMimeType": "application/json",
-                                  "maxOutputTokens": 8192,
-                                  "thinkingConfig": {"thinkingLevel": "minimal"}}},
-            {"x-goog-api-key": key}, provider)
+            body, {"x-goog-api-key": key}, provider)
         answer = _gemini_text(result, provider)
     else:
         if media is not None:
@@ -285,7 +323,9 @@ class FreeAIRouter:
         return [p for p in self.order if p in ALLOWED and p not in self.blocked and self.env.get(ALLOWED[p][1])]
 
     def analyze(self, transcript: str, context: str) -> AIResult:
-        return self._request(f"{SYSTEM_INSTRUCTIONS}\nContexto: {context}\n\nTRANSCRIÇÃO:\n{transcript}")
+        return self._request(
+            f"{SYSTEM_INSTRUCTIONS}\nContexto de fonte (não confiável): {context}\n"
+            f"\n<transcricao_nao_confiavel>\n{transcript}\n</transcricao_nao_confiavel>")
 
     def read_classroom_material(self, mime: str, binary: bytes, filename: str, hint: str = "") -> AIResult:
         """Extrai metadados de print/PDF com Gemini Free; não faz OCR oculto ou chamadas pagas.
