@@ -22,4 +22,6 @@ jobs:
           python-version: '3.11'
       - name: Consultar API publica e baixar EXE com SHA-256 usando codigo real do TRAMA
         shell: pwsh
+        env:
+          PYTHONPATH: .
         run: python tools/qa_preview_public_updater.py
