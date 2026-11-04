@@ -76,6 +76,8 @@ jobs:
           node --check knowledge_bridge/ui/teacher.js
       - name: Preparar versao Preview isolada do TRAMA estavel
         shell: pwsh
+        env:
+          TRAMA_PREVIEW_BUILD: ${{ github.run_number }}
         run: python tools/build_preview_candidate.py
       - name: Empacotar executavel Windows Preview sem publicar
         shell: pwsh
