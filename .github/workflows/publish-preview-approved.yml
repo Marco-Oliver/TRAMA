@@ -4,7 +4,7 @@ on:
   push:
     branches: [feat/v2.2.0-automation-foundations]
     paths:
-      - 'release/preview-publish-request.json'
+      - 'docs/preview-publish-request.json'
 
 permissions:
   contents: write
@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          REQUEST=release/preview-publish-request.json
+          REQUEST=docs/preview-publish-request.json
           RUN_ID=41774775687
           RELEASE_TAG=v2.2.0-preview.189
           SOURCE_SHA=315a8d0caaca283d89ec546b35c46ad1868c42cf
