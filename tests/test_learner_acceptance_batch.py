@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from knowledge_bridge.ai import AIResult
+from knowledge_bridge.ai import AIResult, BudgetStopped
 from knowledge_bridge.auto_ingest import AutoOrganizer
 from knowledge_bridge.pipeline import Application
 from knowledge_bridge.recovery import create_backup, restore_backup
@@ -152,3 +152,64 @@ class LearnerAcceptanceBatchTests(unittest.TestCase):
                     reopened.close()
             finally:
                 app.close()
+
+
+class ResumeAfterShutdownTests(unittest.TestCase):
+    def test_resume_eight_lessons_after_budget_stops_and_process_reopens(self):
+        """A shutdown-like restart must reuse work already committed to SQLite."""
+        with tempfile.TemporaryDirectory(prefix="trama-resume-after-exit-") as folder:
+            root=Path(folder)
+            inputs=root/"fontes"
+            inputs.mkdir()
+            vault=root/"cofre-copia"
+            originals={}
+            for number in range(1,9):
+                path=inputs/f"Aula-{number:03d}-V01.txt"
+                path.write_text(
+                    f"[0:01] Aula {number:03d} trata de SDK.\n"
+                    "[0:02] SDK significa Software Development Kit.\n",
+                    encoding="utf-8")
+                originals[path.name]=path.read_bytes()
+
+            class StopAfterThree(DeterministicCourseProvider):
+                def analyze(self, source, context):
+                    if self.attempts >= 3:
+                        raise BudgetStopped("limite gratuito fictício")
+                    return super().analyze(source,context)
+
+            first=Application(vault,root/"sem-chave.env",log=lambda *_:None)
+            first.ai=StopAfterThree()
+            try:
+                for path in sorted(inputs.glob("*.txt")):
+                    self.assertTrue(first.add_file(path))
+                first.process()
+                self.assertEqual(first.ai.attempts,3)
+                states={row["label"]:row["status"] for row in first.store.sources("transcript")}
+                self.assertEqual(sum(state=="PUBLISHED" for state in states.values()),3)
+                self.assertEqual(sum(state=="WAITING_FOR_PROVIDER" for state in states.values()),1)
+                self.assertEqual(len(first.store.sources("transcript")),8)
+                self.assertEqual(sum(
+                    first.store.analysis(src["id"],src["digest"]) is not None
+                    for src in first.store.sources("transcript")),3)
+            finally:
+                first.close()
+
+            # This is a distinct application process opening the exact
+            # same isolated copy, not a second loop on the same Python object.
+            second=Application(vault,root/"sem-chave.env",log=lambda *_:None)
+            second.ai=DeterministicCourseProvider()
+            try:
+                second.process()
+                self.assertEqual(second.ai.attempts,5)
+                self.assertTrue(all(row["status"]=="PUBLISHED"
+                                    for row in second.store.sources("transcript")))
+                self.assertEqual(len(second.store.sources("transcript")),8)
+                self.assertEqual(len(list((vault/"02-Minhas-Aulas").glob(
+                    "Aula-*/00-Visao-geral.md"))),8)
+                second.process()
+                self.assertEqual(second.ai.attempts,5,
+                    "Completed transcripts were sent again after resume.")
+            finally:
+                second.close()
+            for path in inputs.glob("*.txt"):
+                self.assertEqual(path.read_bytes(),originals[path.name])
