@@ -63,8 +63,17 @@ jobs:
           # published original, normalize line endings only for CI checks.
           tr -d '\r' < SHA256SUMS-Preview.txt | grep -Eqi "^${EXPECTED_SHA}  TRAMA_Preview_Setup.exe$"
           sha256sum --check <(tr -d '\r' < SHA256SUMS-Preview.txt)
+          # A release targeting a workflow-changing commit requires a token
+          # with Workflows:write. GITHUB_TOKEN cannot get that permission.
+          # Pre-create the exact lightweight tag via Git refs (Contents:write),
+          # verify it is immutably anchored, and publish using the existing tag.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" | jq -e --arg src "$SOURCE_SHA" '.object.type == "commit" and .object.sha == $src'
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$SOURCE_SHA" | jq -e --arg src "$SOURCE_SHA" '.object.type == "commit" and .object.sha == $src'
+          fi
           gh release create "$RELEASE_TAG" TRAMA_Preview_Setup.exe SHA256SUMS-Preview.txt \
-            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --prerelease \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
             --title 'TRAMA 2.2.0 Preview — build 207' \
             --notes 'Preview experimental isolada. Inclui revisão da aula A137, proteções adicionais e atualização pelo aplicativo. O upgrade real da 189 foi testado; não é versão estável.'
           gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft,assets | jq -e \
