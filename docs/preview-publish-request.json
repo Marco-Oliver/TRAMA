@@ -1,0 +1,9 @@
+{
+  "authorized": true,
+  "run_id": 41894709679,
+  "tag": "v2.2.0-preview.207",
+  "source_sha": "a78b61e50bb65c752575564f81b59b1076cfdffa",
+  "sha256": "a6966cf0d8baeac0c797ccb09490b7170593863d7c31a7630e74a0fe54748144",
+  "upgrade_ci_run": 41896753352,
+  "scope": "User-approved experimental Preview release only. Stable main and vault stay unchanged."
+}
