@@ -192,6 +192,26 @@ class LectureBatchTests(unittest.TestCase):
             finally:
                 app.close()
 
+    def test_exception_log_does_not_expose_named_api_key(self):
+        with tempfile.TemporaryDirectory(prefix="trama-error-privacy-") as temp:
+            root = Path(temp)
+            messages = []
+            app = Application(root / "vault", root / "none.env", log=messages.append)
+            path = root / "Aula-001-V01.txt"
+            path.write_text("[0:01] Aula de console sem dados privados.", encoding="utf-8")
+            app.add_file(path)
+            def fake(_piece, _context):
+                raise ValueError("invalid GEMINI_API_KEY=TOP_SECRET_FIXTURE_912345")
+            app.ai.analyze = fake
+            try:
+                app.process()
+                shown = " ".join(messages)
+                self.assertIn("ValueError", shown)
+                self.assertNotIn("TOP_SECRET_FIXTURE", shown)
+                self.assertIn("SEGREDO-OCULTO", shown)
+            finally:
+                app.close()
+
     def test_untimed_prefix_never_becomes_valid_anchor(self):
         result = Application._clean_result({
             "resumo": "Exemplo.",
