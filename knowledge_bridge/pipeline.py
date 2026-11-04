@@ -262,8 +262,26 @@ class Application:
             for i, piece in enumerate(pieces):
                 cached = None if force else self.store.get_chunk(src["id"], segment_digest, i)
                 if cached:
-                    all_results.append(cached)
-                    self.log(f"  Trecho {i+1}: reaproveitado.")
+                    # Older cached chunk analyses may have been checked
+                    # against the whole recording. Revalidate locally and
+                    # preserve earlier warnings without spending another
+                    # provider request or changing the original text.
+                    validated = self._clean_result(cached, piece)
+                    previous_unverified = cached.get("conceitos_a_conferir", [])
+                    if isinstance(previous_unverified, list):
+                        for item in previous_unverified:
+                            if (isinstance(item, dict) and item.get("nome") and
+                                    item not in validated["conceitos_a_conferir"] and
+                                    len(validated["conceitos_a_conferir"]) < 12):
+                                validated["conceitos_a_conferir"].append(item)
+                    previous_warnings = cached.get("qualidade_pendente", [])
+                    if isinstance(previous_warnings, list):
+                        for warning in previous_warnings:
+                            if (isinstance(warning, str) and warning not in validated["qualidade_pendente"]
+                                    and len(validated["qualidade_pendente"]) < 8):
+                                validated["qualidade_pendente"].append(warning)
+                    all_results.append(validated)
+                    self.log(f"  Trecho {i+1}: reaproveitado e conferido na fonte local.")
                     continue
                 try:
                     context_fragments=[]
@@ -275,7 +293,10 @@ class Application:
                     context='\n'.join(context_fragments[:4])[:3000]
                     prior = related_prior(self.store, src['lesson'] or '', piece)
                     result = self.ai.analyze(piece, f"Arquivo {src['label']}, trecho {i+1}/{len(pieces)}.\n{context}\n{prior}")
-                    clean = self._clean_result(result.payload, text)
+                    # Ground timestamps and technical labels to THIS segment.
+                    # A time or keyword in another segment is not evidence
+                    # that the provider analyzed it correctly here.
+                    clean = self._clean_result(result.payload, piece)
                     self.store.save_chunk(src["id"], segment_digest, i, result.provider,result.model,clean)
                     all_results.append(clean)
                     self.log(f"  Trecho {i+1}: {result.provider} / {result.model}.")
