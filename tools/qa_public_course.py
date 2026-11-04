@@ -100,6 +100,34 @@ def run(source_dir: Path) -> str:
                     raise AssertionError(f"Símbolo de código público ausente: {expected}")
             if not match_lesson_to_repository(samples[31],None,indexed):
                 raise AssertionError("Aula 031 não foi vinculada a código realmente indexado")
+            # Adversarial real-code test: the model can cite a real file and
+            # true source line but claim it implements an entirely unrelated
+            # concept. A valid line alone must not certify that false link.
+            auth_symbol = next(x for x in indexed["symbols"]
+                               if x.get("name") == "AuthService")
+            real_code_path = auth_symbol["path"]
+            real_code_line = auth_symbol["line"]
+            proposed = Application._check_comparison({
+                "relacoes": [
+                    {"conceito":"GraphQL","tempo":"0:01",
+                     "path":real_code_path,"line":real_code_line,
+                     "evolucao":"Invenção deliberada usando linha real"},
+                    {"conceito":"AuthService","tempo":"0:01",
+                     "path":real_code_path,"line":real_code_line,
+                     "evolucao":"Nome realmente falado e presente no código"}
+                ],
+                "novidades":[{"conceito":"Kafka inventado","tempo":"0:01"}],
+            }, samples[31], indexed)
+            if [x["conceito"] for x in proposed["relacoes"]] != ["AuthService"]:
+                raise AssertionError("Relação falsificada com arquivo real foi aceita")
+            if proposed["novidades"]:
+                raise AssertionError("Novidade inventada sem evidência foi publicada")
+            unrelated = Application._check_comparison({
+                "relacoes":[{"conceito":"AuthService","tempo":"0:01",
+                             "path":real_code_path,"line":real_code_line}],
+            }, samples[49], indexed)
+            if unrelated["relacoes"]:
+                raise AssertionError("Aula irrelevante recebeu prova de outra aula")
             original=workspace/"Aula-050-V01.txt"
             original.write_text(samples[50], encoding="utf-8")
             app.add_file(original)
@@ -111,6 +139,8 @@ def run(source_dir: Path) -> str:
             written=note.read_text(encoding="utf-8")
             if "Aula-050" not in written:
                 raise AssertionError("Aula 050 não gerou evidência posterior para Aula 031")
+            if "Aula-049" in written:
+                raise AssertionError("Aula não relacionada contaminou a dúvida original")
             if "não comprovam" not in written:
                 raise AssertionError("A nota afirma uma hipótese como fato")
             project=next(p for p in (vault/"03-Meus-Projetos").glob("*.md"))
@@ -129,6 +159,8 @@ def run(source_dir: Path) -> str:
                 "- **Arquivos de código indexados:** "+str(indexed.get("total_files"))+".\n"
                 "- **Símbolos reais encontrados:** AuthService e CursosService.\n"
                 "- **Vínculo:** Aula 050 acrescentou evidência revisável à dúvida da Aula 031.\n"
+                "- **Falso positivo bloqueado:** GraphQL apontando uma linha verdadeira de AuthService foi descartado.\n"
+                "- **Negativo não contaminou:** Aula 049 não recebeu falsa relação com AuthService.\n"
                 "- **Notas Markdown criadas:** "+str(len(files))+".\n"
                 "- **Integridade:** nenhuma fonte externa executada, sem API, sem vault pessoal.\n\n"
                 "**O que isso NÃO comprova:** a fidelidade de uma transcrição "
