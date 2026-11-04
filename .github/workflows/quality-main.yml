@@ -45,6 +45,9 @@ jobs:
 
   v220-windows:
     name: TRAMA 2.2 - Windows e executavel (sem publicar)
+    # Only create a downloadable Preview after the unit/security, browser,
+    # and authentic public-source QA gates have all passed.
+    needs: [quality, v220-browser, v220-public-course]
     if: github.event_name == 'pull_request' && github.head_ref == 'feat/v2.2.0-automation-foundations'
     runs-on: windows-2022
     timeout-minutes: 45
