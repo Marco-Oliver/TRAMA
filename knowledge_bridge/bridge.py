@@ -26,7 +26,7 @@ from .update_service import (check_release, download_verified_installer,
                              check_preview_release, download_verified_preview_installer,
                              preview_build_number)
 from .secure_keys import KeyVault, PROVIDERS
-from .ai import FreeAIRouter, ALLOWED, ProviderError, NoFreeProvider, BudgetStopped
+from .ai import FreeAIRouter, ALLOWED, ProviderError, NoFreeProvider, AllProvidersFailed, BudgetStopped
 from .diagnostic import run_ai_diagnostic, format_diagnostic_report, MissingTestSources
 from .vault_index import VaultIndex
 from .code_intel import redact_sensitive
@@ -820,7 +820,7 @@ class Bridge:
                     {'question': question[:600], 'answer': result['answer'][:1000]})
                 self._teacher_history = self._teacher_history[-5:]
             return result
-        except (ValueError, TypeError, NoFreeProvider, BudgetStopped, ProviderError) as exc:
+        except (ValueError, TypeError, NoFreeProvider, AllProvidersFailed, BudgetStopped, ProviderError) as exc:
             return {'ok': False, 'message': redact_sensitive(str(exc)[:200])}
         except (OSError, RuntimeError):
             return {'ok': False, 'message': 'Falha local ao consultar as aulas. Tente novamente.'}
@@ -921,7 +921,7 @@ class Bridge:
                     "discarded":result['invalid_references_discarded'],
                     "report":str(path),"mode":mode,
                     "message":"Teste concluído. Confira o relatório antes de compartilhá-lo."}
-        except (MissingTestSources,NoFreeProvider,BudgetStopped,ProviderError,ValueError,OSError,RuntimeError,TypeError) as exc:
+        except (MissingTestSources,NoFreeProvider,AllProvidersFailed,BudgetStopped,ProviderError,ValueError,OSError,RuntimeError,TypeError) as exc:
             # Known errors contain no provider response body or user token.
             return {"ok":False,"message":str(exc)[:220]}
         except Exception:

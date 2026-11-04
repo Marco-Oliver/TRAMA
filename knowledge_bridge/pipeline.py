@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .ai import BudgetStopped, FreeAIRouter, NoFreeProvider, read_env
+from .ai import AllProvidersFailed, BudgetStopped, FreeAIRouter, NoFreeProvider, read_env
 from .content import chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines
 from .code_intel import index_repository, match_lesson_to_repository, find_code_line, concept_from_text, redact_sensitive
 from .publishing import Publisher
@@ -339,6 +339,12 @@ class Application:
                     self.store.update_status(src["id"], "WAITING_FOR_PROVIDER")
                     self.log(f"Pausado sem cobrança: {exc}")
                     return self.publisher.rebuild()
+                except AllProvidersFailed:
+                    # Invalid content does not mean quota exhaustion: keep other lessons running.
+                    self.store.update_status(src["id"], "NEEDS_REVIEW")
+                    self.log(f"Falha de conteúdo em {src['label']}: aula para revisão; seguindo o lote.")
+                    lesson_failed = True
+                    break
                 except Exception as exc:
                     self.store.update_status(src["id"], "NEEDS_REVIEW")
                     # Never expose original provider payload, HTTP response,
