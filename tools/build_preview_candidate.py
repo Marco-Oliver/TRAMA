@@ -7,10 +7,15 @@ are never modified. Changes are made to CI working files and a new .iss.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PREVIEW_LABEL = "TRAMA v2.2.0 — Preview de teste"
+PREVIEW_BUILD = int(os.environ.get("TRAMA_PREVIEW_BUILD", "1"))
+if not 1 <= PREVIEW_BUILD <= 99_999_999:
+    raise ValueError("Número de build Preview inválido.")
+PREVIEW_VERSION = f"2.2.0-preview.{PREVIEW_BUILD}"
+PREVIEW_LABEL = f"TRAMA v{PREVIEW_VERSION} — Preview de teste"
 PREVIEW_DATA_FOLDER = "TRAMA-Preview"
 
 
@@ -36,11 +41,13 @@ def prepare():
         'if os.environ.get("LOCALAPPDATA") else Path.home() / ".nexo")',
         'OLD_DATA_HOME = DATA_HOME  # Preview never migrates/reads stable settings.',
     )
-    # The button remains in the UI, but an empty release channel disallows
-    # official update downloads from this preview build.
+    # Preview checks ONLY explicitly published GitHub prereleases. This
+    # build step never publishes one and cannot touch the stable channel.
     release_channel = ROOT / "release_channel.json"
     release_channel.write_text(
-        json.dumps({"github_repo": ""}, ensure_ascii=False) + "\n",
+        json.dumps({"github_repo": "Marco-Oliver/TRAMA",
+                    "channel": "preview", "version": PREVIEW_VERSION},
+                   ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     replace_exact(
@@ -51,12 +58,18 @@ def prepare():
     replace_exact(
         ROOT / "knowledge_bridge" / "ui" / "app.js",
         "Versão instalada: 2.1.0.",
-        "Versão experimental: TRAMA Preview v2.2.0.",
+        f"Versão experimental: TRAMA Preview v{PREVIEW_VERSION}. "
+        "Verifique atualizações aqui sem baixar ZIP; a instalação exige sua confirmação.",
+    )
+    replace_exact(
+        ROOT / "knowledge_bridge" / "ui" / "app.js",
+        "Atualizações do TRAMA</h3>",
+        "Atualizações do TRAMA Preview</h3>",
     )
     iss = (ROOT / "TRAMA_Instalador.iss").read_text(encoding="utf-8")
     changes = [
         ('#define MyAppName "TRAMA"', '#define MyAppName "TRAMA Preview"'),
-        ('#define MyAppVersion "2.1.0"', '#define MyAppVersion "2.2.0-preview"'),
+        ('#define MyAppVersion "2.1.0"', f'#define MyAppVersion "{PREVIEW_VERSION}"'),
         ("AppId={{9819EDB4-FC18-4D9E-99F6-8CB6D9914407}",
          "AppId={{ACF2B65E-BC0C-4FF9-9A47-05323162EB96}"),
         (r"DefaultDirName={localappdata}\Programs\TRAMA",
@@ -76,8 +89,10 @@ def prepare():
     (ROOT / "TRAMA_Preview_Instalador.iss").write_text(iss, encoding="utf-8")
     assert marker.is_file() and "_storage_namespace" in gui.read_text(encoding="utf-8")
     assert "TRAMA Preview" in iss and "ACF2B65E" in iss and "UsePreviousAppDir=no" in iss
-    assert json.loads(release_channel.read_text(encoding="utf-8")) == {"github_repo": ""}
-    print("PASS: isolated v2.2 QA data, AppId, install folder, shortcuts, updates and version label")
+    assert json.loads(release_channel.read_text(encoding="utf-8")) == {
+        "github_repo": "Marco-Oliver/TRAMA",
+        "channel": "preview", "version": PREVIEW_VERSION}
+    print(f"PASS: isolated {PREVIEW_VERSION} data, AppId, install folder, preview updates and label")
 
 
 if __name__ == "__main__":
