@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 from .ai import BudgetStopped, FreeAIRouter, NoFreeProvider, read_env
 from .content import chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines
-from .code_intel import index_repository, match_lesson_to_repository, find_code_line
+from .code_intel import index_repository, match_lesson_to_repository, find_code_line, concept_from_text
 from .publishing import Publisher
 from .store import Store
 from .memory_atlas import related_prior, norm, literal_technical_mention
@@ -367,6 +367,41 @@ class Application:
     def _check_comparison(payload: dict, transcript: str, repository: dict) -> dict:
         """Discard fabricated source paths/lines/timestamps. Keep hypotheses as hypotheses."""
         valid_times={t for t,_ in timed_lines(transcript)}
+        observed_concepts = concept_from_text(transcript)
+        indexed = [item for item in (
+            *repository.get("evidence", []), *repository.get("symbols", []))
+            if isinstance(item, dict)]
+        indexed_concepts = {str(item.get("concept", "")) for item in indexed}
+
+        def code_supports(label: str, path: str = "", line: int = 0,
+                          require_lecture: bool = False) -> bool:
+            """A reference to one valid line is not proof of a DIFFERENT term.
+
+            When a line includes several indexed concepts, any matching one
+            suffices. A completely unrelated label must be discarded, even
+            when the model cited a valid path/line of some other concept.
+            """
+            if not label.strip():
+                return False
+            candidates = [item for item in indexed if
+                          (not path or item.get("path") == path) and
+                          (not line or item.get("line") == line)]
+            model_terms = concept_from_text(label)
+            for item in candidates:
+                term = str(item.get("concept", "")).strip()
+                if term in model_terms and (
+                        not require_lecture or term in observed_concepts):
+                    return True
+                # Arbitrary actual declaration names cannot use the
+                # predefined alias table; require literal token boundaries.
+                symbol = str(item.get("name", "")).strip()
+                if (len(symbol) >= 4 and
+                        re.search(r"(?<![A-Za-z0-9_])" + re.escape(symbol) +
+                                  r"(?![A-Za-z0-9_])", label, re.I) and
+                        (not require_lecture or literal_technical_mention(symbol, transcript))):
+                    return True
+            return False
+
         out={"resumo":str(payload.get("resumo", ""))[:1000],
              "relacoes":[],"correcoes":[],"novidades":[]}
         for row in payload.get("relacoes",[])[:8]:
@@ -374,9 +409,11 @@ class Application:
             path=str(row.get('path',''))
             try:line=int(row.get('line',0))
             except (ValueError,TypeError):continue
+            label=str(row.get('conceito',''))[:90]
             if not find_code_line(repository,path,line):continue
+            if not code_supports(label,path,line,require_lecture=True):continue
             stamp=str(row.get('tempo','')).strip('[]')
-            out['relacoes'].append({"conceito":str(row.get('conceito',''))[:90],
+            out['relacoes'].append({"conceito":label,
                  "tempo":stamp if stamp in valid_times else "", "path":path,"line":line,
                  "explicacao":str(row.get('explicacao',''))[:450],
                  "evolucao":str(row.get('evolucao',''))[:450], "status":"SUGESTÃO — verificar fontes"})
@@ -388,6 +425,7 @@ class Application:
             except (ValueError,TypeError):continue
             if not heard or heard.casefold() not in transcript.casefold():continue
             if not find_code_line(repository,path,line):continue
+            if not code_supports(str(row.get("sugestao",""))[:100],path,line):continue
             stamp=str(row.get('tempo','')).strip('[]')
             out['correcoes'].append({"ouvido":heard,"sugestao":str(row.get('sugestao',''))[:100],
                 "tempo":stamp if stamp in valid_times else "", "path":path,"line":line,
@@ -395,8 +433,14 @@ class Application:
                 "status":"HIPÓTESE — revisão humana necessária"})
         for row in payload.get('novidades',[])[:5]:
             if not isinstance(row,dict):continue
+            label=str(row.get('conceito',''))[:100]
+            # Novelty is a hypothesis grounded in actual code or lecture,
+            # not a free-standing invented model label.
+            if not (code_supports(label) or
+                    literal_technical_mention(label,transcript)):
+                continue
             stamp=str(row.get('tempo','')).strip('[]')
-            out['novidades'].append({"conceito":str(row.get('conceito',''))[:100],
+            out['novidades'].append({"conceito":label,
                 "tempo":stamp if stamp in valid_times else "",
                 "explicacao":str(row.get('explicacao',''))[:350]})
         return out
