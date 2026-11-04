@@ -66,6 +66,11 @@ def prepare():
         "Atualizações do TRAMA</h3>",
         "Atualizações do TRAMA Preview</h3>",
     )
+    replace_exact(
+        ROOT / "knowledge_bridge" / "ui" / "app.js",
+        "const TRAMA_PREVIEW_CHECK_ON_OPEN = false;",
+        "const TRAMA_PREVIEW_CHECK_ON_OPEN = true;",
+    )
     iss = (ROOT / "TRAMA_Instalador.iss").read_text(encoding="utf-8")
     changes = [
         ('#define MyAppName "TRAMA"', '#define MyAppName "TRAMA Preview"'),
