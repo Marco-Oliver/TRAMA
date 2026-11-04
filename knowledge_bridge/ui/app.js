@@ -1,5 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
+const TRAMA_PREVIEW_CHECK_ON_OPEN = false; // Build script enables only for isolated Preview.
 const escapeHTML = value => String(value??'').replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const app={view:'lessons',tab:'Nota completa',snapshot:null,note:null,selected:null,filter:'',listFilter:'all',aiConsent:false};
 let bridge=null;
@@ -337,7 +338,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     </div>
     <p>O TRAMA interrompe as chamadas ao alcançar a cota ou o limite local; não consegue verificar nem impedir cobranças em uma conta externa com faturamento ativo.</p>
   </div></div>`;
-  el.querySelector('#check-updates').addEventListener('click',async()=>{
+  const refreshUpdateStatus=async()=>{
     const output=el.querySelector('#update-message');
     output.textContent='Verificando o canal de atualizações…';
     const r=await call('check_updates');
@@ -347,7 +348,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
     if(r?.available&&r?.release_page){link.classList.remove('hidden');install.classList.remove('hidden');
       link.onclick=()=>call('open_update_page',r.release_page);
       install.onclick=async()=>{
-        if(!await askTramaConfirm('Baixar atualização','O instalador oficial será baixado e sua integridade será verificada antes de abrir.','Baixar e verificar'))return;
+        if(!await askTramaConfirm('Baixar atualização','O instalador do canal selecionado será baixado e sua integridade será verificada antes de abrir.','Baixar e verificar'))return;
         install.disabled=true;output.textContent='Baixando e verificando instalador...';
         try{
           const downloaded=await call('prepare_update',true);
@@ -359,7 +360,9 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
         }finally{install.disabled=false;}
       };
     }
-  });
+  };
+  el.querySelector('#check-updates').addEventListener('click',refreshUpdateStatus);
+  if(TRAMA_PREVIEW_CHECK_ON_OPEN) void refreshUpdateStatus();
   el.querySelector('#choose-vault').addEventListener('click',chooseVault);
   el.querySelector('#backup-vault').addEventListener('click', async()=>{
     if(!await askTramaConfirm('Criar backup do Obsidian','O ZIP será salvo no computador e incluirá notas e fontes sem criptografia. Guarde-o em local seguro.','Criar backup'))return;
