@@ -147,6 +147,38 @@ def _literal_timed_evidence(label: str, source_rows: list[tuple[str, str]],
             for stamp, sentence, term, anchor, _ in matches[:max(0, limit)]]
 
 
+def _group_timed_evidence(
+    source_rows: list[tuple[str, str]],
+    matches: list[tuple[str, str, str, str]]
+) -> list[tuple[tuple[str, str, str, str], list[tuple[str, str]]]]:
+    """Present nearby verified mentions as one chronological study passage.
+
+    Ranking chooses useful mentions; publication restores transcript order and
+    merges overlapping source windows. Nothing is invented or removed from TXT.
+    Anchor identity, not timestamp alone, handles duplicated ASR time labels.
+    """
+    indexed = list(_indexed_source_rows(source_rows))
+    positions = {anchor: i for i, (_, _, anchor) in enumerate(indexed)}
+    groups = []
+    for match in sorted(matches, key=lambda row: positions.get(row[3], len(indexed))):
+        start = positions.get(match[3])
+        if start is None:
+            continue
+        context = _nearby_transcript_context(
+            source_rows, match[3], indexed=indexed, position=start)
+        if not context:
+            continue
+        end = start + len(context) - 1
+        if groups and start <= groups[-1][1]:
+            groups[-1][1] = max(groups[-1][1], end)
+        else:
+            groups.append([start, end, match])
+    return [
+        (first, [(stamp, sentence) for stamp, sentence, _ in indexed[start:end + 1]])
+        for start, end, first in groups
+    ]
+
+
 def _source_quote(value: object, limit: int = 260, term: str = "") -> str:
     """Inert Markdown excerpt centered around a literally found term.
 
@@ -1052,16 +1084,18 @@ class Publisher:
                 raw = (self.vault / src["stored_path"]).read_text(
                     encoding="utf-8-sig", errors="replace")
                 recorded = str(concept.get("tempo", "")).strip()
+                source_rows = timed_lines(raw)
                 matches = _literal_timed_evidence(
-                    name, timed_lines(raw), preferred=recorded)
+                    name, source_rows, preferred=recorded)
+                groups = _group_timed_evidence(source_rows, matches)
                 where = f"[[{Path(note).with_suffix('').as_posix()}|{_escape_md(src['label'])}]]"
                 explanation = _escape_md(concept.get("explicacao", ""))
                 body.extend(["", f"### {_escape_md(src['label'])}", "",
                              "- **Explicação sugerida pela IA (conferir):** " +
                              (explanation or "*Não fornecida pela análise.*"),
                              f"- **Fonte:** {where}."])
-                if matches:
-                    for stamp, sentence, form, anchor in matches:
+                if groups:
+                    for (stamp, sentence, form, anchor), nearby in groups:
                         target_note, is_proposal = self._published_anchor_target(
                             note, anchor)
                         source_time = (
@@ -1076,14 +1110,16 @@ class Publisher:
                             body.append(
                                 "  > A referência abre uma **proposta de atualização**; "
                                 "sua nota editada manualmente não foi substituída.")
-                        nearby = _nearby_transcript_context(
-                            timed_lines(raw), anchor)
-                        body.append(
+                        body.extend([
+                            "",
                             "  > **Contexto próximo do TXT (para conferência):** "
-                            "a sequência abaixo não valida automaticamente a explicação da IA.")
+                            "trechos originais em sequência, não uma validação da explicação da IA.",
+                            "  >",
+                        ])
                         for context_stamp, context_sentence in nearby:
                             body.append(
-                                f"  > {context_stamp} — {_source_quote(context_sentence, 300, form)}")
+                                f"  > - {context_stamp} — {_source_quote(context_sentence, 300, form)}")
+                        body.append("")
                     if not recorded or recorded not in {r[0] for r in matches}:
                         body.append(
                             "- **Horário da análise da IA:** ausente ou não associado "
