@@ -152,7 +152,7 @@ class ChunkFidelityTests(unittest.TestCase):
                 self.assertIn("Síntese assistida por IA", note)
                 self.assertIn("GraphQL", note)
                 self.assertIn("20:05", note)
-                self.assertIn("Citação incorreta de outro bloco", " ".join(
+                self.assertIn("Modelo cruzou outro trecho", " ".join(
                     c.get("explicacao", "") for c in old["conceitos"]))
                 self.assertNotIn(
                     "Citação incorreta de outro bloco", note)
