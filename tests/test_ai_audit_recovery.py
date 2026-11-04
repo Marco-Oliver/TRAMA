@@ -155,6 +155,26 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.router(MAX_REQUESTS_PER_RUN="999").max_requests, 100)
 
 
+class UserVisibleDiagnosticsTests(unittest.TestCase):
+    def test_max_tokens_is_not_mistaken_for_missing_api_key(self):
+        from knowledge_bridge.bridge import Bridge
+        pending = [{"status": "WAITING_FOR_PROVIDER"}]
+        result = Bridge._processing_feedback(pending, [
+            "Pausado sem cobrança: Todos os provedores falharam ou "
+            "atingiram cotas: gemini: resposta cortada pelo limite (MAX_TOKENS)"
+        ])
+        self.assertEqual(result["reason"], "truncated_ai_response")
+        self.assertIn("incompleto", result["message"])
+        self.assertNotIn("chave", result["message"])
+
+    def test_safety_interruption_has_own_reason(self):
+        from knowledge_bridge.bridge import Bridge
+        result = Bridge._processing_feedback([{"status": "WAITING_FOR_PROVIDER"}], [
+            "Pausado sem cobrança: gemini: prompt bloqueado: SAFETY"
+        ])
+        self.assertEqual(result["reason"], "blocked_ai_response")
+
+
 class OptionalGuiImportTests(unittest.TestCase):
     def test_bridge_import_does_not_require_tkinter(self):
         script = (
