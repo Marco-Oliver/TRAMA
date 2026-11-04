@@ -973,12 +973,18 @@ class Bridge:
         elif "limite de segurança" in lower or "limite de requisições" in lower or "chamadas atingido" in lower:
             reason="local_limit"
             why="O limite local de chamadas do TRAMA nesta execução foi atingido."
-        elif "nenhum provedor" in lower or "configure" in lower or "chave" in lower:
-            reason="not_configured"
-            why="Nenhum provedor gratuito configurado respondeu. Confira a chave em Ajustes."
+        elif "max_tokens" in lower or "resposta cortada" in lower or " (length)" in lower:
+            reason="truncated_ai_response"
+            why="A API interrompeu a resposta por limite de saída. O resumo incompleto não foi publicado."
+        elif "prompt bloqueado" in lower or "geração interrompida" in lower:
+            reason="blocked_ai_response"
+            why="A API interrompeu ou bloqueou a geração. Confira as regras do provedor."
         elif "resposta estruturada inválida" in lower or "resposta sem texto" in lower:
             reason="invalid_ai_response"
             why="O provedor não devolveu uma resposta estruturada válida."
+        elif "nenhum provedor" in lower or "configure" in lower or "chave" in lower:
+            reason="not_configured"
+            why="Nenhum provedor gratuito configurado respondeu. Confira a chave em Ajustes."
         elif "falha http" in lower or "conexão" in lower or "tempo esgotado" in lower:
             reason="connection"
             why="A chamada ao provedor falhou ou demorou demais."
