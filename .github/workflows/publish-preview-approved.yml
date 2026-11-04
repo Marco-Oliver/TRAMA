@@ -88,20 +88,30 @@ jobs:
           cd "$RUNNER_TEMP/trama-validated-preview"
           # Using the exact validated commit is mandatory. A target on main
           # would be incorrect and could point to different program bytes.
-          gh release create "$RELEASE_TAG" \
-            TRAMA_Preview_Setup.exe SHA256SUMS-Preview.txt \
-            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --draft --prerelease \
-            --title 'TRAMA 2.2.0 Preview — build 207' \
-            --notes 'Preview experimental. Atualização 189 → 207 testada em Windows isolado, com dados estáveis e cofre de teste preservados. Não é a versão estável.'
-          # Do not expose an incomplete release if assets failed to upload.
-          gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" \
-            --json tagName,isDraft,isPrerelease,assets |
-            jq -e --arg tag "$RELEASE_TAG" '.tagName == $tag and .isDraft == true and
-              ([.assets[].name] | sort) == (["SHA256SUMS-Preview.txt","TRAMA_Preview_Setup.exe"] | sort)'
+          # A previous attempt can leave a safe DRAFT: reuse it rather
+          # than creating/replacing assets. A Git ref may not exist for a
+          # draft, because GitHub materializes it when the draft publishes.
+          if ! gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json tagName,isDraft \
+                --jq '.tagName' >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              TRAMA_Preview_Setup.exe SHA256SUMS-Preview.txt \
+              --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --draft --prerelease \
+              --title 'TRAMA 2.2.0 Preview — build 207' \
+              --notes 'Preview experimental. Atualização 189 → 207 testada em Windows isolado, com dados estáveis e cofre de teste preservados. Não é a versão estável.'
+          fi
+          # Require exact tag, target SHA and both original assets before
+          # turning the validated draft into a publicly visible prerelease.
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" |
+            jq -e --arg tag "$RELEASE_TAG" --arg src "$SOURCE_SHA" '
+              .tag_name == $tag and .target_commitish == $src and
+              .draft == true and .prerelease == true and
+              ([.assets[].name] | sort) ==
+              (["SHA256SUMS-Preview.txt","TRAMA_Preview_Setup.exe"] | sort)'
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
+          # Git ref exists only after publish; never move the tag later.
           gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" |
             jq -e --arg sha "$SOURCE_SHA" '.object.type == "commit" and .object.sha == $sha'
-          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
-          echo 'PASS: prerelease publicada com dois assets, sem alterar a versão estável.'
+          echo 'PASS: prerelease publicada com dois assets, tag correta e versão estável intocada.'
 
       - name: Confirmar canal público, download SHA-256 e isolamento da versão estável
         env:
