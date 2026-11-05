@@ -100,6 +100,7 @@ class GithubMapping:
             raise MappingError("Formato inesperado da API de commits/tags.")
         candidates = []
         dates = {}
+        version_dates = {}  # Inferred from commit SUBJECT, not proof that a folder was created then.
         for item in commits[:100]:
             if not isinstance(item, dict):
                 continue
@@ -111,6 +112,11 @@ class GithubMapping:
             when = _date(info.get("date"))
             subject = str(meta.get("message", "")).splitlines()[0][:130]
             dates[sha] = when
+            # A commit mentioning V3 might refer to a folder V3, but is only
+            # a weak clue. Preserve provenance in candidate labels.
+            if when:
+                for version in re.findall(r"(?i)(?<![A-Za-z0-9])V[0-9]{1,3}(?![A-Za-z0-9])", subject):
+                    version_dates.setdefault(version.casefold(), when)
             candidates.append({"id": _candidate_id("commit", sha), "tipo": "commit",
                                "ref_tipo": "commit", "ref": sha, "pasta": "",
                                "data": when, "rotulo": f"Commit {sha[:9]} — {subject}",
@@ -142,11 +148,12 @@ class GithubMapping:
                 dirs.add(path)
         # Git Trees doesn't provide folder creation dates. Never invent them.
         for folder in sorted(dirs)[:200]:
+            hint = version_dates.get(folder.rsplit("/", 1)[-1].casefold(), "")
             candidates.append({"id": _candidate_id("pasta", newest_sha, folder),
                                "tipo": "pasta", "ref_tipo": "commit",
-                               "ref": newest_sha, "pasta": folder, "data": "",
+                               "ref": newest_sha, "pasta": folder, "data": hint,
                                "rotulo": f"Pasta {folder} (revisão {newest_sha[:9]})",
-                               "fonte_data": "sem_data_verificada",
+                               "fonte_data": "mensagem_commit_indicativa" if hint else "sem_data_verificada",
                                "sugestao_anterior": None})
         by_path = {x["pasta"]: x for x in candidates if x["tipo"] == "pasta"}
         for candidate in by_path.values():
