@@ -77,6 +77,7 @@ async function render(){if(app.view!=='graph'&&app.graphView){app.graphView.dest
  $('list-title').textContent=titles[app.view]||'Minha Biblioteca';
  document.querySelectorAll('[data-list-filter]').forEach(btn=>btn.classList.toggle('active',btn.dataset.listFilter===app.listFilter));
  $('btn-context').style.display=app.view==='lessons'?'':'none';
+  $('btn-lesson-code').style.display=app.view==='lessons'?'':'none';
  $('list-search').placeholder=app.view==='lessons'?'Buscar aulas...':'Buscar notas...';
  const notes=getNotes();if(!notes.some(n=>n.id===app.selected))app.selected=notes[0]?.id||null;
  renderList(notes);if(app.selected){app.note=await call('note',app.selected);}else app.note=null;
