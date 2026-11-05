@@ -79,19 +79,19 @@ class BridgeTests(unittest.TestCase):
         overview=self.vault/'02-Minhas-Aulas'/'Aula-131'
         overview.mkdir()
         (overview/'00-Visao-geral.md').write_text(
-            '---\\ntipo: visao_geral\\n---\\n# Aula 131\\n\\n[[POO]]\\n',
+            '---\ntipo: visao_geral\n---\n# Aula 131\n\n[[POO]]\n',
             encoding='utf-8')
         (overview/'A131-V01.md').write_text(
-            '---\\ntipo: aula\\n---\\n# Gravação 01\\n\\n[[POO]]\\n',
+            '---\ntipo: aula\n---\n# Gravação 01\n\n[[POO]]\n',
             encoding='utf-8')
         (overview/'Duvida.md').write_text(
-            '---\\ntipo: duvida\\n---\\n# Dúvida\\n\\n[[POO]]\\n',
+            '---\ntipo: duvida\n---\n# Dúvida\n\n[[POO]]\n',
             encoding='utf-8')
         projects=self.vault/'03-Meus-Projetos'
         projects.mkdir()
-        (projects/'App.md').write_text('# Aplicativo\\n',encoding='utf-8')
+        (projects/'App.md').write_text('# Aplicativo\n',encoding='utf-8')
         index=self.vault/'Minha-Biblioteca.md'
-        index.write_text('# Minha Biblioteca\\n',encoding='utf-8')
+        index.write_text('# Minha Biblioteca\n',encoding='utf-8')
         result=self.bridge.graph()
         types={item['id']:item['kind'] for item in result['nodes']}
         self.assertEqual(types['01-Meu-Conhecimento/POO.md'],'conceito')
