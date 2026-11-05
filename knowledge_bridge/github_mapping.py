@@ -91,17 +91,43 @@ class GithubMapping:
             raise MappingError("Não foi possível consultar a API REST do GitHub.") from None
 
     def catalogue(self, repo):
-        """Até 100 commits/tags e uma árvore recursive; não baixa conteúdo."""
+        """Up to 300 recent commits in three pages, tags and ONE recursive tree.
+
+        Pagination is capped and stops early near the unauthenticated rate limit.
+        Older classes beyond this window remain unguessed and can be mapped manually.
+        """
         if not _safe_repo(repo):
             raise MappingError("URL de repositório inválida.")
-        commits = self._get(repo, "commits?per_page=100")
+        first = self._get(repo, "commits?per_page=100")
+        if not isinstance(first, list):
+            raise MappingError("Formato inesperado da API de commits.")
+        commits = list(first)
+        batch = first
+        history_partial = False
+        for page in (2, 3):
+            if len(batch) < 100:
+                break
+            remaining = self.rate.get("restantes")
+            if isinstance(remaining, int) and remaining <= 5:
+                history_partial = True
+                break
+            try:
+                batch = self._get(repo, f"commits?per_page=100&page={page}")
+            except MappingError:
+                history_partial = True
+                break
+            if not isinstance(batch, list):
+                history_partial = True
+                break
+            commits.extend(batch)
+        history_partial = history_partial or len(commits) >= 300
         tags = self._get(repo, "tags?per_page=100")
-        if not isinstance(commits, list) or not isinstance(tags, list):
-            raise MappingError("Formato inesperado da API de commits/tags.")
+        if not isinstance(tags, list):
+            raise MappingError("Formato inesperado da API de tags.")
         candidates = []
         dates = {}
         version_dates = {}  # Inferred from commit SUBJECT, not proof that a folder was created then.
-        for item in commits[:100]:
+        for item in commits[:300]:
             if not isinstance(item, dict):
                 continue
             sha = item.get("sha", "")
@@ -166,8 +192,9 @@ class GithubMapping:
             if older in by_path:
                 candidate["sugestao_anterior"] = {"ref_tipo": "commit", "ref": newest_sha,
                                                    "pasta": older}
-        return {"candidatos": candidates[:400], "truncado": bool(tree.get("truncated")),
-                "limite_amostra": {"commits": 100, "tags": 100},
+        return {"candidatos": candidates[:650], "truncado": bool(tree.get("truncated")),
+                "historico_parcial": history_partial,
+                "limite_amostra": {"commits": 300, "tags": 100},
                 "taxa": self.rate, "autenticado": bool(self.token)}
 
     @staticmethod
