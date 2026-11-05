@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 from knowledge_bridge.ai import SYSTEM_INSTRUCTIONS
-from knowledge_bridge.content import concept_slug, timestamp_seconds
+from knowledge_bridge.content import concept_slug, concept_file_slug, timestamp_seconds
 from knowledge_bridge.pipeline import Application
 
 
@@ -184,7 +184,7 @@ class ConceptGroupingTests(unittest.TestCase):
                               "01-Meu-Conhecimento" / "Conceitos").glob("*.md"))
                 self.assertEqual(len(pages), 1, [p.name for p in pages])
                 self.assertEqual(pages[0].stem,
-                                 concept_slug("Relacionamento um para um"))
+                                 concept_file_slug("Relacionamento de um para um"))
                 note = pages[0].read_text(encoding="utf-8")
                 self.assertIn("Primeira explicação", note)
                 self.assertIn("Segunda explicação", note)

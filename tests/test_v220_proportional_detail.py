@@ -67,7 +67,7 @@ class ProportionalLessonDetailTests(unittest.TestCase):
         question_items = [f"Pergunta numero {i}" for i in range(12)]
         result = Application._clean_result({
             "exemplos": example_items, "duvidas": question_items
-        }, "[0:01] O professor demonstra exemplos.")
+        }, "[0:01] " + ". ".join(example_items) + ".")
         self.assertEqual(result["exemplos"], example_items[:10])
         self.assertEqual(result["duvidas"], question_items[:10])
 

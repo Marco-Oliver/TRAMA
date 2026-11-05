@@ -30,6 +30,16 @@ def slug(text: str, maxlen: int = 75) -> str:
     return value[:maxlen].strip("-") or "sem-titulo"
 
 
+def concept_file_slug(text: str, maxlen: int = 75) -> str:
+    """Readable concept filename, preserving link words and simple plurals.
+
+    Continue to distinguish C, C# and C++.
+    """
+    tagged = (text.strip().replace('#', '-sharp-').replace('++', '-plus-plus-')
+              .replace('+', '-plus-'))
+    return slug(tagged, maxlen)
+
+
 def concept_slug(text: str, maxlen: int = 75) -> str:
     """Merge obvious Portuguese wording variants, not different technologies.
 
@@ -186,7 +196,20 @@ _ASR_SUSPECTS = (
     (re.compile(r"\bmessage\s+transit\b", re.I), "MassTransit"),
     (re.compile(r"\bmessage\s+kill\b", re.I), "message queue"),
     (re.compile(r"\bmessage\s+booker\b", re.I), "message broker"),
+    (re.compile(r"\bdb\s+contact\b", re.I), "DbContext"),
+    (re.compile(r"\brow\s+manager\b", re.I), "RoleManager"),
+    (re.compile(r"\bcheck\s+password\s+saind\s+assim\b", re.I), "CheckPasswordSignInAsync"),
+    (re.compile(r"\bwinch\s+framework\b", re.I), "Entity Framework"),
+    (re.compile(r"\bposts\b", re.I), "PostgreSQL"),
+    (re.compile(r"\bpost\s+will\b", re.I), "PostgreSQL"),
 )
+
+
+def suspected_concept_name(name: str) -> str:
+    """Match whole ASR-derived concept labels, returning only a review hint."""
+    label = str(name).strip()
+    return next((candidate for pattern, candidate in _ASR_SUSPECTS
+                 if pattern.fullmatch(label)), "")
 
 
 def suspected_technical_transcription(text: str, cap: int = 8) -> list[tuple[str, str, str]]:

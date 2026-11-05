@@ -13,7 +13,7 @@ from collections import defaultdict, Counter
 from pathlib import Path
 from urllib.parse import quote
 
-from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines, study_windows, opening_lesson_number_mismatch, suspected_technical_transcription
+from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, concept_file_slug, timed_lines, study_windows, opening_lesson_number_mismatch, suspected_technical_transcription, suspected_concept_name
 from .store import Store
 from .memory_atlas import make_atlas, render_atlas, lesson_order, norm, note_for, literal_technical_mention
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections
@@ -227,10 +227,51 @@ def _code_ref(repo, path: str, line: int) -> str:
 class Publisher:
     def __init__(self, store: Store):
         self.db, self.vault = store, store.vault
+        self._concept_targets = {}
         for folder in ["00-Inicio", "01-Meu-Conhecimento", "02-Minhas-Aulas", "03-Meus-Projetos",
                        "05-Anotacoes-Pessoais", "90-Sistema", "99-Anexos/Videos", "99-Anexos/Transcricoes-Originais",
                        "99-Anexos/Materiais-Originais", "99-Anexos/Contexto-Classroom"]:
             (self.vault / folder).mkdir(parents=True, exist_ok=True)
+
+    def _concept_target(self, name: str) -> str:
+        """Filename of a known concept group, independent of its comparison key."""
+        return self._concept_targets.get(concept_slug(name), concept_file_slug(name))
+
+    @staticmethod
+    def _asr_concept_warning(concept: dict) -> str:
+        warning = str(concept.get("suspeita_transcricao") or "").strip()
+        suggestion = suspected_concept_name(concept.get("nome", ""))
+        if not warning and suggestion:
+            warning = ("Nome possivelmente distorcido pela transcrição; sugestão: "
+                       + suggestion + ". Conferir no áudio; não corrigido automaticamente.")
+        return warning
+
+    def _prepare_concept_targets(self):
+        """Retain legacy files on existing vaults; clean vaults use readable slugs.
+
+        The normalized comparison key (e.g. validacao-dado) groups variants.
+        Legacy paths and manually edited pages are not renamed or duplicated.
+        """
+        candidates = {}
+        for src in self.db.sources("transcript"):
+            analysis = self.db.analysis(src["id"], src["digest"]) or {}
+            for concept in analysis.get("conceitos", []):
+                if not isinstance(concept, dict):
+                    continue
+                name = str(concept.get("nome", "")).strip()
+                if name:
+                    names = candidates.setdefault(concept_slug(name), [])
+                    if name not in names:
+                        names.append(name)
+        folder = self.vault / "01-Meu-Conhecimento" / "Conceitos"
+        self._concept_targets = {}
+        for key, names in candidates.items():
+            options = list(dict.fromkeys(
+                [concept_file_slug(name) for name in names] + [key]))
+            existing = next((option for option in options
+                             if (folder / (option + ".md")).is_file()
+                             and not (folder / (option + ".md")).is_symlink()), "")
+            self._concept_targets[key] = existing or options[0]
 
     def write(self, rel: str, content: str) -> str:
         """Só sobrescreve algo que ainda corresponde ao hash da última gravação nossa."""
@@ -519,7 +560,7 @@ class Publisher:
             for c in a.get('conceitos',[]):
                 name=c.get('nome','').strip()
                 if not name:continue
-                link=f"[[{concept_slug(name)}|{_escape_md(name)}]]"
+                link=f"[[{self._concept_target(name)}|{_escape_md(name)}]]"
                 if link not in concept_links:concept_links.append(link)
         rows.extend([f'- {link} — confira o contexto na fonte' for link in person_links]
                     if person_links else ['*Ainda sem pessoas associadas com evidência.*'])
@@ -676,7 +717,7 @@ class Publisher:
         for c in concepts:
             name = c.get("nome", "").strip()
             if name:
-                concept_links.append(f"[[{concept_slug(name)}|{_escape_md(name)}]]")
+                concept_links.append(f"[[{self._concept_target(name)}|{_escape_md(name)}]]")
         raw = self.vault / src["stored_path"]
         text = raw.read_text(encoding="utf-8-sig",errors="replace")
         # Uma apresentação ou encontro administrativo não vira falsamente um
@@ -723,6 +764,10 @@ class Publisher:
                         continue
                     tempo = f" ({c['tempo']})" if c.get("tempo") else ""
                     body.append(f"- **{_escape_md(name)}**{tempo}: {_escape_md(c.get('explicacao',''))}")
+                    warning = self._asr_concept_warning(c)
+                    if warning:
+                        body.append("  - **Nome possivelmente distorcido pela transcrição:** "
+                                    + _escape_md(warning))
             # Reconcile legacy cached analyses locally, without another API
             # call: a spoken abbreviation can back a mention even when the
             # whole expanded model label was not said. Do NOT auto-create a
@@ -765,6 +810,12 @@ class Publisher:
             if analysis.get("exemplos"):
                 body += ["", "## Exemplos mencionados"] + [
                     f"- {_escape_md(x)}" for x in analysis.get("exemplos",[])]
+            if analysis.get("exemplos_reconstruidos_a_conferir"):
+                body += ["", "## Exemplos reconstruídos pela IA, conferir", "",
+                         "> Estes exemplos NÃO foram encontrados literalmente no TXT. "
+                         "Não trate como código executado ou demonstrado."] + [
+                             f"- {_escape_md(x)}"
+                             for x in analysis.get("exemplos_reconstruidos_a_conferir", [])[:10]]
             if analysis.get("duvidas"):
                 body += ["", "## Dúvidas técnicas e passagens inaudíveis", "",
                          "> Uma hipótese de transcrição não comprova erro nem aprendizado."] + [
@@ -985,7 +1036,8 @@ class Publisher:
                 raise ValueError("Fonte do cofre alterada ou ausente: " +
                                  source["label"] + ". Reimporte o original.")
         refresh_uncertainties(self.db)
-        self._atlas = make_atlas(self.db)
+        self._prepare_concept_targets()
+        self._atlas = make_atlas(self.db, concept_targets=self._concept_targets)
         concept_map = defaultdict(list)
         module_map = defaultdict(list)
         lesson_links = []
@@ -1165,6 +1217,10 @@ class Publisher:
                              "- **Explicação sugerida pela IA (conferir):** " +
                              (explanation or "*Não fornecida pela análise.*"),
                              f"- **Fonte:** {where}."])
+                warning = self._asr_concept_warning(concept)
+                if warning:
+                    body.append("- **Nome possivelmente distorcido pela transcrição:** "
+                                + _escape_md(warning))
                 if groups:
                     for (stamp, sentence, form, anchor), nearby in groups:
                         target_note, is_proposal = self._published_anchor_target(
@@ -1219,7 +1275,7 @@ class Publisher:
                                 "código existente, sem atribuição automática de autoria.")
             if body[-1] == "## Projetos relacionados":
                 body.append("*Nenhum vínculo de código encontrado no índice.*")
-            self.write(f"01-Meu-Conhecimento/Conceitos/{cslug}.md",
+            self.write(f"01-Meu-Conhecimento/Conceitos/{self._concept_target(name)}.md",
                        "\n".join(body) + "\n")
 
         # A module page is a readable review guide, not a 260-character index.
@@ -1287,7 +1343,7 @@ class Publisher:
                              if stamp in valid_times else
                              f"[[{note_path}|{src['lesson'] or src['label']}]]")
                     literal = "termo literal presente" if _term_in_source(name, raw) else "termo inferido pela IA"
-                    body.append(f"- **[[{concept_slug(name)}|{_escape_md(name)}]]**: "
+                    body.append(f"- **[[{self._concept_target(name)}|{_escape_md(name)}]]**: "
                                 f"{_escape_md(explanation)} — {where} ({literal}).")
             if not seen:
                 body.append("*Nenhum conceito extraído ainda; o resumo por gravação permanece disponível.*")
@@ -1327,7 +1383,7 @@ class Publisher:
                     "- [[Indice-de-Duvidas|Índice rastreável de dúvidas e evidências posteriores]]",
                     "> Evidências posteriores são pistas, nunca correções confirmadas automaticamente.",
                     "", "## Conceitos encontrados"]
-        context += [f"- [[{k}|{_escape_md(v[0][0])}]] — identificado pela IA; confirmar na fonte" for k,v in sorted(concept_map.items())]
+        context += [f"- [[{self._concept_target(v[0][0])}|{_escape_md(v[0][0])}]] — identificado pela IA; confirmar na fonte" for k,v in sorted(concept_map.items())]
         context += ["", "## Evolução: antes na aula, agora no código"]
         for repo,payload in repo_info:
             matches=[]

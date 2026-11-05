@@ -308,7 +308,7 @@ class LectureBatchTests(unittest.TestCase):
             root = Path(temp)
             app = Application(root / "cofre", root / "sem-config.env", log=lambda _:None)
             lesson = root / "Aula-001-V01.txt"
-            text = "[0:01] O console foi mencionado em aula."
+            text = "[0:01] O console foi mencionado em aula. O mesmo exemplo foi dito."
             lesson.write_text(text, encoding="utf-8")
             app.add_file(lesson)
             class Repeater:
@@ -325,6 +325,7 @@ class LectureBatchTests(unittest.TestCase):
                 src = app.store.sources("transcript")[0]
                 parsed = app.store.analysis(src["id"], src["digest"])
                 self.assertEqual(parsed["exemplos"], ["o mesmo exemplo"])
+                self.assertEqual(parsed["exemplos_reconstruidos_a_conferir"], [])
                 self.assertEqual(parsed["duvidas"], ["a mesma pergunta"])
             finally:
                 app.close()

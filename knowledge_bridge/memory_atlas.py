@@ -11,7 +11,7 @@ import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
-from .content import slug, concept_slug, timed_lines
+from .content import slug, concept_slug, concept_file_slug, timed_lines
 
 
 def norm(value: object) -> str:
@@ -73,7 +73,8 @@ def note_for(src) -> str:
             f"{slug(Path(src['label']).stem,52)}-{src['id'][:7]}.md")
 
 
-def make_atlas(store, max_concepts: int = 2000) -> dict:
+def make_atlas(store, max_concepts: int = 2000,
+               concept_targets: dict | None = None) -> dict:
     """Somente fontes catalogadas. Nenhum acesso à rede. Saída JSON serializável."""
     sources = store.sources('transcript')
     concepts: dict[str, dict] = {}
@@ -93,7 +94,7 @@ def make_atlas(store, max_concepts: int = 2000) -> dict:
         for row in result.get('conceitos',[]) if isinstance(result.get('conceitos'),list) else []:
             if not isinstance(row,dict):continue
             name = str(row.get('nome','')).strip()[:90]
-            key = norm(name)
+            key = concept_slug(name)
             if (len(key)<3 and key != "c") or len(key)>90:continue
             if key not in concepts and len(concepts)>=max_concepts:continue
             stamp = str(row.get('tempo','')).strip('[]')
@@ -132,7 +133,8 @@ def make_atlas(store, max_concepts: int = 2000) -> dict:
                    'timestamp':resolved_time, 'excerpt':excerpt[:250],
                    'explanation':str(row.get('explicacao',''))[:600],
                    'confidence':confidence, 'literal':literal}
-            bucket = concepts.setdefault(key, {'name':name,'key':key,'slug':concept_slug(name),'mentions':[]})
+            target = (concept_targets or {}).get(key, concept_file_slug(name))
+            bucket = concepts.setdefault(key, {'name':name,'key':key,'slug':target,'mentions':[]})
             if not any(x['source_id']==rec['source_id'] and x['timestamp']==rec['timestamp'] for x in bucket['mentions']):
                 bucket['mentions'].append(rec)
     for value in concepts.values():
@@ -149,7 +151,7 @@ def make_atlas(store, max_concepts: int = 2000) -> dict:
         evidence=[]
         for item in payload.get('evidence',[])[:500]:
             if not isinstance(item,dict):continue
-            key=norm(item.get('concept',''))
+            key=concept_slug(str(item.get('concept','')))
             if key not in concepts:continue
             path=str(item.get('path',''))[:220]
             line=item.get('line',0)

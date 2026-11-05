@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .ai import AllProvidersFailed, BudgetStopped, FreeAIRouter, NoFreeProvider, read_env
-from .content import CHUNK_MAX_CHARS, chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines, timestamp_seconds
+from .content import CHUNK_MAX_CHARS, chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines, timestamp_seconds, suspected_concept_name
 from .code_intel import index_repository, match_lesson_to_repository, find_code_line, concept_from_text, redact_sensitive
 from .publishing import Publisher
 from .store import Store
@@ -254,8 +254,27 @@ class Application:
                     "explicacao_sugerida": "",
                     "tempo": "",
                 })
+        for concept in grounded:
+            suggestion = suspected_concept_name(concept.get("nome", ""))
+            if suggestion:
+                concept["suspeita_transcricao"] = (
+                    "Nome possivelmente distorcido pela transcrição; sugestão: "
+                    + suggestion + ". Conferir no áudio; não corrigido automaticamente."
+                )
         clean["conceitos"]=grounded
         clean["conceitos_a_conferir"]=unverified[:12]
+        # Only verbatim examples belong in the confirmed-example section.
+        # Normalize punctuation/accents/spacing like literal concept quotes.
+        # Keep fabricated or reconstructed snippets visible for human review.
+        literal_examples, reconstructed_examples = [], []
+        for example in clean["exemplos"]:
+            quoted = norm(example)
+            if len(quoted) >= 6 and (" " + quoted + " ") in normalized_spoken:
+                literal_examples.append(example)
+            else:
+                reconstructed_examples.append(example)
+        clean["exemplos"] = literal_examples
+        clean["exemplos_reconstruidos_a_conferir"] = reconstructed_examples
         # A shallow or empty summary is not silently promoted as complete
         # knowledge. Do not spend a second paid/free call automatically:
         # preserve the original and mark the deficiency for later review.
@@ -393,7 +412,8 @@ class Application:
                          "\n\n".join(f"**Trecho {i+1}:** {x['resumo']}" for i,x in enumerate(all_results))),
                         "tipo_aula": "indefinida", "pessoas": [], "atividades": [],
                         "ferramentas": [], "marcos": [], "conceitos": [],
-                        "exemplos": [], "duvidas": [], "nomes_a_conferir": [],
+                        "exemplos": [], "exemplos_reconstruidos_a_conferir": [],
+                        "duvidas": [], "nomes_a_conferir": [],
                         "conceitos_a_conferir": []}
             # Preserve different explanations/timestamps from distinct parts of
             # the same recording. A concept may be introduced and then applied.
@@ -415,8 +435,9 @@ class Application:
                         # Dedup keeps different evidence timestamps if substantive text differs.
                         if item not in combined[category]:
                             combined[category].append(item)
-                for category, limit in (("exemplos", 10), ("duvidas", 10),
-                                        ("nomes_a_conferir", 7)):
+                for category, limit in (("exemplos", 10),
+                                        ("exemplos_reconstruidos_a_conferir", 10),
+                                        ("duvidas", 10), ("nomes_a_conferir", 7)):
                     for item in result.get(category, []):
                         if item and item not in combined[category] and len(combined[category]) < limit:
                             combined[category].append(item)
