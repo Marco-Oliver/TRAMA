@@ -1168,6 +1168,8 @@ class Bridge:
                     raise ValueError(f"Seleção inválida ou repetida: {lesson}")
                 used.add(lesson)
                 chosen=candidates[ident]
+                if lesson in current["document"]["aulas"] and lesson not in current["aulas"]:
+                    raise ValueError(f"{lesson}: cadastro existente inválido; corrija antes do mapeamento.")
                 linked=current["aulas"].get(lesson) or {"professor":[],"dupla":[]}
                 teachers=[item for item in linked.get("professor",[]) if item.get("id")!=mapping_id]
                 item={"id":mapping_id,"rotulo":"Professor — "+name[:70],
