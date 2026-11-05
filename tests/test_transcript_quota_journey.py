@@ -54,9 +54,10 @@ class CourseQuotaJourneyTests(unittest.TestCase):
         text=classroom_sized_transcript()
         pieces=chunks(text)
         self.assertGreater(len(text),60_000)
-        self.assertGreaterEqual(len(pieces),5)
-        self.assertLessEqual(len(pieces),13)
-        self.assertTrue(all(0<len(piece)<=11_500 for piece in pieces))
+        self.assertGreaterEqual(len(pieces),2)
+        self.assertLessEqual(len(pieces),4)
+        self.assertTrue(all(0<len(piece)<=40_000 for piece in pieces))
+        self.assertLess(len(pieces),len(chunks(text,max_chars=11_500)))
         # One call per uncached chunk, not one call per entire recording.
         self.assertEqual(len(pieces),len(chunks(text)))
 
@@ -65,11 +66,15 @@ class CourseQuotaJourneyTests(unittest.TestCase):
             base=Path(directory)
             original=classroom_sized_transcript()
             inputs=[]
-            for number in (1,2):
+            # More characters per chunk means more lessons are needed to
+            # exhaust twelve calls; keep the resume/budget assertion intact.
+            chunks_per_lesson=len(chunks(original))
+            lesson_count=12//chunks_per_lesson+1
+            for number in range(1,lesson_count+1):
                 path=base/f"Aula-{number:03d}-V01.txt"
                 path.write_text(original,encoding="utf-8")
                 inputs.append(path)
-            expected_chunks=2*len(chunks(original))
+            expected_chunks=lesson_count*chunks_per_lesson
             self.assertGreater(expected_chunks,12)
             vault=base/"cofre-isolado"
             first=Application(vault,base/"sem-chave.env",log=lambda *_:None)
@@ -81,7 +86,7 @@ class CourseQuotaJourneyTests(unittest.TestCase):
                     first.process()
                     self.assertEqual(fake.call_count,12)
                     states=[s["status"] for s in first.store.sources("transcript")]
-                    self.assertEqual(states.count("PUBLISHED"),1)
+                    self.assertEqual(states.count("PUBLISHED"),12//chunks_per_lesson)
                     self.assertEqual(states.count("WAITING_FOR_PROVIDER"),1)
                     completed=first.store.conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
                     self.assertEqual(completed,12)
@@ -100,7 +105,7 @@ class CourseQuotaJourneyTests(unittest.TestCase):
                     resumed.process()
                     self.assertEqual(fake.call_count,expected_chunks-12)
                     self.assertTrue((vault/"02-Minhas-Aulas/Aula-001/00-Visao-geral.md").is_file())
-                    self.assertTrue((vault/"02-Minhas-Aulas/Aula-002/00-Visao-geral.md").is_file())
+                    self.assertTrue((vault/f"02-Minhas-Aulas/Aula-{lesson_count:03d}/00-Visao-geral.md").is_file())
                 finally:
                     resumed.close()
             for path in inputs:

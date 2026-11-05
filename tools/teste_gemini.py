@@ -199,9 +199,20 @@ def report_markdown(report):
              f"- Falhas por motivo: {json.dumps(dict(failures), ensure_ascii=False)}",
              f"- Primeira chamada: {'API aceitou o corpo enviado' if accepted else 'compatibilidade NÃO confirmada'}",
              f"- Campos do contrato: {json.dumps(first.get('contrato_enviado', {}), ensure_ascii=False)}", "",
-             "## 2. Tabela por aula", "",
-             "| Aula | Trechos | OK/falha | Aceitos | Por nome | Por citação | A conferir | Tamanho resumo | Chamadas (tentativas extras) |",
-             "|---|---:|---|---:|---:|---:|---:|---:|---:|"]
+             "### Chamadas por aula — comparação do tamanho de trecho", "",
+             "| Aula | Trechos antes (11.500) | Trechos agora (40.000) | Chamadas realizadas | Novas tentativas |",
+             "|---|---:|---:|---:|---:|"]
+    estimates = report.get("comparacao_chunks", {})
+    for name, rows in lessons.items():
+        estimate = estimates.get(name, {})
+        old_count = estimate.get("antes_11500", "-")
+        new_count = estimate.get("agora_40000", "-")
+        call_count = sum(len(entry.get("chamadas", [])) for entry in rows)
+        retries = sum(entry.get("novas_tentativas", 0) for entry in rows)
+        lines.append(f"| {name} | {old_count} | {new_count} | {call_count} | {retries} |")
+    lines.extend(["", "## 2. Tabela por aula", "",
+                  "| Aula | Trechos | OK/falha | Aceitos | Por nome | Por citação | A conferir | Tamanho resumo | Chamadas (tentativas extras) |",
+                  "|---|---:|---|---:|---:|---:|---:|---:|---:|"])
     for name, rows in lessons.items():
         ok = sum(x["ok"] for x in rows)
         accepted_concepts = sum(x.get("conceitos_aceitos", 0) for x in rows)
@@ -274,7 +285,7 @@ def run(pasta: Path, saida: Path, limite: int = 40, pausa: float = 4) -> dict:
     secrets = [v for k, v in settings.items() if isinstance(v, str) and
                len(v) >= 8 and ("KEY" in k.upper() or "TOKEN" in k.upper())]
     report = {"gerado_em": datetime.now(timezone.utc).isoformat(),
-              "limite": limite, "pausa": pausa, "trechos": []}
+              "limite": limite, "pausa": pausa, "trechos": [], "comparacao_chunks": {}}
     stop = False
     for source in sources:
         if stop:
@@ -282,7 +293,12 @@ def run(pasta: Path, saida: Path, limite: int = 40, pausa: float = 4) -> dict:
         if source.stat().st_size > 20 * 1024 * 1024:
             raise ValueError(f"Arquivo com mais de 20 MB: {source.name}")
         raw = source.read_text(encoding="utf-8-sig", errors="replace")
-        for number, piece in enumerate(chunks(raw), 1):
+        pieces = chunks(raw)
+        report["comparacao_chunks"][source.stem] = {
+            "antes_11500": len(chunks(raw, max_chars=11_500)),
+            "agora_40000": len(pieces),
+        }
+        for number, piece in enumerate(pieces, 1):
             if router.attempts >= router.max_requests or not router.active():
                 stop = True
                 break

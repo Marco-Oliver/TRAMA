@@ -87,7 +87,10 @@ def timed_lines(text: str) -> list[tuple[str, str]]:
     return items
 
 
-def chunks(text: str, max_chars: int = 11500) -> list[str]:
+CHUNK_MAX_CHARS = 40_000
+
+
+def chunks(text: str, max_chars: int = CHUNK_MAX_CHARS) -> list[str]:
     sections = timed_lines(text)
     if not sections:
         return [text[i:i + max_chars] for i in range(0, len(text), max_chars)] or [""]

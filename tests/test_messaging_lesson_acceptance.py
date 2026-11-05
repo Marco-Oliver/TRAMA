@@ -53,13 +53,13 @@ def invented_transcript():
         "[0:16] A resposta accepted seria HTTP 204 neste desenho de teste.",
         "[0:20] O consumer vai processar a mensagem recebida.",
     ]
-    # A realistic two-chunk source with hundreds of short timestamped
+    # A realistic two-chunk (~41k characters) source with short timestamped
     # lines; these are made-up sentences, not any user's actual transcript.
     filler=[
         f"[{i//60}:{i%60:02d}] "
         "Exemplo fictício: a API recebe pedidos e o consumidor processa "
         "a fila de eventos de modo desacoplado."
-        for i in range(25,200)
+        for i in range(25,400)
     ]
     return "\n".join(intro+filler)+"\n"
 

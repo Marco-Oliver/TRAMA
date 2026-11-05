@@ -114,7 +114,7 @@ class QualityTests(unittest.TestCase):
     def test_distinct_explanations_survive_pipeline_chunk_merge(self):
         source = self.source(
             "Aula-001-V01.txt",
-            "[0:04] Uma classe agrupa os dados.\n" + ("Texto de introdução. " * 550)
+            "[0:04] Uma classe agrupa os dados.\n" + ("Texto de introdução. " * 2050)
             + "\n[10:04] Uma classe pode incluir comportamentos.\n",
         )
         counter = [0]

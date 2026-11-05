@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 from knowledge_bridge.ai import AIResult
-from knowledge_bridge.content import chunks, timed_lines
+from knowledge_bridge.content import CHUNK_MAX_CHARS, chunks, timed_lines
 from knowledge_bridge.code_intel import match_lesson_to_repository
 from knowledge_bridge.pipeline import Application
 
@@ -27,6 +27,7 @@ def long_synthetic_lesson() -> str:
         f"[{i//60}:{i%60:02d}] A aplicação recebe um novo pedido, "
         "faz validações e apresenta a fila de eventos em um desenho "
         "conceitual fictício, sem implementar integrações."
+        + " A explicação fictícia não menciona tecnologias externas." * 4
         for i in range(2, 112)
     ]
     ending = [
@@ -68,7 +69,7 @@ class ChunkFidelityTests(unittest.TestCase):
     def test_independent_chunk_cannot_borrow_a_later_timestamp_or_term(self):
         text = long_synthetic_lesson()
         sections = chunks(text)
-        self.assertEqual(len(sections), 2, "Fixture must cross one real 11500-byte boundary")
+        self.assertEqual(len(sections), 2, "Fixture must cross one real 40000-character boundary")
         self.assertEqual(timed_lines("\n".join(sections)), timed_lines(text))
         self.assertNotIn("HttpClient", sections[0])
         self.assertIn("HttpClient", sections[1])
@@ -117,7 +118,8 @@ class ChunkFidelityTests(unittest.TestCase):
                     json.dumps([], ensure_ascii=False, sort_keys=True).encode()
                 ).hexdigest()
                 cache_digest = hashlib.sha256(
-                    (src["digest"] + context_digest).encode()
+                    (src["digest"] + context_digest
+                     + f":chunk-layout:v2:{CHUNK_MAX_CHARS}").encode()
                 ).hexdigest()
                 # Replicate old cached result: concept was incorrectly grounded
                 # against the entire recording, not its original chunk.

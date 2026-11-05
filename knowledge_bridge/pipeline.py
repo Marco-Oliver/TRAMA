@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .ai import AllProvidersFailed, BudgetStopped, FreeAIRouter, NoFreeProvider, read_env
-from .content import chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines
+from .content import CHUNK_MAX_CHARS, chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines
 from .code_intel import index_repository, match_lesson_to_repository, find_code_line, concept_from_text, redact_sensitive
 from .publishing import Publisher
 from .store import Store
@@ -283,7 +283,12 @@ class Application:
             context_rows = self.publisher._context_rows(src['lesson'] or '')
             context_payload = [item for _, item in context_rows]
             context_digest = hashlib.sha256(json.dumps(context_payload,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
-            segment_digest = hashlib.sha256((src['digest']+context_digest).encode()).hexdigest()
+            # A cache from the 11.500-character layout cannot be reused for a
+            # now-larger 40.000-character chunk with the same index/source.
+            # Preserve old records, but never mistake them for valid new chunks.
+            segment_digest = hashlib.sha256(
+                (src['digest'] + context_digest + f":chunk-layout:v2:{CHUNK_MAX_CHARS}").encode()
+            ).hexdigest()
             done = self.store.conn.execute("SELECT digest,payload FROM analyses WHERE source_id=?",(src["id"],)).fetchone()
             was_done = bool(done and done['digest']==src['digest'] and
                 json.loads(done['payload']).get('_context_revision')==context_digest)

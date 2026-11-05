@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import base64
+import logging
 import math
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -324,7 +325,11 @@ Se faltar evidência, deixe o campo/lista vazio. Não invente horários.
 Cada conceito deve ter UM item com nome CURTO, próximo das palavras ditas pelo professor.
 Exemplos: Docker, Imagem, Contêiner, Mensageria. Não agrupe dois assuntos em um
 rótulo como "Arquitetura Baseada em Eventos e Mensageria"; se forem assuntos distintos,
-separe-os. Não corrija automaticamente possíveis erros da transcrição ("posts" não
+separe-os. Nomes próprios de projetos, aplicações, aplicativos, cursos ou pessoas
+NÃO são conceitos técnicos, mesmo quando aparecem literalmente no TXT (por exemplo,
+"Delivery App" é uma aplicação/projeto, não um conceito). Registre-os no resumo ou
+no contexto adequado, nunca em "conceitos"; tecnologias técnicas ensinadas (como
+Docker) ainda podem ser conceitos. Não corrija automaticamente possíveis erros da transcrição ("posts" não
 vira "PostgreSQL", por exemplo): mantenha a grafia observada e a dúvida para revisão.
 Quando o professor explicar o assunto sem pronunciar o nome técnico, coloque
 em evidencia uma citação CURTA e LITERAL da fala, exatamente como no TXT.
@@ -435,6 +440,7 @@ No máximo 8 relações, 5 correções e 5 novidades. Campos ausentes devem ser 
         return self._request(prompt)
 
     _RETRY_DELAYS = (2, 5, 10)
+    _MAX_RETRY_WAIT = 30
 
     def _call_with_retries(self, provider: str, model: str, key: str,
                            prompt: str, completion) -> AIResult:
@@ -447,7 +453,7 @@ No máximo 8 relações, 5 correções e 5 novidades. Campos ausentes devem ser 
             if retry_number:
                 delay = max(self._RETRY_DELAYS[retry_number - 1],
                             previous_error.retry_after or 0)
-                time.sleep(delay)
+                time.sleep(min(delay, self._MAX_RETRY_WAIT))
             self.attempts += 1
             try:
                 return AIResult(completion(provider, model, key, prompt), provider, model)
@@ -455,6 +461,18 @@ No máximo 8 relações, 5 correções e 5 novidades. Campos ausentes devem ser 
                 if exc.quota or exc.fatal:
                     self.blocked.add(provider)
                     raise
+                if exc.retryable and exc.retry_after is not None and exc.retry_after > self._MAX_RETRY_WAIT:
+                    # Do not stall the entire batch waiting for an overloaded server.
+                    # No raw HTTP body or credentials are written to logs.
+                    logging.getLogger(__name__).warning(
+                        "Provedor %s solicitou Retry-After de %s s, acima do teto de %s s; "
+                        "trecho ficará pendente para revisão.",
+                        provider, f"{exc.retry_after:g}", self._MAX_RETRY_WAIT)
+                    raise ProviderError(
+                        provider,
+                        f"Retry-After de {exc.retry_after:g}s excede teto de {self._MAX_RETRY_WAIT}s; "
+                        "falha temporária do trecho",
+                        retryable=False) from exc
                 if not exc.retryable or retry_number == len(self._RETRY_DELAYS):
                     raise
                 previous_error = exc
