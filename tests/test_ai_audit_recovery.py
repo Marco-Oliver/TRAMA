@@ -126,7 +126,7 @@ class RecoveryTests(unittest.TestCase):
         ):
             with self.assertRaises(AllProvidersFailed):
                 router.analyze("fala teste", "Aula-001")
-        self.assertEqual(router.attempts, 2)
+        self.assertEqual(router.attempts, 4)
         self.assertIn("gemini", router.active())
 
     def test_unauthorized_and_quota_errors_are_not_retried(self):
@@ -259,7 +259,7 @@ class LectureBatchTests(unittest.TestCase):
         self.assertEqual(result["conceitos"][0]["tempo"], "")
         self.assertEqual(result["atividades"][0]["tempo"], "")
 
-    def test_natural_language_concept_keeps_exact_quote_only_as_hypothesis(self):
+    def test_literal_quote_accepts_label_but_does_not_verify_ai_interpretation(self):
         speech = "[0:10] A classe filha herda os atributos da classe mãe."
         hypothesis = {
             "resumo": "A aula tratou de atributos herdados.",
@@ -272,10 +272,10 @@ class LectureBatchTests(unittest.TestCase):
             ],
         }
         clean = Application._clean_result(hypothesis, speech)
-        self.assertEqual(clean["conceitos"], [])
+        self.assertEqual([c["nome"] for c in clean["conceitos"]], ["Herança"])
+        self.assertEqual(clean["conceitos"][0]["confianca"], "citacao_literal")
         candidates = {c["nome"]: c for c in clean["conceitos_a_conferir"]}
-        self.assertIn("classe filha herda", candidates["Herança"]["evidencia_literal"])
-        self.assertIn("A filha", candidates["Herança"]["explicacao_sugerida"])
+        self.assertNotIn("Herança", candidates)
         self.assertEqual(candidates["GraphQL"]["evidencia_literal"], "")
         self.assertEqual(candidates["GraphQL"]["explicacao_sugerida"], "")
 
@@ -294,10 +294,12 @@ class LectureBatchTests(unittest.TestCase):
                                         / "Aula-001").glob("*.md")
                             if p.name != "00-Visao-geral.md")
                 content = note.read_text(encoding="utf-8")
-                self.assertIn("Citação literal conferida no TXT", content)
-                self.assertIn("Interpretação da IA, não confirmada", content)
-                self.assertFalse((root/"cofre"/"01-Meu-Conhecimento"/
-                                  "Conceitos"/"heranca.md").exists())
+                self.assertIn("Herança", content)
+                self.assertIn("GraphQL", content)
+                concept_page = (root/"cofre"/"01-Meu-Conhecimento"/"Conceitos"/"heranca.md")
+                self.assertTrue(concept_page.exists())
+                self.assertIn("Explicação sugerida pela IA (conferir)",
+                              concept_page.read_text(encoding="utf-8"))
             finally:
                 app.close()
 

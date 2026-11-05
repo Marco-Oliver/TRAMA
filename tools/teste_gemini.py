@@ -168,6 +168,8 @@ def inspect_result(raw, clean, transcript):
     return {"resumo": clean.get("resumo", ""),
             "caracteres_resumo": len(clean.get("resumo", "")),
             "conceitos_aceitos": len(clean.get("conceitos", [])),
+            "conceitos_por_nome": sum(x.get("confianca") == "nome_literal" for x in clean.get("conceitos", [])),
+            "conceitos_por_citacao": sum(x.get("confianca") == "citacao_literal" for x in clean.get("conceitos", [])),
             "nomes_conceitos": [x.get("nome", "") for x in clean.get("conceitos", [])],
             "conceitos_a_conferir": len(to_review),
             "nomes_a_conferir": [x.get("nome", "") for x in to_review],
@@ -198,18 +200,21 @@ def report_markdown(report):
              f"- Primeira chamada: {'API aceitou o corpo enviado' if accepted else 'compatibilidade NÃO confirmada'}",
              f"- Campos do contrato: {json.dumps(first.get('contrato_enviado', {}), ensure_ascii=False)}", "",
              "## 2. Tabela por aula", "",
-             "| Aula | Trechos | OK/falha | Aceitos | A conferir (citação literal) | Tamanho resumo |",
-             "|---|---:|---|---:|---:|---:|"]
+             "| Aula | Trechos | OK/falha | Aceitos | Por nome | Por citação | A conferir | Tamanho resumo | Chamadas (tentativas extras) |",
+             "|---|---:|---|---:|---:|---:|---:|---:|---:|"]
     for name, rows in lessons.items():
         ok = sum(x["ok"] for x in rows)
         accepted_concepts = sum(x.get("conceitos_aceitos", 0) for x in rows)
+        accepted_name = sum(x.get("conceitos_por_nome", 0) for x in rows)
+        accepted_quote = sum(x.get("conceitos_por_citacao", 0) for x in rows)
         review = sum(x.get("conceitos_a_conferir", 0) for x in rows)
-        literal = sum(x.get("a_conferir_com_citacao_literal", 0) for x in rows)
         size = sum(x.get("caracteres_resumo", 0) for x in rows)
-        lines.append(f"| {name} | {len(rows)} | {ok}/{len(rows)-ok} | {accepted_concepts} | {review} ({literal}) | {size} |")
+        calls_count = sum(x.get("tentativas", len(x.get("chamadas", []))) for x in rows)
+        extra = sum(x.get("novas_tentativas", 0) for x in rows)
+        lines.append(f"| {name} | {len(rows)} | {ok}/{len(rows)-ok} | {accepted_concepts} | {accepted_name} | {accepted_quote} | {review} | {size} | {calls_count} ({extra}) |")
     lines += ["", "## 3. Lista de falhas", "",
-              "| Aula | Trecho | Motivo | finishReason | Detalhes |",
-              "|---|---:|---|---|---|"]
+              "| Aula | Trecho | Motivo | finishReason | Tentativas | Detalhes |",
+              "|---|---:|---|---|---:|---|"]
     for row in entries:
         if row["ok"]:
             continue
@@ -220,7 +225,7 @@ def report_markdown(report):
             if c.get("http_status") == 400:
                 error += " / API 400: " + str(c.get("api_error", ""))[:500].replace("|", "/").replace("\n", " ")
                 error += " / Campos possivelmente recusados: " + ", ".join(c.get("campos_possivelmente_recusados", []))
-        lines.append(f"| {row['aula']} | {row['trecho']} | {row['motivo']} | {row.get('finishReason') or '-'} | {error} |")
+        lines.append(f"| {row['aula']} | {row['trecho']} | {row['motivo']} | {row.get('finishReason') or '-'} | {row.get('tentativas', len(row['chamadas']))} | {error} |")
     lines += ["", "## 4. Amostras", ""]
     count = 0
     for name, rows in lessons.items():
@@ -306,6 +311,7 @@ def run(pasta: Path, saida: Path, limite: int = 40, pausa: float = 4) -> dict:
                 entry["erro"] = scrub(str(exc)[:350], secrets)
             finally:
                 entry["tempo_total_segundos"] = round(time.perf_counter() - started, 3)
+                entry["tentativas"] = len(calls)
                 entry["novas_tentativas"] = max(0, len(calls) - 1)
                 entry["finishReason"] = next((c.get("finishReason") for c in reversed(calls)
                                               if c.get("finishReason")), None)

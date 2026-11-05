@@ -203,39 +203,40 @@ class Application:
                 doubt for doubt in clean["duvidas"]
                 if normalized_name(doubt) not in known_names
             ]
-        # A model's concept label is not an observed lesson fact unless its
-        # name appears literally in the ORIGINAL transcript. Names suggested
-        # from a code repository may be useful hypotheses, but must never
-        # turn into confirmed concept pages by mere model assertion.
+        # Compare quotes against spoken text, not TXT timestamp markers.
+        # Punctuation, case and accents are normalized, but technical names
+        # are NEVER corrected/inferred from ASR automatically.
+        spoken = norm(" ".join(sentence for _, sentence in timed_lines(raw_text)))
+        normalized_spoken = " " + spoken + " "
         grounded=[]
         unverified=[]
         for concept in clean["conceitos"]:
             label=concept.get("nome","").strip()
+            if not label:
+                continue
             observed=literal_technical_mention(label,raw_text)
+            quote=concept.get("evidencia","").strip()
+            normalized_quote=norm(quote)
+            verified_quote = (
+                bool(normalized_quote) and len(normalized_quote) >= 18
+                and (" " + normalized_quote + " ") in normalized_spoken
+            )
             if observed:
-                # A literal abbreviation confirms a mention, NOT the model's
-                # explanation or a claim that the learner mastered the topic.
+                # Only the NAME is observed. No claim of pedagogical correctness.
+                concept["confianca"] = "nome_literal"
                 grounded.append(concept)
-            elif label:
-                # Keep a legitimate interpretation reviewable instead of
-                # discarding the model's explanation when the teacher used
-                # everyday language rather than the technical label.
-                # ONLY a verbatim quote from this exact chunk can be shown
-                # as an observed source; it does not validate semantics.
-                quote = concept.get("evidencia", "").strip()
-                normalized_quote = re.sub(r"\s+", " ", quote).casefold()
-                normalized_source = re.sub(r"\s+", " ", raw_text).casefold()
-                verified_quote = (
-                    quote if len(normalized_quote) >= 18
-                    and normalized_quote in normalized_source else ""
-                )
+            elif verified_quote:
+                # The SPEECH is observed; the interpretation/label still needs
+                # human review and is never an automatic spelling correction.
+                concept["confianca"] = "citacao_literal"
+                grounded.append(concept)
+            else:
                 unverified.append({
                     "nome": label,
-                    "motivo": "Rótulo técnico inferido pela IA; nome não localizado no TXT.",
-                    "evidencia_literal": verified_quote,
-                    "explicacao_sugerida": (
-                        concept.get("explicacao", "")[:500] if verified_quote else ""),
-                    "tempo": concept.get("tempo", "") if verified_quote else "",
+                    "motivo": "Rótulo técnico inferido pela IA; sem nome ou citação literal validada.",
+                    "evidencia_literal": "",
+                    "explicacao_sugerida": "",
+                    "tempo": "",
                 })
         clean["conceitos"]=grounded
         clean["conceitos_a_conferir"]=unverified[:12]
