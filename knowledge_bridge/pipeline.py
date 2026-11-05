@@ -170,15 +170,15 @@ class Application:
         kinds = {"apresentacao", "tecnica", "organizacional", "atividade", "mista", "indefinida"}
         kind = safe(payload.get("tipo_aula"), 24)
         clean = {
-            "resumo": safe(payload.get("resumo"), 2200),
+            "resumo": safe(payload.get("resumo"), 4000 if len(raw_text) > 20_000 else 2000),
             "tipo_aula": kind if kind in kinds else "indefinida",
             "pessoas": entries("pessoas", {"nome": 130, "papel": 140, "informacao": 420}, 8),
             "atividades": entries("atividades", {"descricao": 380}, 8),
             "ferramentas": entries("ferramentas", {"nome": 110, "contexto": 360}, 8),
             "marcos": entries("marcos", {"descricao": 420}, 8),
-            "conceitos": entries("conceitos", {"nome": 90, "explicacao": 700, "evidencia": 260}, 12),
-            "exemplos": [safe(x, 350) for x in payload.get("exemplos", []) if isinstance(x, str)][:7],
-            "duvidas": [safe(x, 350) for x in payload.get("duvidas", []) if isinstance(x, str)][:7],
+            "conceitos": entries("conceitos", {"nome": 90, "explicacao": 700, "evidencia": 260}, 20),
+            "exemplos": [safe(x, 350) for x in payload.get("exemplos", []) if isinstance(x, str)][:10],
+            "duvidas": [safe(x, 350) for x in payload.get("duvidas", []) if isinstance(x, str)][:10],
             "nomes_a_conferir": [safe(x, 180) for x in payload.get("nomes_a_conferir", [])
                                  if isinstance(x, str)][:7],
         }
@@ -399,7 +399,7 @@ class Application:
                         # Dedup keeps different evidence timestamps if substantive text differs.
                         if item not in combined[category]:
                             combined[category].append(item)
-                for category, limit in (("exemplos", 7), ("duvidas", 7),
+                for category, limit in (("exemplos", 10), ("duvidas", 10),
                                         ("nomes_a_conferir", 7)):
                     for item in result.get(category, []):
                         if item and item not in combined[category] and len(combined[category]) < limit:

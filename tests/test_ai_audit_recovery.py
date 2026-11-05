@@ -88,7 +88,7 @@ class GeminiResponseSafetyTests(unittest.TestCase):
         schema = data["generationConfig"]["responseJsonSchema"]
         self.assertIn("conceitos", schema["required"])
         self.assertIn("resumo", schema["required"])
-        self.assertEqual(schema["properties"]["conceitos"]["maxItems"], 8)
+        self.assertEqual(schema["properties"]["conceitos"]["maxItems"], 20)
 
     def test_chat_provider_rejects_length_truncation(self):
         reply = {"choices": [{"finish_reason": "length", "message": {
