@@ -44,7 +44,7 @@ const makeBridge=({notes})=>{
  window.__TRAMA_API__=({
   snapshot: async()=>({connected:true,vault:'C:\\TRAMA-Teste\\Cofre',notes,stats:{notes:3,videos:2,transcriptions:2,materials:0,repositories:1},favorites:[notes[0].id]}),
   note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n.lesson==='Aula-001'?{...n,kind:'visao_geral',state:'fontes_organizadas',content:n.content+'\n\n## Em poucas palavras\n\n**Pendente:** a IA ainda não gerou o resumo desta aula.',summary:'**Pendente:** a IA ainda não gerou o resumo desta aula.'}:n):{error:'Nota não encontrada'};},
-  graph: async()=>({nodes:notes,edges:[[0,2]]}),
+  graph: async()=>({nodes:notes.map(n=>({...n,kind:n.kind==='visao_geral'?'indice':n.kind})),edges:[[0,2]]}),
   process_lesson: async (lesson, confirmed, force)=>{
     window.__tramaLessonRefreshCalls=(window.__tramaLessonRefreshCalls||0)+1;
     (window.__tramaLessonForceArgs??=[]).push(force);
@@ -129,6 +129,39 @@ try{
     await page.locator('.nav-item[data-view="home"]').click();
     await page.getByRole('button',{name:'Conectar meu cofre'}).waitFor();
     await page.screenshot({path:path.join(screenshots,`${prefix}home-${width}.png`),fullPage:true});
+    // Graph uses the exact approved Canvas renderer, including packaged CSP.
+    await page.locator('.nav-item[data-view="library"]').click();
+    await page.locator('[data-lib-action="graph"]').click();
+    await page.locator('canvas.tg-canvas').waitFor();
+    await page.locator('.tg-kind[data-kind="conceito"]').waitFor();
+    const indexKind=page.locator('.tg-kind[data-kind="indice"]');
+    await indexKind.waitFor();
+    if(await indexKind.evaluate(el=>el.classList.contains('on')))
+      throw Error('Index nodes must start hidden');
+    await page.getByRole('button',{name:'Mostrar índices'}).click();
+    if(!(await indexKind.evaluate(el=>el.classList.contains('on'))))
+      throw Error('Show indexes filter did not enable index nodes');
+    await page.getByRole('button',{name:'Ocultar índices'}).click();
+    const conceptKind=page.locator('.tg-kind[data-kind="conceito"]');
+    await conceptKind.click();
+    if(await conceptKind.evaluate(el=>el.classList.contains('on')))
+      throw Error('Concept filter did not hide nodes');
+    await conceptKind.click();
+    await page.locator('input.tg-search').fill('console');
+    await page.locator('canvas.tg-canvas').hover({position:{x:15,y:15}});
+    await page.mouse.wheel(0,-200);
+    await page.getByRole('button',{name:'Centralizar'}).click();
+    await page.getByRole('button',{name:'Tema escuro'}).click();
+    await page.locator('.tg-root.tg-dark').waitFor();
+    await assertNoUiError('graph interactions');
+    await page.screenshot({path:path.join(screenshots,`${prefix}graph-${width}.png`)});
+    await page.locator('.nav-item[data-view="home"]').click();
+    if(await page.locator('canvas.tg-canvas').count())
+      throw Error('Graph canvas remained mounted after leaving the view');
+    await page.locator('.nav-item[data-view="library"]').click();
+    await page.locator('[data-lib-action="graph"]').click();
+    await page.getByRole('button',{name:'Tema claro'}).waitFor();
+    await page.locator('.nav-item[data-view="home"]').click();
     await page.getByRole('button',{name:'Ver minhas aulas'}).click();
     await page.locator('.lesson-row').first().waitFor();
     await page.locator('#note-heading .note-title').getByText('Hello World em C#').waitFor();
