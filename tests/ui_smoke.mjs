@@ -45,6 +45,16 @@ const makeBridge=({notes})=>{
   snapshot: async()=>({connected:true,vault:'C:\\TRAMA-Teste\\Cofre',notes,stats:{notes:3,videos:2,transcriptions:2,materials:0,repositories:1},favorites:[notes[0].id]}),
   note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n.lesson==='Aula-001'?{...n,kind:'visao_geral',state:'fontes_organizadas',content:n.content+'\n\n## Em poucas palavras\n\n**Pendente:** a IA ainda não gerou o resumo desta aula.',summary:'**Pendente:** a IA ainda não gerou o resumo desta aula.'}:n):{error:'Nota não encontrada'};},
   graph: async()=>({nodes:notes.map(n=>({...n,kind:n.kind==='visao_geral'?'indice':n.kind})),edges:[[0,2]]}),
+  lesson_code_config: async()=>({ok:true,fatal:false,erros:[],github_token_configurado:false,
+    aulas:{'Aula-001':{professor:[],dupla:[]}},datas:[{aula:'Aula-001',data:'2026-10-28',origem_data:'contexto_classroom'}]}),
+  save_lesson_code: async (lesson,data,confirmed)=>{(window.__tramaCodeSaves??=[]).push({lesson,data,confirmed});return {ok:confirmed,message:'Cadastro GitHub salvo.'};},
+  preview_lesson_mappings: async (repo)=>{window.__tramaPreviewRepo=repo;return {ok:true,repo,
+    taxa:{restantes:56,limite:60,consultas:3},truncado:false,
+    candidatos:[{id:'pasta:test',tipo:'pasta',ref_tipo:'commit',ref:'a'.repeat(40),pasta:'V3',
+      rotulo:'Pasta V3',data:'2026-10-28',sugestao_anterior:{ref_tipo:'commit',ref:'a'.repeat(40),pasta:'V2'}}],
+    aulas:[{aula:'Aula-001',data:'2026-10-28',origem_data:'contexto_classroom',candidato_id:'pasta:test',
+      motivo:'Sugestão apenas por data'}]};},
+  apply_lesson_mappings: async (rows,confirmed)=>{(window.__tramaMapSaves??=[]).push({rows,confirmed});return {ok:true,message:'1 aula(s) confirmada(s)'};},
   process_lesson: async (lesson, confirmed, force)=>{
     window.__tramaLessonRefreshCalls=(window.__tramaLessonRefreshCalls||0)+1;
     (window.__tramaLessonForceArgs??=[]).push(force);
@@ -166,6 +176,55 @@ try{
     if((await page.locator('#note-content').innerText()).includes('Suas notas aparecerão'))
       throw Error('Lesson notes were not loaded into the interface');
     await assertNoUiError('lessons');
+    // GitHub lesson mapping is manual and must remain inert until confirmation.
+    await page.locator('#btn-lesson-code').click();
+    await page.locator('#lesson-code-dialog').waitFor({state:'visible'});
+    if(!(await page.locator('#lesson-code-token').innerText()).includes('TRAMA_GITHUB_TOKEN'))
+      throw Error('Registration does not recommend a token when absent');
+    await page.locator('#lesson-code-add-teacher').click();
+    await page.locator('#lesson-code-add-teacher').click();
+    await page.locator('#lesson-code-add-student').click();
+    const teacher=page.locator('#code-teachers .code-repo-row');
+    const students=page.locator('#code-students .code-repo-row');
+    if(await teacher.count()!==2||await students.count()!==1)throw Error('Missing 2+1 GitHub form rows');
+    await teacher.nth(0).locator('[data-code="rotulo"]').fill('Back-end professor');
+    await teacher.nth(0).locator('[data-code="repo"]').fill('https://github.com/professor/backend');
+    await teacher.nth(1).locator('[data-code="rotulo"]').fill('Front-end professor');
+    await teacher.nth(1).locator('[data-code="repo"]').fill('https://github.com/professor/frontend');
+    await students.locator('[data-code="rotulo"]').fill('Back-end dupla');
+    await students.locator('[data-code="repo"]').fill('https://github.com/dupla/backend');
+    await students.locator('[data-code="professor_id"]').fill('professor-1');
+    await page.locator('#lesson-code-form button[type=submit]').click();
+    await page.locator('#trama-confirm-dialog').waitFor({state:'visible'});
+    await page.locator('#trama-confirm-cancel').click();
+    if(await page.evaluate(()=>window.__tramaCodeSaves?.length||0))throw Error('GitHub form saved without user consent');
+    await page.locator('#lesson-code-form button[type=submit]').click();
+    await page.locator('#trama-confirm-accept').click();
+    await page.waitForFunction(()=>window.__tramaCodeSaves?.length===1);
+    const data=await page.evaluate(()=>window.__tramaCodeSaves[0]);
+    if(data.lesson!=='Aula-001'||!data.confirmed||data.data.professor.length!==2||
+       data.data.dupla.length!==1||data.data.dupla[0].professor_id!=='professor-1')
+      throw Error('GitHub 2 professor + 1 student form did not submit exact data: '+JSON.stringify(data));
+    await page.locator('#lesson-code-map-open').click();
+    await page.locator('#lesson-map-dialog').waitFor({state:'visible'});
+    await page.locator('#lesson-map-repo').fill('https://github.com/professor/backend');
+    await page.locator('#lesson-map-search').click();
+    await page.locator('.lesson-map-row').first().waitFor();
+    if(!(await page.locator('#lesson-map-quota').innerText()).includes('56 de 60'))
+      throw Error('Remaining API requests not displayed in map UI');
+    if(await page.evaluate(()=>window.__tramaMapSaves?.length||0))
+      throw Error('Mappings were written during preview');
+    await page.locator('.lesson-map-row [data-map-check]').first().check();
+    await page.locator('#lesson-map-save').click();
+    await page.locator('#trama-confirm-dialog').waitFor({state:'visible'});
+    await page.locator('#trama-confirm-cancel').click();
+    if(await page.evaluate(()=>window.__tramaMapSaves?.length||0))
+      throw Error('Mapping saved after declining consent');
+    await page.locator('#lesson-map-save').click();
+    await page.locator('#trama-confirm-accept').click();
+    await page.waitForFunction(()=>window.__tramaMapSaves?.length===1);
+    await page.locator('#lesson-map-dismiss').click();
+
     const sidebarCards=page.locator('#details-panel .detail-card');
     const technical=sidebarCards.filter({has:page.locator('h3', {hasText:'Conhecimentos técnicos'})});
     const people=sidebarCards.filter({has:page.locator('h3', {hasText:'Pessoas citadas'})});
