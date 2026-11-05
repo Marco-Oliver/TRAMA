@@ -1,6 +1,7 @@
 """Cadastro explícito GitHub por aula. Não guarda credenciais nem resolve refs."""
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime
 import json
 import os
@@ -190,7 +191,7 @@ def lesson_dates(vault: Path) -> list[dict]:
     db = vault / ".base-conhecimento" / "estado.sqlite3"
     if db.is_file():
         try:
-            with sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True) as conn:
+            with closing(sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)) as conn:
                 names.update(row[0] for row in conn.execute(
                     "SELECT DISTINCT lesson FROM sources WHERE lesson IS NOT NULL"))
         except sqlite3.Error:
