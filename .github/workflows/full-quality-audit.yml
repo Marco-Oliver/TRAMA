@@ -4,6 +4,7 @@ on:
     branches:
       - fix/quality-personas-ui-security-20261031
       - fix/security-hardening-20261102
+      - feat/grafo-conexoes
   workflow_dispatch:
 permissions:
   contents: read
@@ -47,6 +48,7 @@ jobs:
       - name: Conferir sintaxe JS
         run: |
           node --check knowledge_bridge/ui/library.js
+          node --check knowledge_bridge/ui/graph.js
           node --check knowledge_bridge/ui/app.js
           node --check knowledge_bridge/ui/teacher.js
   browser:
