@@ -34,6 +34,25 @@ from .paths import DATA_HOME, SETTINGS_FILE, CONFIG_FILE, PREVIEW_BUNDLE
 
 ALLOWED_ATTACHMENTS={'.txt','.md','.mp4','.mkv','.mov','.webm','.png','.jpg','.jpeg','.webp','.pdf','.docx'}
 
+_GRAPH_INDEX_STEMS = {"minha-biblioteca", "meu_contexto", "mapa-da-evolucao", "bem-vindo"}
+
+def _graph_kind(note) -> str:
+    """Classificação só para cor e filtro do gráfico; não altera notas."""
+    tipo = str(note.metadata.get("tipo", "")).casefold()
+    stem = note.stem.casefold()
+    if "duvida" in tipo:
+        return "duvida"
+    if (tipo in ("visao_geral", "indice", "mapa") or stem.startswith("00-")
+            or stem in _GRAPH_INDEX_STEMS or note.section == "00-Inicio"):
+        return "indice"
+    if note.section == "01-Meu-Conhecimento":
+        return "conceito"
+    if note.section == "02-Minhas-Aulas":
+        return "aula"
+    if note.section == "03-Meus-Projetos":
+        return "projeto"
+    return "outro"
+
 class Bridge:
     def __init__(self):
         self._window=None
@@ -315,7 +334,8 @@ class Bridge:
         idx=self._index()
         if not idx:return {'nodes':[],'edges':[]}
         nodes,edges=idx.graph(cap=450)
-        return {'nodes':[{'id':n.relative,'title':n.title,'section':n.section} for n in nodes],
+        return {'nodes':[{'id':n.relative,'title':n.title,'section':n.section,
+                          'kind':_graph_kind(n)} for n in nodes],
                 'edges':edges}
 
     def audit_note(self, note_id):
@@ -1543,7 +1563,8 @@ def load_local_ui():
     base=Path(__file__).resolve().parent/'ui'
     html=(base/'index.html').read_text(encoding='utf-8')
     substitutions=(('style.css','style.css'),('library.css','library.css'),
-                   ('classic.css','classic.css'),('faithful.css','faithful.css'))
+                   ('classic.css','classic.css'),('faithful.css','faithful.css'),
+                   ('graph.css','graph.css'))
     # The packaged window requires inline local assets. Keep a strict CSP
     # with exact SHA-256 hashes of the bundled CSS and JS, instead of removing
     # the policy and allowing any injected script to execute.
@@ -1556,7 +1577,7 @@ def load_local_ui():
         css=(base/filename).read_text(encoding='utf-8')
         styles.append(content_hash(css))
         html=html.replace(f'<link rel="stylesheet" href="{href}">','<style>'+css+'</style>')
-    for script in ('library.js','app.js','teacher.js'):
+    for script in ('library.js','graph.js','app.js','teacher.js'):
         js=(base/script).read_text(encoding='utf-8')
         scripts.append(content_hash(js))
         html=html.replace(f'<script src="{script}"></script>','<script>'+js+'</script>')
