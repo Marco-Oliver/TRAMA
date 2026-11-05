@@ -151,7 +151,8 @@ class MappingTests(unittest.TestCase):
         self.assertEqual(sum("recursive=1" in x for x in calls),1)
         folder = next(x for x in result["candidatos"] if x["pasta"]=="V3")
         self.assertEqual(folder["sugestao_anterior"]["pasta"],"V2")
-        self.assertEqual(folder["data"],"")  # tree paths do not carry timestamps
+        self.assertEqual(folder["data"],"2026-11-04")  # date hint from commit subject, not tree
+        self.assertEqual(folder["fonte_data"],"mensagem_commit_indicativa")
         suggestions=GithubMapping.suggestions(result,[{
             "aula":"Aula-131","data":"2026-11-05",
             "origem_data":"contexto_classroom"}])
