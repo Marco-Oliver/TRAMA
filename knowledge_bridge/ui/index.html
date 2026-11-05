@@ -57,7 +57,7 @@
 
     </nav>
     <section class="list-panel" id="list-panel">
-      <div class="list-heading"><h2 id="list-title">Minhas Aulas</h2><button type="button" id="btn-context" title="Registrar informações e links da aula manualmente" aria-label="Registrar contexto da aula">Contexto</button><button id="btn-list-add" title="Importar arquivo ou projeto">+</button></div>
+      <div class="list-heading"><h2 id="list-title">Minhas Aulas</h2><button type="button" id="btn-lesson-code" title="Associar repositórios GitHub à aula">Código GitHub</button><button type="button" id="btn-context" title="Registrar informações e links da aula manualmente" aria-label="Registrar contexto da aula">Contexto</button><button id="btn-list-add" title="Importar arquivo ou projeto">+</button></div>
       <div class="list-filters" aria-label="Filtrar lista"><button type="button" data-list-filter="all" class="active">Todas</button><button type="button" data-list-filter="recent">Recentes</button><button type="button" data-list-filter="favorites">Favoritas</button></div>
       <div class="local-search"><span>⌕</span><input id="list-search" placeholder="Buscar aulas..."></div>
       <div class="items-scroll" id="items"></div>
@@ -155,9 +155,39 @@ Alexandre Rech — professor"></textarea></label>
   <div class="dialog-actions"><span id="context-feedback" role="status"></span><button type="button" id="context-attach">Vincular prints / PDFs</button><button type="button" id="context-dismiss">Cancelar</button><button type="submit" id="context-save">Salvar no Obsidian</button></div>
 </form>
 </dialog>
+<dialog id="lesson-code-dialog" class="context-dialog lesson-code-dialog" aria-labelledby="lesson-code-title">
+ <form id="lesson-code-form" novalidate>
+  <div class="dialog-header"><h2 id="lesson-code-title">Código GitHub por aula</h2><button type="button" id="lesson-code-close" aria-label="Fechar">×</button></div>
+  <p>Cadastre os repositórios e as revisões de cada aula. A análise do código e o congelamento de SHAs serão adicionados nas próximas etapas.</p>
+  <div class="context-fields"><label>Número da aula <input id="lesson-code-number" type="number" min="1" max="9999" required></label></div>
+  <p id="lesson-code-token" role="status"></p>
+  <h3>Repositórios do professor</h3><div id="code-teachers"></div>
+  <button type="button" id="lesson-code-add-teacher">+ Repositório do professor</button>
+  <h3>Repositórios da dupla</h3><div id="code-students"></div>
+  <button type="button" id="lesson-code-add-student">+ Repositório da dupla</button>
+  <div class="dialog-actions"><span id="lesson-code-feedback" role="status" aria-live="polite"></span>
+   <button type="button" id="lesson-code-map-open">Assistente de mapeamento em lote</button>
+   <button type="button" id="lesson-code-cancel">Cancelar</button>
+   <button type="submit">Salvar cadastro</button></div>
+ </form>
+</dialog>
+<dialog id="lesson-map-dialog" class="context-dialog lesson-map-dialog" aria-labelledby="lesson-map-title">
+ <div class="lesson-map-body">
+  <div class="dialog-header"><h2 id="lesson-map-title">Assistente de mapeamento GitHub</h2><button type="button" id="lesson-map-close" aria-label="Fechar">×</button></div>
+  <p>Consulta até 100 commits, até 100 tags e uma árvore Git. Sugestões por data são aproximadas; a data do post Classroom não comprova a data da gravação. Nenhum vínculo será gravado sem confirmação.</p>
+  <label>Repositório do professor <input id="lesson-map-repo" maxlength="300" placeholder="https://github.com/professor/projeto"></label>
+  <button type="button" id="lesson-map-search">Consultar e sugerir</button>
+  <p id="lesson-map-quota" role="status">Sem token há poucas requisições por hora. Recomendamos TRAMA_GITHUB_TOKEN.</p>
+  <div id="lesson-map-results" role="group" aria-label="Seleção de aulas e versões"></div>
+  <div class="dialog-actions"><span id="lesson-map-feedback" role="status" aria-live="polite"></span>
+   <button type="button" id="lesson-map-dismiss">Fechar</button>
+   <button type="button" id="lesson-map-save">Confirmar selecionadas</button></div>
+ </div>
+</dialog>
 <div class="toast hidden" id="toast" role="status"></div>
 <script src="library.js"></script>
 <script src="graph.js"></script>
 <script src="app.js"></script>
+<script src="lesson_code.js"></script>
 <script src="teacher.js"></script>
 </body></html>
