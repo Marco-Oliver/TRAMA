@@ -31,7 +31,7 @@ def _safe_repo(value: object) -> bool:
 def _safe_path(value: object) -> bool:
     return (isinstance(value, str) and len(value) <= 300 and
             (value == '' or all(x not in ('', '.', '..') for x in value.split('/'))) and
-            not value.startswith("/") and not "\\" in value and
+            not value.startswith("/") and "\\" not in value and ":" not in value and
             not any(ord(x) < 32 or ord(x) == 127 for x in value))
 
 
@@ -108,13 +108,21 @@ def validate_lesson(lesson: str, data: object) -> list[str]:
 
 def _config_path(vault: Path) -> Path:
     vault = Path(vault).expanduser().resolve()
-    return vault / CONFIG_REL
+    path = vault / CONFIG_REL
+    # Parent-directory symlinks also matter: rejecting only the file symlink
+    # would allow a malicious .base-conhecimento link to escape the vault.
+    if not path.resolve().is_relative_to(vault) or path.parent.is_symlink():
+        raise ValueError("aulas-github.json: caminho fora do cofre ou link simbólico")
+    return path
 
 
 def read_config(vault: Path) -> dict:
     """Erros de uma aula não impedem carregar as outras; documento cru é preservado."""
-    path = _config_path(vault)
     empty = {"schema": 1, "aulas": {}}
+    try:
+        path = _config_path(vault)
+    except (ValueError, OSError) as exc:
+        return {"document": None, "aulas": {}, "erros": [str(exc)], "fatal": True}
     if not path.exists():
         return {"document": empty, "aulas": {}, "erros": [], "fatal": False}
     try:
