@@ -194,7 +194,8 @@ class GithubMapping:
                         delta = (date.fromisoformat(day) - date.fromisoformat(c["data"])).days
                     except ValueError:
                         continue
-                    dated.append((abs(delta), 0 if delta >= 0 else 1, delta, c))
+                    dated.append((abs(delta), 0 if delta >= 0 else 1,
+                                  {'pasta': 0, 'tag': 1, 'commit': 2}.get(c.get('tipo'), 3), c))
                 dated.sort(key=lambda item: (item[0], item[1]))
             best = dated[0][3]["id"] if dated and dated[0][0] <= 30 else ""
             results.append({"aula": name, "data": day,
