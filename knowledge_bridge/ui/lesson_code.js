@@ -85,7 +85,7 @@
    preview=data;const rate=data.taxa||{};
    feedback('lesson-map-quota','API GitHub: '+
       (rate.restantes==null?'saldo não informado':rate.restantes+' de '+rate.limite+' requisições restantes')+
-      ' | '+(rate.consultas||0)+' chamadas. '+(data.truncado?'Árvore incompleta: revise os itens.':''));
+      ' | '+(rate.consultas||0)+' chamadas. '+(data.truncado?'Árvore incompleta: revise os itens.':'')+\n      (data.historico_parcial?' Histórico de commits parcial; consulte revisões antigas manualmente.':''));
    const root=el('lesson-map-results');root.replaceChildren();
    if(!data.aulas?.length){root.textContent='Nenhuma aula cadastrada no cofre.';return;}
    const candidates=data.candidatos||[];
