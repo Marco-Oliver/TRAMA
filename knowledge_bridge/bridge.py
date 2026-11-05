@@ -65,6 +65,7 @@ class Bridge:
         self._verified_installer=None  # path + sha256 only after verified download
         self._teacher_lock=threading.Lock()
         self._teacher_history=[]
+        self._mapping_preview=None  # Candidate refs are never persisted without user confirmation.
         self._teacher_vault=None
         self._teacher_requests=0
         # Fila em memória: nada é enviado nem escrito no Obsidian até Processar tudo.
@@ -1083,6 +1084,107 @@ class Bridge:
             finally:
                 self._write_lock.release()
 
+    def lesson_code_config(self, lesson=""):
+        """Read-only registration status: return valid lessons and isolated errors."""
+        from .lesson_code_config import read_config, lesson_dates
+        vault=self._vault()
+        if vault is None:
+            return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        result=read_config(vault)
+        data=result["aulas"]
+        return {"ok":not result["fatal"],"fatal":result["fatal"],"erros":result["erros"],
+                "aulas":data if not lesson else {lesson:data[lesson]} if lesson in data else {},
+                "datas":lesson_dates(vault), "github_token_configurado":bool(os.environ.get("TRAMA_GITHUB_TOKEN"))}
+
+    def save_lesson_code(self, lesson, data, confirmed=False):
+        from .lesson_code_config import save_lessons
+        vault=self._vault()
+        if not vault:return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        if confirmed is not True:return {"ok":False,"message":"Confirme o cadastro GitHub desta aula."}
+        if not self._write_lock.acquire(blocking=False):
+            return {"ok":False,"message":"Já existe uma gravação ou processamento em andamento."}
+        try:
+            saved=save_lessons(vault,{lesson:data})
+            return {**saved,"message":"Associações GitHub da aula salvas no cofre."}
+        except (ValueError,TypeError,OSError) as exc:
+            return {"ok":False,"message":str(exc)[:700]}
+        finally:
+            self._write_lock.release()
+
+    def preview_lesson_mappings(self, repo, dates=None):
+        """REST suggestions only. No file/database writes and no Git checkout."""
+        from .github_mapping import preview_mapping, MappingError
+        vault=self._vault()
+        if vault is None:return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        if not isinstance(repo,str) or len(repo)>300:
+            return {"ok":False,"message":"Informe uma URL GitHub válida."}
+        if dates is not None and (not isinstance(dates,dict) or len(dates)>500 or
+                                  any(not isinstance(k,str) or not isinstance(v,str)
+                                      or len(v)>10 for k,v in dates.items())):
+            return {"ok":False,"message":"Datas inválidas para o mapeamento."}
+        if not self._write_lock.acquire(blocking=False):
+            return {"ok":False,"message":"Há um processamento em andamento."}
+        try:
+            self._mapping_preview=None
+            result=preview_mapping(vault,repo,dates)
+            self._mapping_preview=result
+            return {"ok":True,**result}
+        except (MappingError,ValueError,OSError) as exc:
+            return {"ok":False,"message":str(exc)[:350]}
+        finally:
+            self._write_lock.release()
+
+    def apply_lesson_mappings(self, selections, confirmed=False):
+        """Only accept selections contained in the most recent read-only preview."""
+        from .lesson_code_config import read_config, save_lessons, LESSON_RE
+        import hashlib
+        if confirmed is not True:return {"ok":False,"message":"Confirme as sugestões selecionadas."}
+        vault=self._vault()
+        if vault is None:return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        if not isinstance(selections,list) or not 1<=len(selections)<=500:
+            return {"ok":False,"message":"Selecione de 1 a 500 associações."}
+        if not self._write_lock.acquire(blocking=False):
+            return {"ok":False,"message":"Há um processamento em andamento."}
+        try:
+            preview=self._mapping_preview
+            if not preview:return {"ok":False,"message":"Consulte as sugestões antes de confirmar."}
+            candidates={item["id"]:item for item in preview["candidatos"]}
+            lessons={item["aula"] for item in preview["aulas"]}
+            current=read_config(vault)
+            if current["fatal"]:
+                return {"ok":False,"message":"Corrija o JSON inválido antes de salvar."}
+            repo=preview["repo"]
+            name=repo.split("/")[-1]
+            mapping_id="map-"+hashlib.sha256(repo.encode()).hexdigest()[:16]
+            updates={}
+            used=set()
+            for row in selections:
+                if not isinstance(row,dict):
+                    raise ValueError("Seleção inválida.")
+                lesson=row.get("aula")
+                ident=row.get("candidato_id")
+                if (not isinstance(lesson,str) or not LESSON_RE.fullmatch(lesson) or
+                        lesson not in lessons or lesson in used or ident not in candidates):
+                    raise ValueError(f"Seleção inválida ou repetida: {lesson}")
+                used.add(lesson)
+                chosen=candidates[ident]
+                linked=current["aulas"].get(lesson) or {"professor":[],"dupla":[]}
+                teachers=[item for item in linked.get("professor",[]) if item.get("id")!=mapping_id]
+                item={"id":mapping_id,"rotulo":"Professor — "+name[:70],
+                      "repo":repo,"ref_tipo":chosen["ref_tipo"],
+                      "ref":chosen["ref"],"pasta":chosen["pasta"]}
+                if row.get("confirmar_anterior") is True and chosen.get("sugestao_anterior"):
+                    item["anterior"]=chosen["sugestao_anterior"]
+                teachers.append(item)
+                updates[lesson]={"professor":teachers,"dupla":linked.get("dupla",[])}
+            saved=save_lessons(vault,updates)
+            self._mapping_preview=None
+            return {**saved,"message":f"{len(updates)} aula(s) confirmada(s); sugestões não selecionadas não foram gravadas."}
+        except (ValueError,OSError,TypeError) as exc:
+            return {"ok":False,"message":str(exc)[:700]}
+        finally:
+            self._write_lock.release()
+
     def add_repo(self,url):
         if not self._vault():return {'ok':False,'message':'Configure o cofre primeiro.'}
         if not isinstance(url,str) or not url.strip() or len(url)>1000:return {'ok':False,'message':'URL inválida'}
@@ -1479,6 +1581,18 @@ class PublicApi:
 
     def process_lesson(self, lesson, confirmed=False, force=False):
         return self._bridge.process_lesson(lesson, confirmed, force)
+
+    def lesson_code_config(self, lesson=""):
+        return self._bridge.lesson_code_config(lesson)
+
+    def save_lesson_code(self, lesson, data, confirmed=False):
+        return self._bridge.save_lesson_code(lesson,data,confirmed)
+
+    def preview_lesson_mappings(self, repo, dates=None):
+        return self._bridge.preview_lesson_mappings(repo,dates)
+
+    def apply_lesson_mappings(self, selections, confirmed=False):
+        return self._bridge.apply_lesson_mappings(selections,confirmed)
 
     def add_repo(self, url):
         return self._bridge.add_repo(url)
