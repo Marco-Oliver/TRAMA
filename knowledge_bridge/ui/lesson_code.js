@@ -55,7 +55,7 @@
    const current=result?.aulas?.[lesson]||{professor:[],dupla:[]};
    for(const item of current.professor||[])row('professor',item);
    for(const item of current.dupla||[])row('dupla',item);
-   if(result?.fatal)feedback('lesson-code-feedback',(result.erros||[]).join('; '));
+   if(result?.erros?.length)feedback('lesson-code-feedback',result.erros.slice(0,5).join('; ')+(result.erros.length>5?' (+mais erros)':''));
    el('lesson-code-token').textContent=result?.github_token_configurado?
      'Token GitHub encontrado no ambiente.':
      'Sem token: limite baixo de requisições e sem acesso a repositórios privados. Recomendamos configurar TRAMA_GITHUB_TOKEN.';
