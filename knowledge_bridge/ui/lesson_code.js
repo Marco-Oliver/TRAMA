@@ -47,18 +47,32 @@
      return item;
    });
  }
- async function openEditor(){
-   feedback('lesson-code-feedback','');
-   const lesson=selectedLesson(), result=await call('lesson_code_config');
-   el('lesson-code-number').value=Number(lesson.slice(5));
+ let loadedLesson='';
+ async function loadLesson(){
+   const nr=Number(el('lesson-code-number').value);
+   if(!Number.isInteger(nr)||nr<1||nr>9999){
+     feedback('lesson-code-feedback','Número da aula inválido.');return;
+   }
+   const lesson='Aula-'+String(nr).padStart(3,'0');
+   const result=await call('lesson_code_config');
+   if(!result){feedback('lesson-code-feedback','Não foi possível carregar o cadastro.');return;}
+   if(result.fatal){feedback('lesson-code-feedback',(result.erros||[]).join('; '));return;}
+   loadedLesson=lesson;
    el('code-teachers').replaceChildren();el('code-students').replaceChildren();
    const current=result?.aulas?.[lesson]||{professor:[],dupla:[]};
    for(const item of current.professor||[])row('professor',item);
    for(const item of current.dupla||[])row('dupla',item);
-   if(result?.erros?.length)feedback('lesson-code-feedback',result.erros.slice(0,5).join('; ')+(result.erros.length>5?' (+mais erros)':''));
+   const errors=(result.erros||[]).filter(x=>x.startsWith(lesson+'.')||x.startsWith(lesson+':'));
+   feedback('lesson-code-feedback',errors.length?
+     errors.slice(0,8).join('; ')+' — revise antes de substituir este cadastro.':
+     lesson+' carregada; alterações ainda não gravadas.');
    el('lesson-code-token').textContent=result?.github_token_configurado?
      'Token GitHub encontrado no ambiente.':
      'Sem token: limite baixo de requisições e sem acesso a repositórios privados. Recomendamos configurar TRAMA_GITHUB_TOKEN.';
+ }
+ async function openEditor(){
+   el('lesson-code-number').value=Number(selectedLesson().slice(5));
+   await loadLesson();
    show(editor);
  }
  async function saveEditor(event){
@@ -66,6 +80,7 @@
    const nr=Number(el('lesson-code-number').value);
    if(!Number.isInteger(nr)||nr<1||nr>9999){feedback('lesson-code-feedback','Número de aula inválido.');return;}
    const lesson='Aula-'+String(nr).padStart(3,'0');
+   if(lesson!==loadedLesson){feedback('lesson-code-feedback','Clique em Carregar esta aula antes de salvar outro número.');return;}
    const data={professor:collect('professor'),dupla:collect('dupla')};
    if(!await askTramaConfirm('Salvar repositórios',
        'Gravar '+data.professor.length+' repositório(s) do professor e '+data.dupla.length+
@@ -85,7 +100,8 @@
    preview=data;const rate=data.taxa||{};
    feedback('lesson-map-quota','API GitHub: '+
       (rate.restantes==null?'saldo não informado':rate.restantes+' de '+rate.limite+' requisições restantes')+
-      ' | '+(rate.consultas||0)+' chamadas. '+(data.truncado?'Árvore incompleta: revise os itens.':'')+\n      (data.historico_parcial?' Histórico de commits parcial; consulte revisões antigas manualmente.':''));
+      ' | '+(rate.consultas||0)+' chamadas. '+(data.truncado?'Árvore incompleta: revise os itens.':'')+
+      (data.historico_parcial?' Histórico de commits parcial; consulte revisões antigas manualmente.':''));
    const root=el('lesson-map-results');root.replaceChildren();
    if(!data.aulas?.length){root.textContent='Nenhuma aula cadastrada no cofre.';return;}
    const candidates=data.candidatos||[];
@@ -155,6 +171,7 @@
    if(answer?.ok){notify('Mapeamento salvo com confirmação.');preview=null;}
  }
  el('btn-lesson-code').addEventListener('click',openEditor);
+ el('lesson-code-load').addEventListener('click',loadLesson);
  el('lesson-code-add-teacher').addEventListener('click',()=>row('professor'));
  el('lesson-code-add-student').addEventListener('click',()=>row('dupla'));
  el('lesson-code-close').addEventListener('click',()=>hide(editor));
