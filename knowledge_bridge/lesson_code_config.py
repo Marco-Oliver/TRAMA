@@ -30,6 +30,7 @@ def _safe_repo(value: object) -> bool:
 
 def _safe_path(value: object) -> bool:
     return (isinstance(value, str) and len(value) <= 300 and
+            (value == '' or all(x not in ('', '.', '..') for x in value.split('/'))) and
             not value.startswith("/") and not "\\" in value and
             not any(x in ("", ".", "..") for x in value.split("/")) and
             not any(ord(x) < 32 or ord(x) == 127 for x in value))
