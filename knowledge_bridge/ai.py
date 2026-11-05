@@ -332,7 +332,16 @@ Se faltar evidência, deixe o campo/lista vazio. Não invente horários.
 Liste UM conceito separado para CADA assunto técnico realmente ensinado ou
 demonstrado, mesmo nos trechos longos: não pare após 2 a 5 conceitos se houver
 outros assuntos relevantes. Dê a cada item um nome CURTO, próximo das palavras
-ditas pelo professor. Ex.: Docker, Imagem, Contêiner, Mensageria. Não agrupe dois assuntos em um
+ditas pelo professor. Ex.: Docker, Imagem, Contêiner, Mensageria.
+Confronte o resumo com a lista "conceitos" antes de responder: TODO assunto
+técnico efetivamente ensinado ou demonstrado que aparecer no resumo deve
+ter também um item correspondente em "conceitos", com nome curto, explicação
+e evidência literal CURTA da transcrição que o sustenta. Exemplos: se o resumo
+explica Validação ou Relacionamento um para um, inclua os dois separadamente.
+Se não existir uma citação verificável, deixe "evidencia" vazia para revisão;
+nunca invente citação, nome técnico, demonstração ou conceito só para preencher
+a lista. Respeite o teto de 20 conceitos e, se houver mais assuntos, priorize
+os realmente ensinados, preservando os demais no resumo para revisão. Não agrupe dois assuntos em um
 rótulo como "Arquitetura Baseada em Eventos e Mensageria"; se forem assuntos distintos,
 separe-os. Nomes próprios de projetos, aplicações, aplicativos, cursos ou pessoas
 NÃO são conceitos técnicos, mesmo quando aparecem literalmente no TXT (por exemplo,

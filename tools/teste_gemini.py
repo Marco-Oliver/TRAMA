@@ -90,6 +90,8 @@ def capture_calls(calls, secrets):
         }
         try:
             response = real_send(url, body, headers, provider)
+            # _send only returns a body after a successful (HTTP 200) request.
+            call["http_status"] = 200
             call["response"] = scrub(response, secrets)
             if isinstance(response, dict):
                 candidates = response.get("candidates") or []
@@ -111,7 +113,11 @@ def capture_calls(calls, secrets):
 def failure_kind(exc, calls):
     messages = " ".join(str(c.get("erro", "")) for c in calls) + " " + str(exc)
     upper = messages.upper()
-    http = next((c.get("http_status") for c in calls if c.get("http_status")), None)
+    # Classify the LAST attempt; a successful HTTP 200 can still be MAX_TOKENS
+    # or invalid JSON. Earlier 503s are counted separately in the report.
+    http = calls[-1].get("http_status") if calls else None
+    if http == 200:
+        http = None
     if http == 429 or "429" in messages:
         # The official Gemini error can contain quotaId and quotaMetric, not
         # merely a human-readable message. Only infer scope when explicit.
@@ -187,7 +193,8 @@ def report_markdown(report):
     tokens = {field: sum(int(c.get("usageMetadata", {}).get(field) or 0) for c in calls)
               for field in TOKEN_FIELDS}
     first = calls[0] if calls else {}
-    accepted = first.get("response") is not None
+    accepted = any(c.get("http_status") == 200 for c in calls)
+    errors_503 = sum(c.get("http_status") == 503 for c in calls)
     lines = ["# TRAMA — diagnóstico Gemini real (dados privados)", "",
              "## 1. Resumo geral", "",
              f"- Executado em: {report['gerado_em']}",
@@ -197,7 +204,8 @@ def report_markdown(report):
              f"- Tokens totais: prompt={tokens['promptTokenCount']}, resposta={tokens['candidatesTokenCount']}, raciocínio={tokens['thoughtsTokenCount']}",
              f"- Média de tokens de raciocínio: {round(tokens['thoughtsTokenCount'] / len(calls), 2) if calls else 0}",
              f"- Falhas por motivo: {json.dumps(dict(failures), ensure_ascii=False)}",
-             f"- Primeira chamada: {'API aceitou o corpo enviado' if accepted else 'compatibilidade NÃO confirmada'}",
+             f"- Compatibilidade da API: {'confirmada (ao menos uma tentativa HTTP 200 com o corpo atual)' if accepted else 'NÃO confirmada (nenhuma tentativa HTTP 200)'}",
+             f"- Tentativas HTTP 503: {errors_503}",
              f"- Campos do contrato: {json.dumps(first.get('contrato_enviado', {}), ensure_ascii=False)}", "",
              "### Chamadas por aula — comparação do tamanho de trecho", "",
              "| Aula | Trechos antes (11.500) | Trechos agora (40.000) | Chamadas realizadas | Novas tentativas |",
