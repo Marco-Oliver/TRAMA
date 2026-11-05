@@ -130,8 +130,7 @@ try{
     await page.getByRole('button',{name:'Conectar meu cofre'}).waitFor();
     await page.screenshot({path:path.join(screenshots,`${prefix}home-${width}.png`),fullPage:true});
     // Graph uses the exact approved Canvas renderer, including packaged CSP.
-    await page.locator('.nav-item[data-view="library"]').click();
-    await page.locator('[data-lib-action="graph"]').click();
+    await page.locator('.nav-item[data-view="graph"]').click();
     await page.locator('canvas.tg-canvas').waitFor();
     await page.locator('.tg-kind[data-kind="conceito"]').waitFor();
     const indexKind=page.locator('.tg-kind[data-kind="indice"]');
@@ -158,8 +157,7 @@ try{
     await page.locator('.nav-item[data-view="home"]').click();
     if(await page.locator('canvas.tg-canvas').count())
       throw Error('Graph canvas remained mounted after leaving the view');
-    await page.locator('.nav-item[data-view="library"]').click();
-    await page.locator('[data-lib-action="graph"]').click();
+    await page.locator('.nav-item[data-view="graph"]').click();
     await page.getByRole('button',{name:'Tema claro'}).waitFor();
     await page.locator('.nav-item[data-view="home"]').click();
     await page.getByRole('button',{name:'Ver minhas aulas'}).click();
