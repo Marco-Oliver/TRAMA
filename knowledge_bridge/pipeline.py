@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .ai import AllProvidersFailed, BudgetStopped, FreeAIRouter, NoFreeProvider, read_env
-from .content import CHUNK_MAX_CHARS, chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines
+from .content import CHUNK_MAX_CHARS, chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines, timestamp_seconds
 from .code_intel import index_repository, match_lesson_to_repository, find_code_line, concept_from_text, redact_sensitive
 from .publishing import Publisher
 from .store import Store
@@ -151,7 +151,14 @@ class Application:
         """Limita resultados da IA e valida referências temporais reais."""
         if not isinstance(payload, dict):
             payload = {}
-        real_times = {t for t, _ in timed_lines(raw_text) if t != "sem horário"}
+        source_lines = timed_lines(raw_text)
+        # Map each normalized clock value to the original TXT spelling.
+        # This preserves existing Obsidian anchors (e.g. ^min-2-20).
+        time_index = {}
+        for stamp, _ in source_lines:
+            second = timestamp_seconds(stamp)
+            if second is not None:
+                time_index.setdefault(second, stamp)
         def safe(value, size):
             return str(value)[:size].strip() if isinstance(value, (str, int, float)) else ""
         def entries(key, fields, cap):
@@ -160,8 +167,8 @@ class Application:
                 if not isinstance(entry, dict):
                     continue
                 obj = {name: safe(entry.get(name), limit) for name, limit in fields.items()}
-                stamp = safe(entry.get("tempo"), 20).strip("[]")
-                obj["tempo"] = stamp if stamp in real_times else ""
+                second = timestamp_seconds(safe(entry.get("tempo"), 20))
+                obj["tempo"] = time_index.get(second, "") if second is not None else ""
                 if any(obj.get(k) for k in fields):
                     result.append(obj)
                 if len(result) >= cap:
@@ -182,11 +189,20 @@ class Application:
             "nomes_a_conferir": [safe(x, 180) for x in payload.get("nomes_a_conferir", [])
                                  if isinstance(x, str)][:7],
         }
-        # A provider can put a spoken personal name in multiple JSON fields.
-        # Resolve direct category conflicts deterministically rather than
-        # publishing a name as a programming concept or technical question.
+        # Reject names not literally spoken in THIS transcript chunk, not in
+        # system instructions or other lessons. Accent/case/punctuation agnostic,
+        # with token boundaries to avoid matching substrings inside other words.
+        spoken_names = " " + norm(" ".join(sentence for _, sentence in source_lines)) + " "
         def normalized_name(value):
-            return re.sub(r"\s+", " ", str(value).casefold().strip(' \t\r\n.,:;!?"“”')).strip()
+            return norm(value)
+        def actually_spoken(value):
+            key = normalized_name(value)
+            return bool(key) and (" " + key + " ") in spoken_names
+        clean["pessoas"] = [person for person in clean["pessoas"]
+                            if actually_spoken(person.get("nome", ""))]
+        clean["nomes_a_conferir"] = [name for name in clean["nomes_a_conferir"]
+                                    if actually_spoken(name)]
+        # Keep the existing separation between personal names and concepts.
         known_names = {
             normalized_name(value) for value in clean["nomes_a_conferir"]
         } | {
@@ -206,7 +222,7 @@ class Application:
         # Compare quotes against spoken text, not TXT timestamp markers.
         # Punctuation, case and accents are normalized, but technical names
         # are NEVER corrected/inferred from ASR automatically.
-        spoken = norm(" ".join(sentence for _, sentence in timed_lines(raw_text)))
+        spoken = norm(" ".join(sentence for _, sentence in source_lines))
         normalized_spoken = " " + spoken + " "
         grounded=[]
         unverified=[]
@@ -432,7 +448,14 @@ class Application:
     @staticmethod
     def _check_comparison(payload: dict, transcript: str, repository: dict) -> dict:
         """Discard fabricated source paths/lines/timestamps. Keep hypotheses as hypotheses."""
-        valid_times={t for t,_ in timed_lines(transcript) if t != "sem horário"}
+        time_index = {}
+        for stamp, _ in timed_lines(transcript):
+            second = timestamp_seconds(stamp)
+            if second is not None:
+                time_index.setdefault(second, stamp)
+        def matched_time(value):
+            second = timestamp_seconds(value)
+            return time_index.get(second, "") if second is not None else ""
         observed_concepts = concept_from_text(transcript)
         indexed = [item for item in (
             *repository.get("evidence", []), *repository.get("symbols", []))
@@ -477,9 +500,9 @@ class Application:
             label=str(row.get('conceito',''))[:90]
             if not find_code_line(repository,path,line):continue
             if not code_supports(label,path,line,require_lecture=True):continue
-            stamp=str(row.get('tempo','')).strip('[]')
+            stamp=matched_time(row.get('tempo',''))
             out['relacoes'].append({"conceito":label,
-                 "tempo":stamp if stamp in valid_times else "", "path":path,"line":line,
+                 "tempo":stamp, "path":path,"line":line,
                  "explicacao":str(row.get('explicacao',''))[:450],
                  "evolucao":str(row.get('evolucao',''))[:450], "status":"SUGESTÃO — verificar fontes"})
         for row in payload.get("correcoes",[])[:5]:
@@ -491,9 +514,9 @@ class Application:
             if not heard or heard.casefold() not in transcript.casefold():continue
             if not find_code_line(repository,path,line):continue
             if not code_supports(str(row.get("sugestao",""))[:100],path,line):continue
-            stamp=str(row.get('tempo','')).strip('[]')
+            stamp=matched_time(row.get('tempo',''))
             out['correcoes'].append({"ouvido":heard,"sugestao":str(row.get('sugestao',''))[:100],
-                "tempo":stamp if stamp in valid_times else "", "path":path,"line":line,
+                "tempo":stamp, "path":path,"line":line,
                 "justificativa":str(row.get('justificativa',''))[:350],
                 "status":"HIPÓTESE — revisão humana necessária"})
         for row in payload.get('novidades',[])[:5]:
@@ -504,9 +527,9 @@ class Application:
             if not (code_supports(label) or
                     literal_technical_mention(label,transcript)):
                 continue
-            stamp=str(row.get('tempo','')).strip('[]')
+            stamp=matched_time(row.get('tempo',''))
             out['novidades'].append({"conceito":label,
-                "tempo":stamp if stamp in valid_times else "",
+                "tempo":stamp,
                 "explicacao":str(row.get('explicacao',''))[:350]})
         return out
 

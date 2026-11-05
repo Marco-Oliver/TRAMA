@@ -31,14 +31,32 @@ def slug(text: str, maxlen: int = 75) -> str:
 
 
 def concept_slug(text: str, maxlen: int = 75) -> str:
-    """Preserve programming symbols that ordinary slugification would merge.
+    """Merge obvious Portuguese wording variants, not different technologies.
 
-    For example C#, C++ and C all used to share one note named `c.md`.
-    This does not merge aliases semantically; only makes filenames unique.
+    Ignore only standalone linking words and simple trailing-s plurals.
+    Preserve C, C#, C++, HTTP/HTTPS and technology names ending in 's'.
+    This is an ID for note grouping, NOT evidence that two terms are equivalent.
     """
     tagged = (text.strip().replace('#', '-sharp-').replace('++', '-plus-plus-')
               .replace('+', '-plus-'))
-    return slug(tagged, maxlen)
+    ascii_text = unicodedata.normalize("NFKD", tagged).encode(
+        "ascii", "ignore").decode()
+    words = re.findall(r"[A-Za-z0-9]+", ascii_text)
+    linking = {"de", "da", "do", "e"}
+    # Names/abbreviations ending in s are not grammatical plurals.
+    preserved = {"status", "windows", "postgres", "redis", "express",
+                 "https", "css", "sass", "less", "axios"}
+    normalized = []
+    for original in words:
+        word = original.casefold()
+        if len(words) > 1 and word in linking:
+            continue
+        if (len(word) > 4 and word.endswith("s") and
+                word not in preserved and not word.endswith(("ss", "us", "is", "js")) and
+                not original.isupper() and not any(ch.isupper() for ch in original[1:])):
+            word = word[:-1]
+        normalized.append(word)
+    return slug("-".join(normalized), maxlen)
 
 
 def file_hash(path: Path) -> str:
@@ -54,6 +72,20 @@ def lesson_identity(name: str) -> tuple[str | None, str | None]:
     video = VIDEO_RE.search(name)
     return (f"Aula-{int(lesson.group(1)):03d}" if lesson else None,
             f"V{int(video.group(1)):02d}" if video else None)
+
+
+def timestamp_seconds(value: object) -> int | None:
+    """Normalize mm:ss and hh:mm:ss for lookup; never change original TXT anchors."""
+    stamp = str(value).strip().strip("[]").strip()
+    match = TIMESTAMP.fullmatch(stamp)
+    if not match:
+        return None
+    hours = int(match.group(1) or 0)
+    minutes = int(match.group(2))
+    seconds = int(match.group(3))
+    if seconds >= 60 or (match.group(1) is not None and minutes >= 60):
+        return None
+    return hours * 3600 + minutes * 60 + seconds
 
 
 def timed_lines(text: str) -> list[tuple[str, str]]:

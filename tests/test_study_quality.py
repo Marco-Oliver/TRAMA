@@ -23,7 +23,8 @@ class ClassroomStudyQualityTests(unittest.TestCase):
             "nomes_a_conferir": ["Thagão", "Rash"],
         }, raw)
         self.assertIn("Thagão", result["nomes_a_conferir"])
-        self.assertIn("Rash", result["nomes_a_conferir"])
+        self.assertNotIn("Rash", result["nomes_a_conferir"])
+        self.assertEqual(result["nomes_a_conferir"], ["Thagão"])
         self.assertNotIn("Thagão", result["duvidas"])
         self.assertEqual(len(result["duvidas"]), 1)
         self.assertIn("nomes_a_conferir", SYSTEM_INSTRUCTIONS)
