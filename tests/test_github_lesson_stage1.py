@@ -115,6 +115,19 @@ class LessonCodeConfigTests(unittest.TestCase):
         data["dupla"][0]["professor_id"] = "inexistente"
         self.assertTrue(any("professor_id" in issue for issue in validate_lesson("Aula-131", data)))
 
+    def test_symlinked_internal_state_cannot_escape_vault(self):
+        outside = Path(self.temp.name) / "outside"
+        outside.mkdir()
+        link = self.vault / ".base-conhecimento"
+        try:
+            link.symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("Directory symlinks unavailable on this system")
+        self.assertTrue(read_config(self.vault)["fatal"])
+        with self.assertRaises(ValueError):
+            save_lessons(self.vault, {"Aula-131": self.lesson()})
+        self.assertFalse((outside / "aulas-github.json").exists())
+
     def test_no_credentials_are_accepted_in_json(self):
         data = self.lesson()
         data["dupla"][0]["token"] = "ghp_fake_secret"
@@ -193,6 +206,29 @@ class MappingSuggestionTests(unittest.TestCase):
         folder = next(x for x in catalog["candidatos"] if x["tipo"]=="pasta" and x["pasta"]=="V3")
         self.assertEqual(folder["sugestao_anterior"]["pasta"], "V2")
         self.assertFalse((self.vault/".base-conhecimento"/"aulas-github.json").exists())
+
+    def test_paginates_commit_history_for_more_than_130_classes(self):
+        commits = [{"sha": f"{i:040x}", "commit": {
+            "message": "Aula antiga", "committer": {"date": "2026-10-25T12:00:00Z"}}}
+            for i in range(160, 0, -1)]
+        seen = []
+        def mocked(_client, repo, endpoint):
+            self.assertEqual(repo, self.repo)
+            seen.append(endpoint)
+            if endpoint == "commits?per_page=100":
+                return commits[:100]
+            if endpoint == "commits?per_page=100&page=2":
+                return commits[100:]
+            if endpoint == "tags?per_page=100":
+                return []
+            if endpoint.startswith("git/trees/"):
+                return {"tree": [], "truncated": False}
+            raise AssertionError(endpoint)
+        with patch.object(GithubMapping, "_get", mocked):
+            catalogue = GithubMapping(token="").catalogue(self.repo)
+        self.assertEqual(sum(x["tipo"] == "commit" for x in catalogue["candidatos"]), 160)
+        self.assertEqual(sum(x.startswith("commits?") for x in seen), 2)
+        self.assertEqual(sum("recursive=1" in x for x in seen), 1)
 
     def test_missing_date_gives_no_guess(self):
         rows = GithubMapping.suggestions({"candidatos":[{"id":"commit:any","data":"2026-11-03"}]},
