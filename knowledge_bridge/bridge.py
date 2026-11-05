@@ -34,13 +34,14 @@ from .paths import DATA_HOME, SETTINGS_FILE, CONFIG_FILE, PREVIEW_BUNDLE
 
 ALLOWED_ATTACHMENTS={'.txt','.md','.mp4','.mkv','.mov','.webm','.png','.jpg','.jpeg','.webp','.pdf','.docx'}
 
-_GRAPH_INDEX_STEMS = {"minha-biblioteca", "meu_contexto", "mapa-da-evolucao", "bem-vindo"}
+_GRAPH_INDEX_STEMS = {"minha-biblioteca", "meu_contexto", "mapa-da-evolucao", "bem-vindo", "indice-de-duvidas"}
 
 def _graph_kind(note) -> str:
     """Classificação só para cor e filtro do gráfico; não altera notas."""
     tipo = str(note.metadata.get("tipo", "")).casefold()
     stem = note.stem.casefold()
-    if "duvida" in tipo:
+    # render_uncertainties() writes these notes without a 'tipo' frontmatter.
+    if "duvida" in tipo or note.relative.casefold().startswith("01-meu-conhecimento/duvidas/"):
         return "duvida"
     if (tipo in ("visao_geral", "indice", "mapa") or stem.startswith("00-")
             or stem in _GRAPH_INDEX_STEMS or note.section == "00-Inicio"):
