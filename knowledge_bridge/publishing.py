@@ -638,6 +638,8 @@ class Publisher:
         rows += ['', '## Projetos relacionados', '']
         found_code=False
         for repo in self.db.repositories():
+            if not self.db.github_lesson_repo_allowed(lesson,repo["url"],repo["sha"]):
+                continue
             try:
                 payload=json.loads(repo['payload'])
                 matches=[]
@@ -952,6 +954,8 @@ class Publisher:
         body += ["", "## Relações com códigos e projetos", ""]
         project_matches = []
         for repo in self.db.repositories():
+            if not self.db.github_lesson_repo_allowed(lesson,repo["url"],repo["sha"]):
+                continue
             payload = json.loads(repo["payload"])
             matched = match_lesson_to_repository(text, analysis, payload, cap=5)
             if not matched:
@@ -971,6 +975,9 @@ class Publisher:
             project_matches.append((repo, payload))
         if not project_matches:
             body.append("*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
+        total, frozen=self.db.github_lesson_refs(lesson)
+        if total<0 or total>len(frozen):
+            body.append("**Código GitHub pendente:** congele a versão desta aula antes de relacionar código às notas.")
         body += ["", "## Comparação revisada por IA (com referências)"]
         validated_any=False
         for repo, payload in project_matches:
@@ -1174,6 +1181,9 @@ class Publisher:
             body += ["", "## Conexões com aulas", ""]
             linked = False
             for src, note in lesson_links:
+                if not self.db.github_lesson_repo_allowed(
+                        src["lesson"] or "",repo["url"],repo["sha"]):
+                    continue
                 raw=(self.vault/src["stored_path"]).read_text(encoding="utf-8-sig",errors="replace")
                 analysis=self.db.analysis(src["id"],src["digest"])
                 links=match_lesson_to_repository(raw,analysis,payload,cap=4)
@@ -1388,6 +1398,9 @@ class Publisher:
         for repo,payload in repo_info:
             matches=[]
             for src,note in lesson_links:
+                if not self.db.github_lesson_repo_allowed(
+                        src["lesson"] or "",repo["url"],repo["sha"]):
+                    continue
                 raw=(self.vault/src["stored_path"]).read_text(encoding="utf-8-sig",errors="replace")
                 analysis=self.db.analysis(src["id"],src["digest"])
                 ev=match_lesson_to_repository(raw,analysis,payload,cap=3)
