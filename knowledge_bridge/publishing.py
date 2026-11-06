@@ -16,7 +16,7 @@ from urllib.parse import quote
 from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, concept_file_slug, timed_lines, study_windows, opening_lesson_number_mismatch, suspected_technical_transcription, suspected_concept_name
 from .store import Store
 from .memory_atlas import make_atlas, render_atlas, lesson_order, norm, note_for, literal_technical_mention
-from .code_intel import match_lesson_to_repository, potential_transcript_corrections
+from .code_intel import match_lesson_to_repository, potential_transcript_corrections, is_generic_code_term
 from .learning_review import refresh_uncertainties, render_uncertainties
 from .github_lesson_index import LessonRepositoryIndex
 
@@ -653,6 +653,8 @@ class Publisher:
                 if not isinstance(candidate,dict):
                     continue
                 label=str(candidate.get('nome','')).strip()
+                if is_generic_code_term(label):
+                    continue
                 match=literal_technical_mention(label,raw)
                 pair=(label,match)
                 if match and pair not in observed_terms:
@@ -838,7 +840,8 @@ class Publisher:
             # whole expanded model label was not said. Do NOT auto-create a
             # concept note: no explanation has been checked for this label.
             suggested=[c for c in analysis.get("conceitos_a_conferir",[])
-                       if isinstance(c,dict) and c.get("nome")]
+                       if isinstance(c,dict) and c.get("nome")
+                       and not is_generic_code_term(c.get("nome"))]
             observed=[]
             unsupported=[]
             for candidate in suggested[:12]:
@@ -1077,6 +1080,9 @@ class Publisher:
         suggested=[]
         for repo, payload in project_matches:
             for hint in potential_transcript_corrections(text, payload):
+                if (is_generic_code_term(hint.get('heard')) or
+                        is_generic_code_term(hint.get('candidate'))):
+                    continue
                 key=(hint['heard'].lower(),hint['candidate'])
                 if key in suggested:
                     continue
@@ -1094,6 +1100,9 @@ class Publisher:
                 "",
             ]
             for stamp, observed, candidate in suspected:
+                if (is_generic_code_term(observed) or
+                        is_generic_code_term(candidate)):
+                    continue
                 body.append(
                     f"- **{_escape_md(stamp)}** — transcrito: "
                     f"`{_escape_md(observed)}`; possível termo a verificar: "

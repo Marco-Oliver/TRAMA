@@ -98,7 +98,10 @@ class GithubMapping:
             raise MappingError("Use um link HTTPS de repositório github.com, sem credenciais.")
         parts = parse.urlsplit(repo.rstrip("/").removesuffix(".git")).path.strip("/").split("/")
         owner, name = parts
-        url = f"https://api.github.com/repos/{parse.quote(owner)}/{parse.quote(name)}/{endpoint}"
+        base_url = f"https://api.github.com/repos/{parse.quote(owner)}/{parse.quote(name)}"
+        # /repos/{owner}/{repo} is a distinct REST resource. A trailing '/'
+        # on empty endpoint can return 404 even when a public repo exists.
+        url = base_url + ("/" + endpoint if endpoint else "")
         headers = {"Accept": "application/vnd.github+json",
                    "X-GitHub-Api-Version": "2022-11-28",
                    "User-Agent": "TRAMA-lesson-mapper"}

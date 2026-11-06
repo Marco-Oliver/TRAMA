@@ -20,7 +20,7 @@ from .github_code import GithubCodeReader
 from .github_lesson_index import LessonRepositoryIndex
 from .github_mapping import GithubMapping, MappingError, GithubRateLimitError
 from .lesson_code_config import _safe_repo, read_config
-from .code_intel import concept_from_text
+from .code_intel import concept_from_text, is_generic_code_term
 
 PROFESSOR_ORG = "academiadoprogramador-fullstack"
 VERSION = re.compile(r"^(?:v|vers[aã]o)[._ -]*(\d+)(?:[._-](\d+))*$", re.I)
@@ -71,7 +71,7 @@ def lesson_order(name):
 
 def _literal(text, term):
     term = normalized(term).strip()
-    if len(term) < 3 or term in IGNORE:
+    if len(term) < 3 or term in IGNORE or is_generic_code_term(term):
         return False
     return bool(re.search(r"(?<![a-z0-9_])" + re.escape(term) + r"(?![a-z0-9_])",
                           normalized(text)))

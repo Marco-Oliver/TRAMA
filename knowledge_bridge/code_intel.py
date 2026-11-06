@@ -6,6 +6,7 @@ A source match is evidence of code *presence*, not of authorship or learning.
 from __future__ import annotations
 
 import re
+import unicodedata
 from pathlib import Path
 
 # Canonical technical concepts include common transcription mistakes and aliases.
@@ -29,6 +30,23 @@ CONCEPTS = {
     "constructor": (r"\bconstructor\s*\(|\bpublic\s+\w+\s*\(", ["constructor", "construtor"]),
     "signal": (r"\b(?:signal|computed|effect)\s*\(", ["signal", "signals"]),
 }
+
+# Single language keywords are not proof of correspondence or ASR errors.
+# Keep concrete symbols such as DeliveryController, HttpClient and DbContext.
+GENERIC_LANGUAGE_TERMS = frozenset({
+    "class", "classes", "classe", "interface", "interfaces", "public",
+    "private", "protected", "static", "namespace", "using", "string", "void",
+    "method", "methods", "metodo", "metodos", "controller", "controllers",
+})
+
+
+def is_generic_code_term(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    plain = unicodedata.normalize("NFKD", value.strip()).encode(
+        "ascii", "ignore").decode("ascii").casefold()
+    return plain in GENERIC_LANGUAGE_TERMS
+
 
 SENSITIVE_NAMES = (
     ".env", "secret", "credential", "private", "password", "token", "appsettings",
@@ -231,6 +249,8 @@ def concept_from_text(text: str) -> set[str]:
     text = text.casefold()
     found = set()
     for concept, (_, aliases) in CONCEPTS.items():
+        if is_generic_code_term(concept):
+            continue
         if any(re.search(r"(?<!\w)" + re.escape(a.casefold()) + r"(?!\w)", text, re.I) for a in aliases):
             found.add(concept)
     return found
@@ -247,6 +267,8 @@ def match_lesson_to_repository(transcript: str, analysis: dict | None, repo: dic
     found = []
     seen=set()
     for e in repo.get('evidence',[]):
+        if (not isinstance(e, dict) or is_generic_code_term(e.get('concept'))):
+            continue
         if e['concept'] in concepts and e['concept'] not in seen:
             found.append(e)
             seen.add(e['concept'])
@@ -259,6 +281,7 @@ def match_lesson_to_repository(transcript: str, analysis: dict | None, repo: dic
             continue
         name=e.get('name','')
         if (not isinstance(name,str) or len(name)<4 or
+                is_generic_code_term(name) or
                 not re.search(r"(?<![A-Za-z0-9_])"+re.escape(name)+r"(?![A-Za-z0-9_])",
                               text,re.I) or name.casefold() in seen):
             continue
@@ -285,9 +308,10 @@ def potential_transcript_corrections(transcript: str, repo: dict, cap=5) -> list
     """
     result = []
     low = transcript.casefold()
-    observed = {e['concept']:e for e in repo.get('evidence',[])}
+    observed = {e['concept']:e for e in repo.get('evidence',[])
+                if isinstance(e, dict) and not is_generic_code_term(e.get('concept'))}
     for concept, (_, aliases) in CONCEPTS.items():
-        if concept not in observed:
+        if is_generic_code_term(concept) or concept not in observed:
             continue
         for alias in aliases[1:]:
             if alias.casefold() in low and alias.casefold() != concept.casefold():
