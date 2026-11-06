@@ -230,14 +230,6 @@ class GithubMapping:
 
         if not commits:
             raise MappingError("Nenhum commit acessível no período selecionado.")
-        if not windows:
-            # Only known commit dates, never extrapolate beyond inspected history.
-            observed = sorted(filter(None, (
-                _date(((row.get("commit") or {}).get("committer") or
-                        (row.get("commit") or {}).get("author") or {}).get("date"))
-                for row in commits)))
-            if observed:
-                queried_windows = [[observed[0], observed[-1]]]
 
         # Preserve calls for the tree when unauthenticated quota is low.
         remaining = self.rate.get("restantes")
@@ -316,7 +308,7 @@ class GithubMapping:
                 "historico_parcial": history_partial,
                 "limite_amostra": {"commits": 1801 if windows else 300, "tags": 100},
                 "taxa": self.rate, "autenticado": bool(self.token), "branch": branch,
-                "periodos_consultados": queried_windows, "consulta_por_periodo": bool(windows or queried_windows)}
+                "periodos_consultados": queried_windows, "consulta_por_periodo": bool(windows)}
 
     @staticmethod
     def suggestions(catalogue, lessons, overrides=None):

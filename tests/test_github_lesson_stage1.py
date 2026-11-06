@@ -248,6 +248,10 @@ class MappingSuggestionTests(unittest.TestCase):
         self.assertIn("data fora do período consultado",outside[0]["motivo"])
         self.assertIn("consulte o repositório novamente",outside[0]["motivo"])
         self.assertEqual(catalogue["periodos_consultados"],[["2026-10-15","2026-11-15"]])
+        recent = {"candidatos":[candidate], "consulta_por_periodo":False,
+                  "periodos_consultados":[]}
+        recent_result = GithubMapping.suggestions(recent, lessons)
+        self.assertNotIn("fora do período",recent_result[0]["motivo"])
 
     def test_priority_same_day_pasta_before_commit_and_previous_before_future(self):
         base = [
