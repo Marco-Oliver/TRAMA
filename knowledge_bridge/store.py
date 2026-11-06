@@ -180,7 +180,7 @@ class Store:
                           folder: str, commit_sha: str):
         """First frozen SHA wins; never overwrite on reprocess or moving branches."""
         if (role not in ("professor", "dupla") or slot not in ("current", "previous")
-                or not re.fullmatch(r"Aula-\\d{3,4}", lesson or "")
+                or not re.fullmatch(r"Aula-\d{3,4}", lesson or "")
                 or not re.fullmatch(r"[a-fA-F0-9]{40}", commit_sha or "")):
             raise ValueError("Identificador ou SHA de congelamento inválido.")
         expected = (repo_url, ref_kind, ref_name, folder)
