@@ -56,7 +56,8 @@ class FrozenShaTests(unittest.TestCase):
 
     def test_freeze_requires_explicit_consent_and_never_resolves_twice(self):
         self.assertFalse(self.bridge.freeze_lesson_code("Aula-131","professor","backend")["ok"])
-        with patch.object(GithubMapping,"resolve_sha",return_value=SHA_A) as resolver:
+        with patch.object(GithubMapping,"resolve_sha",return_value=SHA_A) as resolver, \
+             patch.object(GithubMapping,"_get",return_value={"private": False}):
             first=self.bridge.freeze_lesson_code("Aula-131","professor","backend",True)
             self.assertTrue(first["ok"],first)
             self.assertTrue(first["created"])
@@ -69,7 +70,8 @@ class FrozenShaTests(unittest.TestCase):
         self.assertEqual(frozen["refs"][0]["commit_sha"],SHA_A)
 
     def test_unfreeze_requires_confirmation_and_allows_refreeze_after_branch_moves(self):
-        with patch.object(GithubMapping, "resolve_sha", return_value=SHA_A):
+        with patch.object(GithubMapping, "resolve_sha", return_value=SHA_A), \
+             patch.object(GithubMapping,"_get",return_value={"private": False}):
             pinned=self.bridge.freeze_lesson_code("Aula-131","professor","backend",True)
         self.assertTrue(pinned["ok"], pinned)
         self.assertEqual(pinned["sha"],SHA_A)
@@ -79,7 +81,8 @@ class FrozenShaTests(unittest.TestCase):
         cleared=self.bridge.unfreeze_lesson_code("Aula-131","professor","backend","current",True)
         self.assertTrue(cleared["ok"],cleared)
         self.assertEqual(self.bridge.frozen_lesson_code("Aula-131")["refs"],[])
-        with patch.object(GithubMapping, "resolve_sha", return_value=SHA_B):
+        with patch.object(GithubMapping, "resolve_sha", return_value=SHA_B), \
+             patch.object(GithubMapping,"_get",return_value={"private": False}):
             new=self.bridge.freeze_lesson_code("Aula-131","professor","backend",True)
         self.assertTrue(new["ok"],new)
         self.assertEqual(new["sha"],SHA_B)
@@ -88,7 +91,8 @@ class FrozenShaTests(unittest.TestCase):
                           "backend","invalid-slot",True)["ok"])
 
     def test_previous_folder_is_distinct_slot_and_deletion_clears_locks(self):
-        with patch.object(GithubMapping,"resolve_sha",return_value=SHA_A):
+        with patch.object(GithubMapping,"resolve_sha",return_value=SHA_A), \
+             patch.object(GithubMapping,"_get",return_value={"private": False}):
             self.assertTrue(self.bridge.freeze_lesson_code("Aula-131","professor","backend",True)["ok"])
             older=self.bridge.freeze_lesson_code("Aula-131","professor","backend",True,True)
         self.assertTrue(older["ok"],older)

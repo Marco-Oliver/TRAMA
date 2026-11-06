@@ -1212,12 +1212,21 @@ class Bridge:
             slot="previous" if previous else "current"
             db=Store(vault)
             previous_lock=db.github_ref(lesson,role,repository_id,slot)
+            client=GithubMapping()
+            if previous_lock and previous_lock["private"] is not None:
+                private=bool(previous_lock["private"])
+            else:
+                metadata=client._get(entry["repo"],"")
+                if not isinstance(metadata,dict) or type(metadata.get("private")) is not bool:
+                    raise MappingError("GitHub não confirmou se o repositório é privado.")
+                private=metadata["private"]
             sha=(previous_lock["commit_sha"] if previous_lock else
-                 GithubMapping().resolve_sha(entry["repo"],spec["ref_tipo"],spec["ref"]))
+                 client.resolve_sha(entry["repo"],spec["ref_tipo"],spec["ref"]))
             locked=db.freeze_github_ref(lesson,role,repository_id,slot,
-                entry["repo"],spec["ref_tipo"],spec["ref"],spec.get("pasta",""),sha)
+                entry["repo"],spec["ref_tipo"],spec["ref"],spec.get("pasta",""),sha,private=private)
             return {"ok":True,"sha":locked["sha"],"created":locked["created"],
-                    "slot":slot,"message":"SHA congelado no SQLite; reprocessamentos manterão esta referência."}
+                    "private":locked["private"],"slot":slot,
+                    "message":"SHA e privacidade congelados no SQLite; reprocessamentos manterão esta referência."}
         except (ValueError,TypeError,OSError,sqlite3.Error,MappingError) as exc:
             return {"ok":False,"message":str(exc)[:350]}
         finally:
@@ -1261,7 +1270,7 @@ class Bridge:
         db=Store(vault)
         try:
             rows=db.conn.execute("""SELECT role,repository_id,slot,repo_url,ref_kind,
-                         ref_name,folder,commit_sha,frozen_at FROM github_lesson_refs
+                         ref_name,folder,commit_sha,private,frozen_at FROM github_lesson_refs
                          WHERE lesson=? ORDER BY role,repository_id,slot""",(lesson,))
             return {"ok":True,"refs":[dict(row) for row in rows]}
         finally:
@@ -1310,6 +1319,8 @@ class Bridge:
         if current!=expected:
             raise ValueError("Cadastro e SHA divergentes; congele a versão desta aula.")
         reader=GithubCodeReader(cache=GithubCache(vault=vault))
+        if locked["private"] is not None:
+            reader._privacy[locked["repo_url"]]=bool(locked["private"])
         return reader, locked["repo_url"], locked["commit_sha"], locked["folder"]
 
     def _code_response(self, action):

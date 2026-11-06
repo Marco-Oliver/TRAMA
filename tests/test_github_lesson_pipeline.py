@@ -55,7 +55,8 @@ class ProcessingFrozenShaTests(unittest.TestCase):
             db.close()
 
     def test_reprocessing_uses_locked_sha_after_mock_branch_advances(self):
-        with patch.object(GithubMapping,"resolve_sha",return_value=A):
+        with patch.object(GithubMapping,"resolve_sha",return_value=A), \
+             patch.object(GithubMapping,"_get",return_value={"private": False}):
             self.assertTrue(self.bridge.freeze_lesson_code(
                 "Aula-131","professor","backend",True)["ok"])
         app=Mock()

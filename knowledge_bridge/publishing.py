@@ -240,14 +240,57 @@ class Publisher:
         self.db, self.vault = store, store.vault
         self._concept_targets = {}
         self.lesson_repo_index = LessonRepositoryIndex(store)
+        self._lesson_repo_memo = {}
         for folder in ["00-Inicio", "01-Meu-Conhecimento", "02-Minhas-Aulas", "03-Meus-Projetos",
                        "05-Anotacoes-Pessoais", "90-Sistema", "99-Anexos/Videos", "99-Anexos/Transcricoes-Originais",
                        "99-Anexos/Materiais-Originais", "99-Anexos/Contexto-Classroom"]:
             (self.vault / folder).mkdir(parents=True, exist_ok=True)
 
     def _lesson_repos(self, lesson: str):
-        """Return SHA-locked snapshots, or the legacy global index if unmapped."""
-        return self.lesson_repo_index.for_lesson(lesson)
+        """Resolve each lesson only once during this publication."""
+        if lesson not in self._lesson_repo_memo:
+            self._lesson_repo_memo[lesson] = self.lesson_repo_index.for_lesson(lesson)
+        return self._lesson_repo_memo[lesson]
+
+    def _keep_previous_code(self, lines, rel, lesson, start_heading, end_heading):
+        """If a frozen index is unreachable, preserve prior SHA-matched code text.
+
+        Never recover stale code after explicit unfreeze or a changed SHA.
+        Only replace the generated section; other lesson content still updates.
+        """
+        if lesson not in self.lesson_repo_index.failed_lessons:
+            return lines
+        warning = self.lesson_repo_index.warning(lesson)
+        start = next((i for i, line in enumerate(lines) if line == start_heading), None)
+        if start is None:
+            return lines
+        previous = []
+        path = self.vault / rel
+        try:
+            if (path.is_file() and not path.is_symlink() and
+                    path.resolve().is_relative_to(self.vault) and
+                    path.stat().st_size <= 2_000_000):
+                old = path.read_text(encoding="utf-8")
+                left = old.find(start_heading + "\n")
+                right = old.find("\n" + end_heading, left + len(start_heading)) if left >= 0 else -1
+                if left >= 0 and right > left:
+                    previous = old[left + len(start_heading) + 1:right].splitlines()
+                    previous = [line for line in previous
+                                if not line.startswith("> **TRAMA (offline):**")]
+                    # A previous note might belong to an old, explicitly
+                    # unfrozen SHA. Do not silently reuse mismatched evidence.
+                    commits = set(re.findall(r"/blob/([0-9a-f]{40})/", "\n".join(previous), re.I))
+                    _, current, _ = self.lesson_repo_index._status.get(lesson, (0, [], []))
+                    pinned = {row["commit_sha"] for row in current}
+                    if not commits or not commits.issubset(pinned):
+                        previous = []
+        except (OSError, UnicodeError, ValueError):
+            previous = []
+        # Do not claim "no code" on a transient 403/429/network outage.
+        restored = previous if previous else ["", "*Relações não atualizadas: índice congelado indisponível.*"]
+        return lines[:start + 1] + restored + [
+            "", "> **TRAMA (offline):** " + warning,
+        ]
 
     def _concept_target(self, name: str) -> str:
         """Filename of a known concept group, independent of its comparison key."""
@@ -673,6 +716,8 @@ class Publisher:
             rows.append("> " + warning)
         if not found_code:
             rows.append('*Ainda não há código com relação verificável para esta aula.*')
+        rows = self._keep_previous_code(rows, rel, lesson,
+                                        "## Projetos relacionados", "## Fontes e materiais")
         rows += ['', '## Fontes e materiais', '']
         for src in self._lesson_extras(lesson):
             if src['kind']=='classroom':
@@ -991,7 +1036,7 @@ class Publisher:
             body.append("> " + warning)
         if not project_matches:
             body.append("*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
-        total, frozen=self.db.github_lesson_refs(lesson)
+        total, frozen, _ = self.lesson_repo_index._status.get(lesson, (0, [], []))
         if total<0 or total>len(frozen):
             body.append("**Código GitHub pendente:** congele a versão desta aula antes de relacionar código às notas.")
         body += ["", "## Comparação revisada por IA (com referências)"]
@@ -1015,6 +1060,9 @@ class Publisher:
                             f"**[{item['status']}]**")
         if not validated_any:
             body.append('*Ainda sem comparação pela IA; relações acima são pistas verificadas de texto e código.*')
+        body = self._keep_previous_code(body, rel, lesson,
+                                        "## Relações com códigos e projetos",
+                                        "## Termos suspeitos da transcrição")
         body += ["", "## Termos suspeitos da transcrição", ""]
         suggested=[]
         for repo, payload in project_matches:
@@ -1047,6 +1095,8 @@ class Publisher:
 
     def rebuild(self):
         """Deriva notas e revisão incremental das fontes originais cadastradas."""
+        self._lesson_repo_memo.clear()
+        self.lesson_repo_index.begin_run()
         # Fail closed before *any* Markdown write if a cached transcript no
         # longer agrees with the SQLite catalog. User notes stay untouched.
         from .content import file_hash

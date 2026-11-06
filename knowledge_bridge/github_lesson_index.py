@@ -1,8 +1,7 @@
-"""Per-lesson immutable GitHub code indices; never compare a frozen lesson to HEAD.
+"""Immutable GitHub lesson indices, cached offline before any network request.
 
-The index is cached by (repository URL, commit SHA, folder), outside the vault.
-Private content uses GithubCache's Windows DPAPI policy; there is no plaintext
-cache or checkout of private code.
+A registered lesson compares only its frozen commit/folder. Private objects are
+cached only through the encrypted GithubCache namespace, never as plaintext.
 """
 from __future__ import annotations
 
@@ -10,15 +9,14 @@ import json
 import zlib
 from pathlib import Path
 
-from .code_intel import (DOC_EXTS, MAX_FILE_BYTES, SENSITIVE_NAMES,
-                         SOURCE_EXTS, index_repository)
+from .code_intel import DOC_EXTS, MAX_FILE_BYTES, SENSITIVE_NAMES, SOURCE_EXTS, index_repository
 from .github_cache import GithubCache
 from .github_code import GithubCodeReader
-from .github_mapping import MappingError
+from .github_mapping import MappingError, GithubRateLimitError
 
 
 class LessonRepositoryIndex:
-    """Choose either a frozen per-lesson snapshot or the original global index."""
+    """Select frozen snapshots or the historic global index for unmapped lessons."""
 
     def __init__(self, store, reader=None, cache=None):
         self.store = store
@@ -26,36 +24,79 @@ class LessonRepositoryIndex:
         self.reader = reader if reader is not None else GithubCodeReader(cache=self.cache)
         self._snapshots = {}
         self.errors = {}
+        self.failed_lessons = set()
+        self.notices = {}
+        self._config = None
+        self._global = None
+        self._status = {}
+        self._rate_error = None
+        self._no_token_bulk = False
 
     @staticmethod
     def _key(repo, sha, folder):
         return (repo.rstrip("/").removesuffix(".git").casefold(), sha.lower(), folder)
 
-    def _snapshot(self, repo, sha, folder):
+    def begin_run(self):
+        """One config read and one global payload decode per publication."""
+        from .lesson_code_config import read_config
+        self._config = read_config(self.store.vault)
+        self._global = [({**dict(repo), "frozen": False, "folder": ""},
+                         json.loads(repo["payload"])) for repo in self.store.repositories()]
+        self._status.clear()
+        self.errors.clear()
+        self.failed_lessons.clear()
+        self.notices.clear()
+        self._rate_error = None
+        registered = self._config.get("aulas", {})
+        self._no_token_bulk = (len(registered) >= 5 and
+                               not bool(getattr(self.reader.client, "token", "")))
+
+    def _cached_snapshot(self, key, private):
+        cache_key = ("lesson-index-v1", *key)
+        saved = self.cache.get(cache_key, private=private)
+        if not saved:
+            return None
+        try:
+            decoder = zlib.decompressobj()
+            raw = decoder.decompress(saved, 2_000_001)
+            if (len(raw) > 2_000_000 or not decoder.eof or
+                    decoder.unconsumed_tail or decoder.unused_data):
+                return None
+            parsed = json.loads(raw)
+            if (isinstance(parsed, dict) and parsed.get("identity") == list(key)
+                    and isinstance(parsed.get("index"), dict)):
+                return parsed["index"]
+        except (ValueError, TypeError, UnicodeDecodeError, zlib.error):
+            pass
+        return None
+
+    def _snapshot(self, repo, sha, folder, private):
         key = self._key(repo, sha, folder)
         if key in self._snapshots:
             return self._snapshots[key]
-        private = self.reader.is_private(repo)
-        cache_key = ("lesson-index-v1", *key)
-        saved = self.cache.get(cache_key, private=private)
-        if saved:
-            try:
-                decoder = zlib.decompressobj()
-                raw = decoder.decompress(saved, 2_000_001)
-                if len(raw) <= 2_000_000 and decoder.eof and not decoder.unconsumed_tail:
-                    parsed = json.loads(raw)
-                    if (isinstance(parsed, dict)
-                            and parsed.get("identity") == list(key)
-                            and isinstance(parsed.get("index"), dict)):
-                        self._snapshots[key] = parsed["index"]
-                        return parsed["index"]
-            except (ValueError, TypeError, zlib.error, UnicodeDecodeError):
-                pass
 
+        # New locks have a verified public/private bit. It must be used BEFORE
+        # any GitHub metadata query, so the encrypted snapshot works offline.
+        if private is None:
+            if self._rate_error:
+                raise self._rate_error
+            private = self.reader.is_private(repo)  # migration of old locks
+            # Never assume an old, unknown-private lock is public.
+        if type(private) is not bool:
+            raise MappingError("Visibilidade do repositório não confirmada; recongele a privacidade online.")
+
+        cached = self._cached_snapshot(key, private)
+        if cached is not None:
+            self._snapshots[key] = cached
+            return cached
+        if self._rate_error:
+            raise self._rate_error
+
+        self.reader._privacy[repo] = private
         listing = self.reader.list_files(repo, sha, folder)
-        # A truncated list would silently omit files that might change matches.
         if listing["truncated"]:
             raise MappingError("Árvore congelada incompleta; índice da aula não publicado.")
+
         candidates = []
         for item in listing["files"]:
             path = item["path"]
@@ -77,23 +118,34 @@ class LessonRepositoryIndex:
 
         payload = index_repository(Path("."), candidates, read_source=source)
         self._snapshots[key] = payload
-        packed = zlib.compress(json.dumps({"identity": list(key), "index": payload},
-                                          ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
-        self.cache.put(cache_key, packed, private=private)
+        packed = zlib.compress(json.dumps(
+            {"identity": list(key), "index": payload},
+            ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        self.cache.put(("lesson-index-v1", *key), packed, private=private)
         return payload
 
     def for_lesson(self, lesson):
-        count, frozen = self.store.github_lesson_refs(lesson)
+        if self._config is None:
+            self.begin_run()
+        if lesson in self._status:
+            return self._status[lesson][2]
+
+        count, frozen = self.store.github_lesson_refs(lesson, config=self._config)
         self.errors.pop(lesson, None)
         if count == 0:
-            # Never change legacy connections for lessons without a GitHub mapping.
-            return [({**dict(repo), "frozen": False, "folder": ""},
-                     json.loads(repo["payload"])) for repo in self.store.repositories()]
+            self._status[lesson] = (count, frozen, self._global)
+            return self._global
         if count < 0:
             self.errors[lesson] = "Cadastro GitHub inválido; relações de código bloqueadas."
+            self._status[lesson] = (count, frozen, [])
             return []
+
+        if self._no_token_bulk:
+            self.notices[lesson] = ("Há muitas aulas com código: configure o token do GitHub "
+                                   "antes de montar índices em lote para evitar limite de consultas.")
         if count > len(frozen):
             self.errors[lesson] = "congele a versão desta aula"
+
         result = []
         seen = set()
         for row in frozen:
@@ -101,12 +153,19 @@ class LessonRepositoryIndex:
             if key in seen:
                 continue
             seen.add(key)
+            privacy = row["private"]
+            private = None if privacy is None else bool(privacy)
             try:
-                payload = self._snapshot(row["repo_url"], row["commit_sha"], row["folder"])
+                payload = self._snapshot(row["repo_url"], row["commit_sha"], row["folder"], private)
+            except GithubRateLimitError as exc:
+                self._rate_error = exc  # no more remote calls this publication
+                self.failed_lessons.add(lesson)
+                self.errors[lesson] = str(exc)
+                continue
             except (MappingError, ValueError, OSError, RuntimeError) as exc:
-                self.errors[lesson] = ("Índice da versão congelada indisponível; "
-                                       "nenhuma relação foi substituída pelo HEAD: "
-                                       + str(exc)[:110])
+                self.failed_lessons.add(lesson)
+                self.errors[lesson] = ("Índice congelado indisponível (sem fallback para HEAD): "
+                                       + str(exc)[:190])
                 continue
             url = row["repo_url"]
             result.append(({
@@ -114,16 +173,22 @@ class LessonRepositoryIndex:
                 "name": url.rstrip("/").removesuffix(".git").rsplit("/", 1)[-1],
                 "status": "FROZEN", "folder": row["folder"], "frozen": True,
             }, payload))
+        self._status[lesson] = (count, frozen, result)
         return result
 
     def warning(self, lesson):
-        count, frozen = self.store.github_lesson_refs(lesson)
+        if lesson not in self._status:
+            self.for_lesson(lesson)
+        count, frozen, _ = self._status[lesson]
         if count == 0:
             return "versão não congelada: relação pode não corresponder ao código desta aula"
+        messages = []
         if count < 0:
-            return "Cadastro GitHub inválido; código não vinculado."
+            messages.append("Cadastro GitHub inválido; código não vinculado.")
         if lesson in self.errors:
-            return self.errors[lesson]
-        if count > len(frozen):
-            return "Código GitHub pendente: congele a versão desta aula."
-        return ""
+            messages.append(self.errors[lesson])
+        elif count > len(frozen):
+            messages.append("Código GitHub pendente: congele a versão desta aula.")
+        if lesson in self.notices:
+            messages.append(self.notices[lesson])
+        return " ".join(messages)

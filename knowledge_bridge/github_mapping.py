@@ -5,7 +5,9 @@ um indício da data de gravação. Não transformar sugestões em vínculos sem 
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
+import time
 import json
 import os
 import re
@@ -18,6 +20,39 @@ MAX_RESPONSE = 9_000_000
 
 class MappingError(ValueError):
     pass
+
+
+class GithubRateLimitError(MappingError):
+    """A 403/429 stops further remote work; reset information stays visible."""
+    def __init__(self, retry_at=None, code=429):
+        self.retry_at = retry_at
+        self.code = code
+        if retry_at is not None:
+            when = datetime.fromtimestamp(retry_at, timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+            detail = "tente novamente após " + when
+        else:
+            detail = "GitHub não informou o horário de retomada; configure o token do GitHub ou revise a permissão"
+        super().__init__(f"GitHub HTTP {code}: cota ou acesso bloqueado; {detail}.")
+
+
+def github_limit_error(code, headers=None):
+    """Prefer Retry-After, then GitHub reset epoch; do not invent a reset time."""
+    headers = headers or {}
+    retry_at = None
+    retry = headers.get("Retry-After", "")
+    if isinstance(retry, str) and retry.strip():
+        if retry.strip().isdigit():
+            retry_at = time.time() + min(int(retry.strip()), 86400 * 7)
+        else:
+            try:
+                retry_at = parsedate_to_datetime(retry).timestamp()
+            except (ValueError, TypeError, OverflowError):
+                pass
+    if retry_at is None:
+        reset = headers.get("X-RateLimit-Reset", "")
+        if str(reset).isdigit():
+            retry_at = int(reset)
+    return GithubRateLimitError(retry_at=retry_at, code=code)
 
 
 class _NoRedirect(request.HTTPRedirectHandler):
@@ -53,9 +88,12 @@ class GithubMapping:
                     token = ""
         self.token = token
         self.rate = {"restantes": None, "limite": None, "reset": None, "consultas": 0}
+        self._quota_error = None
         self._opener = request.build_opener(_NoRedirect)
 
     def _get(self, repo, endpoint):
+        if self._quota_error is not None:
+            raise self._quota_error
         if not _safe_repo(repo):
             raise MappingError("Use um link HTTPS de repositório github.com, sem credenciais.")
         parts = parse.urlsplit(repo.rstrip("/").removesuffix(".git")).path.strip("/").split("/")
@@ -96,7 +134,8 @@ class GithubMapping:
             if exc.code in (401, 404):
                 raise MappingError("Repositório não encontrado ou sem permissão. Para repos privados configure TRAMA_GITHUB_TOKEN.") from None
             if exc.code in (403, 429):
-                raise MappingError("GitHub recusou a consulta (cota ou permissão). Configure TRAMA_GITHUB_TOKEN e tente novamente.") from None
+                self._quota_error = github_limit_error(exc.code, exc.headers)
+                raise self._quota_error from None
             raise MappingError(f"GitHub retornou HTTP {exc.code}; repositório não consultado.") from None
         except (error.URLError, TimeoutError, OSError, UnicodeError, json.JSONDecodeError):
             raise MappingError("Não foi possível consultar a API REST do GitHub.") from None

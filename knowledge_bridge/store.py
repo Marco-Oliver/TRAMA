@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS github_lesson_refs (
  lesson TEXT NOT NULL, role TEXT NOT NULL, repository_id TEXT NOT NULL,
  slot TEXT NOT NULL, repo_url TEXT NOT NULL, ref_kind TEXT NOT NULL,
  ref_name TEXT NOT NULL, folder TEXT NOT NULL, commit_sha TEXT NOT NULL,
+ private INTEGER CHECK(private IN (0,1)),
  frozen_at TEXT DEFAULT CURRENT_TIMESTAMP,
  PRIMARY KEY(lesson, role, repository_id, slot)
 );
@@ -80,6 +81,11 @@ class Store:
         self.conn = sqlite3.connect(system / "estado.sqlite3")
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        # Existing vaults retain their frozen SHAs; unknown historical privacy
+        # remains NULL until verified, never guessed to be public.
+        columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(github_lesson_refs)")}
+        if "private" not in columns:
+            self.conn.execute("ALTER TABLE github_lesson_refs ADD COLUMN private INTEGER CHECK(private IN (0,1))")
         self.conn.commit()
 
     def close(self):
@@ -175,10 +181,11 @@ class Store:
             (lesson, role, repository_id, slot)).fetchone()
         return dict(row) if row else None
 
-    def github_lesson_refs(self, lesson: str):
-        """Validated immutable current SHAs for a mapped lesson, never a branch tip."""
-        from .lesson_code_config import read_config
-        config=read_config(self.vault)
+    def github_lesson_refs(self, lesson: str, config=None):
+        """Validated immutable current SHAs; optionally reuse one config per publication."""
+        if config is None:
+            from .lesson_code_config import read_config
+            config=read_config(self.vault)
         if config["fatal"]:
             return -1, []
         if lesson in config.get("invalid", {}):
@@ -217,8 +224,10 @@ class Store:
 
     def freeze_github_ref(self, lesson: str, role: str, repository_id: str, slot: str,
                           repo_url: str, ref_kind: str, ref_name: str,
-                          folder: str, commit_sha: str):
+                          folder: str, commit_sha: str, private=None):
         """First frozen SHA wins; never overwrite on reprocess or moving branches."""
+        if private is not None and type(private) is not bool:
+            raise ValueError("Visibilidade do repositório GitHub inválida.")
         if (role not in ("professor", "dupla") or slot not in ("current", "previous")
                 or not re.fullmatch(r"Aula-\d{3,4}", lesson or "")
                 or not re.fullmatch(r"[a-fA-F0-9]{40}", commit_sha or "")):
@@ -228,17 +237,24 @@ class Store:
         if old:
             if tuple(old[key] for key in ("repo_url","ref_kind","ref_name","folder")) != expected:
                 raise ValueError("Referência já congelada para este cadastro; alteração exige revisão explícita.")
-            return {"sha": old["commit_sha"], "created": False}
+            if old["private"] is None and private is not None:
+                with self.conn:
+                    self.conn.execute(
+                        "UPDATE github_lesson_refs SET private=? WHERE lesson=? AND role=? AND repository_id=? AND slot=? AND private IS NULL",
+                        (int(private),lesson,role,repository_id,slot))
+            return {"sha": old["commit_sha"], "created": False, "private": private if old["private"] is None else bool(old["private"])}
         with self.conn:
             self.conn.execute("""INSERT OR IGNORE INTO github_lesson_refs
-                (lesson,role,repository_id,slot,repo_url,ref_kind,ref_name,folder,commit_sha)
-                VALUES (?,?,?,?,?,?,?,?,?)""",
-                (lesson,role,repository_id,slot,repo_url,ref_kind,ref_name,folder,commit_sha.lower()))
+                (lesson,role,repository_id,slot,repo_url,ref_kind,ref_name,folder,commit_sha,private)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (lesson,role,repository_id,slot,repo_url,ref_kind,ref_name,folder,commit_sha.lower(),
+                 int(private) if private is not None else None))
         saved = self.github_ref(lesson, role, repository_id, slot)
         if (not saved or tuple(saved[key] for key in ("repo_url","ref_kind","ref_name","folder")) != expected
                 or saved["commit_sha"] != commit_sha.lower()):
             raise ValueError("Referência congelada por outro processo; nenhuma atualização automática aplicada.")
-        return {"sha":saved["commit_sha"],"created":True}
+        return {"sha":saved["commit_sha"],"created":True,
+                "private":None if saved["private"] is None else bool(saved["private"])}
 
     def unfreeze_github_ref(self, lesson: str, role: str, repository_id: str, slot: str):
         """Explicitly clear one slot; it can subsequently be frozen again."""

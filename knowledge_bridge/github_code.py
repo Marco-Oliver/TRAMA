@@ -13,7 +13,7 @@ import hashlib
 import re
 from urllib import error, parse, request
 
-from .github_mapping import GithubMapping, MappingError, _NoRedirect
+from .github_mapping import GithubMapping, MappingError, GithubRateLimitError, github_limit_error, _NoRedirect
 from .lesson_code_config import _safe_path, _safe_repo
 
 SHA_RE = re.compile(r"^[a-fA-F0-9]{40}$")
@@ -101,6 +101,10 @@ class GithubCodeReader:
                 if size.isdigit() and int(size) > MAX_FILE:
                     raise MappingError("Arquivo GitHub acima do limite de 300 KB.")
                 data = stream.read(MAX_FILE + 1)
+        except error.HTTPError as exc:
+            if exc.code in (403,429):
+                raise github_limit_error(exc.code,exc.headers) from None
+            return None
         except (error.URLError, TimeoutError, OSError):
             return None  # Fallback: GitHub Contents REST, never a redirect destination.
         return data
@@ -112,7 +116,9 @@ class GithubCodeReader:
         if file_info is None:
             raise MappingError("Arquivo não encontrado na árvore do SHA congelado.")
         private = self.is_private(repo)
-        cache_key = ("file", repo, sha, path)
+        # Git blob identity is content-addressed: a file unchanged across
+        # commits/paths needs only one download. Privacy namespaces stay separate.
+        cache_key = ("git-blob-v2", file_info["blob_sha"])
         data = self.cache.get(cache_key, private=private) if self.cache else None
         if data is None:
             data = self._raw(repo, sha, path, private)
