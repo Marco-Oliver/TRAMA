@@ -161,6 +161,11 @@ Alexandre Rech — professor"></textarea></label>
   <p>Cadastre os repositórios e as revisões de cada aula. A análise do código e o congelamento de SHAs serão adicionados nas próximas etapas.</p>
   <div class="context-fields"><label>Número da aula <input id="lesson-code-number" type="number" min="1" max="9999" required></label><button type="button" id="lesson-code-load">Carregar esta aula</button></div>
   <p id="lesson-code-token" role="status"></p>
+  <section id="lesson-code-invalid" class="lesson-code-invalid" hidden aria-label="Registro inválido já armazenado">
+   <h3>Registro atual inválido — atenção à substituição</h3>
+   <p>O cadastro abaixo foi preservado exatamente como está no JSON. Leia-o antes de substituir: será exigida confirmação específica.</p>
+   <pre id="lesson-code-invalid-raw"></pre>
+  </section>
   <h3>Repositórios do professor</h3><div id="code-teachers"></div>
   <button type="button" id="lesson-code-add-teacher">+ Repositório do professor</button>
   <h3>Repositórios da dupla</h3><div id="code-students"></div>
@@ -174,8 +179,10 @@ Alexandre Rech — professor"></textarea></label>
 <dialog id="lesson-map-dialog" class="context-dialog lesson-map-dialog" aria-labelledby="lesson-map-title">
  <div class="lesson-map-body">
   <div class="dialog-header"><h2 id="lesson-map-title">Assistente de mapeamento GitHub</h2><button type="button" id="lesson-map-close" aria-label="Fechar">×</button></div>
-  <p>Consulta até 300 commits paginados (respeitando a cota), até 100 tags e uma única árvore Git. Sugestões por data são aproximadas; a data do post Classroom não comprova a data da gravação. Nenhum vínculo será gravado sem confirmação.</p>
+  <p>Consulta commits nos períodos das aulas cadastradas, com paginação limitada e uma única árvore Git. Sugestões por data são aproximadas; a data do post Classroom não comprova a data da gravação. Nenhum vínculo será gravado sem confirmação.</p>
+  <p><strong>Aulas ainda não importadas não aparecem aqui.</strong> Importe seus TXT ou cadastre contexto antes de mapear.</p>
   <label>Repositório do professor <input id="lesson-map-repo" maxlength="300" placeholder="https://github.com/professor/projeto"></label>
+  <label>Branch para consultar (opcional) <input id="lesson-map-branch" maxlength="180" placeholder="Ex.: v7 ou main — vazio usa branch padrão"></label>
   <button type="button" id="lesson-map-search">Consultar e sugerir</button>
   <p id="lesson-map-quota" role="status">Sem token há poucas requisições por hora. Recomendamos TRAMA_GITHUB_TOKEN.</p>
   <div id="lesson-map-results" role="group" aria-label="Seleção de aulas e versões"></div>
