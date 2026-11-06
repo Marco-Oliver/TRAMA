@@ -128,7 +128,7 @@ class FrozenV1DoubtsTests(unittest.TestCase):
             "03:30 faind bai email\n"
             "03:45 user maneger\n"
             "04:00 valor generated never\n"
-            "05:11 observação que não corresponde a nenhum identificador\n"
+            "05:11 observação que não corresponde a nenhum identificador\n",
             encoding="utf-8",
         )
         self.app.add_file(txt)
