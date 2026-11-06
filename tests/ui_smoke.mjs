@@ -51,6 +51,7 @@ const makeBridge=({notes})=>{
       raw:{professor:[{repo:'https://evil.invalid'}],dupla:[],injected:'<img src=x onerror="window.__tramaXss=true">'},
       digest:'d'.repeat(64)}}:{},
     datas:[{aula:'Aula-001',data:'2026-10-28',origem_data:'contexto_classroom'}]}),
+  lesson_code_changes: async(lesson,data)=>({ok:true,invalidated:[]}),
   save_lesson_code: async (lesson,data,confirmed,replace_invalid=false,expected_digest='')=>{
     (window.__tramaCodeSaves??=[]).push({lesson,data,confirmed,replace_invalid,expected_digest});
     return {ok:confirmed,message:'Cadastro GitHub salvo.'};
