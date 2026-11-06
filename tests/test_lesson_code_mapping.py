@@ -156,7 +156,7 @@ class MappingTests(unittest.TestCase):
         suggestions=GithubMapping.suggestions(result,[{
             "aula":"Aula-131","data":"2026-11-05",
             "origem_data":"contexto_classroom"}])
-        self.assertTrue(suggestions[0]["candidato_id"].startswith("commit:"))
+        self.assertTrue(suggestions[0]["candidato_id"].startswith("pasta:"))  # same day: pasta beats commit
 
     def test_preview_never_writes_and_confirm_only(self):
         data=self.catalog()
