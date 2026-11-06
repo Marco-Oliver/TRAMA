@@ -37,7 +37,7 @@ PROJECT_VERBS = {
     "mandar", "mandando", "mandou", "mandamos", "mando",
     "branch", "branches", "commit", "commits", "commitar", "commitando",
 }
-REVIEW = re.compile(r"\b(?:revisao|revisamos|quebra.cuca|sem codigo|teorica|sem programar)\b", re.I)
+REVIEW = re.compile(r"\b(?:revisao|revisamos|revisar|revisando|revisou|quebra.cuca|sem codigo|teorica|sem programar)\b", re.I)
 TIMESTAMP = re.compile(r"^\s*\[?(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\]?")
 IGNORE = {"class","public","private","const","return","import","export","default",
           "from","using","namespace","string","number","true","false","void",
@@ -336,8 +336,8 @@ class GithubAutoMapper:
         code = min(code,18)
         spoken = project_version_mentions(text)
         speech = 6 if number is not None and number in spoken else 0
-        if spoken and number is not None and number not in spoken:
-            speech = -2
+        # Do not penalize a conflicting version that has positive code
+        # evidence; otherwise 2.5*3 - 2 would fall below speech alone (6).
         # Even the weakest code evidence (one changed filename: 2.5) outweighs
         # speech alone (6); speech remains a useful tie-breaker when code agrees.
         return code * 3 + speech, code, speech

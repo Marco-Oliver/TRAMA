@@ -235,13 +235,16 @@ class AutoVersionsEndToEnd(unittest.TestCase):
 
         def rest(client, repo, endpoint):
             if endpoint == "":
+                self.api.calls.append((repo,endpoint))
                 return {"private":False, "default_branch":branch}
             if endpoint == "branches?per_page=100&page=1":
                 return original(client,repo,endpoint)+[
                     {"name":branch,"commit":{"sha":final}}]
             if endpoint == "commits?per_page=1&sha="+branch:
+                self.api.calls.append((repo,endpoint))
                 return [{"sha":final}]
             if endpoint == f"compare/{SHAS[3]}...{final}":
+                self.api.calls.append((repo,endpoint))
                 return {"files":[{"filename":"src/FinalService.ts",
                                   "status":"added","patch":"@@ -0,0 +1 @@"}],
                         "commits":[{"commit":{"committer":{
@@ -348,7 +351,9 @@ class SpeechReviewAndCascadeTests(unittest.TestCase):
     def test_speech_alone_cannot_outweigh_even_filename_code_evidence(self):
         spoken = GithubAutoMapper._score("vamos jogar para a V8",
             {"symbols": [], "evidence": [], "files": []}, 8)[0]
-        code = GithubAutoMapper._score("Novo HttpClient",
+        # The same sentence contains a valid project clue for *another*
+        # version, but this version has verifiable changed code.
+        code = GithubAutoMapper._score("vou jogar isso para a V8 e criamos HttpClient",
             {"symbols": [], "evidence": [], "files": ["src/HttpClient.ts"]}, 2)[0]
         self.assertGreater(code, spoken)
 
