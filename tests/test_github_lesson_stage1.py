@@ -268,9 +268,9 @@ class MappingSuggestionTests(unittest.TestCase):
                     "committer":{"date":"2026-11-05T12:00:00Z"}}}]
             if endpoint.startswith("commits?") and "since=" in endpoint:
                 self.assertIn("&sha=course%2Fv7",endpoint)
-                if "page=1" in endpoint and len([x for x in calls if "page=1" in x])==1:
+                if "&page=1" in endpoint and len([x for x in calls if "&page=1" in x])==1:
                     return history
-                if "page=2" in endpoint:
+                if "&page=2" in endpoint:
                     return [old_record]
                 return []
             if endpoint == "tags?per_page=100":
@@ -288,7 +288,7 @@ class MappingSuggestionTests(unittest.TestCase):
         self.assertEqual(suggestion[0]["candidato_id"],"commit:"+old)
         self.assertIn(f"git/trees/{tip}?recursive=1",calls)
         self.assertTrue(any("since=" in item and "until=" in item for item in calls))
-        self.assertTrue(any("page=2" in item for item in calls))
+        self.assertTrue(any("&page=2" in item for item in calls))
         self.assertEqual(result["branch"],"course/v7")
 
     def test_explicit_redirect_message_without_following_new_location(self):
