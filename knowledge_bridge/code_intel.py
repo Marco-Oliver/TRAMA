@@ -233,7 +233,11 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
                     # A class derived from/ending with DbContext is literal
                     # evidence of that specific framework concept, not a
                     # fabricated freestanding declaration of DbContext.
-                    if name.endswith("DbContext") and name != "DbContext" and "DbContext" not in seen_identifiers:
+                    if (name.endswith("DbContext") and name != "DbContext"
+                            and "DbContext" not in seen_identifiers
+                            and re.search(r"\bclass\s+" + re.escape(name) + r"\b", line)):
+                        # A canonical DbContext alias needs an actual class
+                        # declaration, not an arbitrary parameter reference.
                         seen_identifiers.add("DbContext")
                         identifiers_in_file.append({**item,
                             "name":"DbContext", "observed":name})

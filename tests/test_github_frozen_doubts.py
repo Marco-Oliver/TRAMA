@@ -216,7 +216,8 @@ class FrozenV1DoubtsTests(unittest.TestCase):
         self.assertIn("Dúvidas relacionadas a identificadores concretos da versão congelada", note)
         self.assertNotIn("*Nenhum vínculo com código encontrado ainda.", note)
         followup = note.split("### check password saind assim",1)[1].split("\n### ",1)[0]
-        self.assertIn("Provável no código", followup)
+        self.assertIn("ver dúvida técnica acima", followup)
+        self.assertNotIn("**Provável no código:**", followup)
         self.assertNotIn("Nenhuma explicação posterior identificada", followup)
         self.assertIn("nome provável no código", note.casefold())
         self.assertIn("DB Contact", note)

@@ -60,7 +60,7 @@ class LessonRepositoryIndex:
                                not bool(getattr(self.reader.client, "token", "")))
 
     def _cached_snapshot(self, key, private):
-        cache_key = ("lesson-index-v2", *key)
+        cache_key = ("lesson-index-v3", *key)
         saved = self.cache.get(cache_key, private=private)
         if not saved:
             return None
@@ -139,7 +139,7 @@ class LessonRepositoryIndex:
         packed = zlib.compress(json.dumps(
             {"identity": list(key), "index": payload},
             ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
-        self.cache.put(("lesson-index-v2", *key), packed, private=private)
+        self.cache.put(("lesson-index-v3", *key), packed, private=private)
         return payload
 
     def for_lesson(self, lesson):

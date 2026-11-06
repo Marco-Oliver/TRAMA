@@ -165,6 +165,7 @@ def match_frozen_question(question, repositories):
                 "line": line,
                 "snippet": snippet[:900],
                 "similarity": round(score[2], 3),
+                "_line_text": str(item.get("line_text", "")),
                 "_rank": score,
             })
     if not matches:
@@ -173,8 +174,15 @@ def match_frozen_question(question, repositories):
     # character similarity. Deterministic path/line tie-breaking.
     matches.sort(key=lambda item: (
         -item["_rank"][0], -item["_rank"][1], -item["_rank"][2],
+        # Prefer the actual class declaration of a synthesized DbContext
+        # alias over a reference to the same class in a controller parameter.
+        0 if (item["candidate"] == "DbContext" and
+              re.search(r"\bclass\s+" +
+                        re.escape(str(item.get("observed", ""))) + r"\b",
+                        str(item.get("_line_text", "")))) else 1,
         item["path"], item["line"], item["candidate"],
     ))
     best = matches[0]
     best.pop("_rank", None)
+    best.pop("_line_text", None)
     return best
