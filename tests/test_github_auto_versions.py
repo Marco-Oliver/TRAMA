@@ -69,6 +69,7 @@ class FakeGitHub:
 
 
 class NoAI:
+    attempts=0
     def active(self):return []
 
 
