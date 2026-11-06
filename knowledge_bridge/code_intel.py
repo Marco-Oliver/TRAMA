@@ -6,6 +6,7 @@ A source match is evidence of code *presence*, not of authorship or learning.
 from __future__ import annotations
 
 import re
+import unicodedata
 from pathlib import Path
 
 # Canonical technical concepts include common transcription mistakes and aliases.
@@ -30,6 +31,23 @@ CONCEPTS = {
     "signal": (r"\b(?:signal|computed|effect)\s*\(", ["signal", "signals"]),
 }
 
+# Single language keywords are not proof of correspondence or ASR errors.
+# Keep concrete symbols such as DeliveryController, HttpClient and DbContext.
+GENERIC_LANGUAGE_TERMS = frozenset({
+    "class", "classes", "classe", "interface", "interfaces", "public",
+    "private", "protected", "static", "namespace", "using", "string", "void",
+    "method", "methods", "metodo", "metodos", "controller", "controllers",
+})
+
+
+def is_generic_code_term(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    plain = unicodedata.normalize("NFKD", value.strip()).encode(
+        "ascii", "ignore").decode("ascii").casefold()
+    return plain in GENERIC_LANGUAGE_TERMS
+
+
 SENSITIVE_NAMES = (
     ".env", "secret", "credential", "private", "password", "token", "appsettings",
     "key.json", "key.pem", "id_rsa", "package-lock", "yarn.lock", "pnpm-lock"
@@ -39,6 +57,114 @@ DOC_EXTS = {".md", ".txt"}
 MAX_FILE_BYTES = 100_000
 MAX_EVIDENCE = 160
 MAX_DOCS = 12
+MAX_SYMBOLS = 240
+MAX_CODE_IDENTIFIERS = 3000
+# Actual C#/TS/Python identifier tokens, not guesses from surrounding prose.
+# Values must occur literally on a verified source line at the frozen SHA.
+CODE_IDENTIFIER = re.compile(r"\b[A-Z][A-Za-z0-9_]{2,89}\b")
+SYMBOL_DECLARATION = re.compile(
+    r"\b(?:class|interface|enum|struct|record|function|def)\s+"
+    r"([A-Za-z_][A-Za-z0-9_]*)\b"
+)
+
+
+
+# Frozen-ASR indexes may only admit identifiers from actual program syntax,
+# never from quoted strings/URLs, comments, namespace or import directives.
+ASR_IGNORED_LINE = re.compile(r"^\s*(?:using\b|import\b|from\s+\S+\s+import\b|namespace\b|#include\b)", re.I)
+ASR_MEMBER_CALL = re.compile(r"\.\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:<[^(){};]*>)?\s*\(")
+ASR_DIRECT_CALL = re.compile(r"\b(?:return|await|yield\s+return|throw|new)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+ASR_TYPED_PARAMETER = re.compile(
+    r"^\s*([A-Z][A-Za-z0-9_]*)\s*(?:<[^(){};]*>)?\s+[a-z_][A-Za-z0-9_]*\s*[,)]")
+ASR_PROPERTY = re.compile(
+    r"\b(?:public|private|protected|internal)\s+(?:(?:static|readonly|virtual|override|required|sealed|new)\s+)*"
+    r"(?:(?:[A-Za-z_][A-Za-z0-9_]*)(?:<[^{};]*>)?\s+)+"
+    r"([A-Za-z_][A-Za-z0-9_]*)\s*(?:\{|=>|;)")
+ASR_METHOD_DECL = re.compile(
+    r"\b(?:public|private|protected|internal|async|static|override)\b"
+    r"[^;{}=]{0,160}?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+ASR_TYPE_DECL = re.compile(
+    r"\b(?:class|interface|record|struct|enum|def|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+ASR_INHERITS = re.compile(r"\b(?:class|record|struct)\s+[A-Za-z_]\w*[^;{}]*?\s*:\s*([^{}]+)")
+ASR_BANNED_NAMES = frozenset({
+    "Guid", "String", "Int32", "Task", "True", "False",
+    "HttpPost", "AllowAnonymous", "Route", "ApiController",
+})
+
+
+def _asr_code_only(line: str, block_comment: bool = False) -> tuple[str, bool]:
+    """Strip comments and literals before identifier extraction, no execution.
+
+    Preserve original character offsets by replacing ignored material with
+    spaces; handle multiline block comments and C#/TS/Python quoted strings.
+    A URL inside a string cannot become an identifier.
+    """
+    if ASR_IGNORED_LINE.match(line):
+        return "", block_comment
+    out = list(line)
+    quote = ""
+    index = 0
+    while index < len(line):
+        char = line[index]
+        following = line[index:index + 2]
+        if block_comment:
+            out[index] = " "
+            if following == "*/":
+                out[index + 1] = " "
+                block_comment = False
+                index += 2
+                continue
+            index += 1
+            continue
+        if quote:
+            out[index] = " "
+            if char == "\\":
+                if index + 1 < len(line):
+                    out[index + 1] = " "
+                index += 2
+                continue
+            if char == quote:
+                if index + 1 < len(line) and line[index + 1] == quote and quote == '"':
+                    out[index + 1] = " "
+                    index += 2
+                    continue
+                quote = ""
+            index += 1
+            continue
+        if following == "/*":
+            out[index:index + 2] = [" ", " "]
+            block_comment = True
+            index += 2
+            continue
+        if following == "//" or (char == "#" and not line.lstrip().startswith("#[")):
+            out[index:] = [" "] * (len(line) - index)
+            break
+        if char in "'\"\`":
+            out[index] = " "
+            quote = char
+        index += 1
+    return "".join(out), block_comment
+
+
+def _asr_identifier_names(line: str) -> set[str]:
+    """Names from declarations, typed parameters and actual member calls."""
+    output = set()
+    for regex in (ASR_TYPE_DECL, ASR_MEMBER_CALL, ASR_DIRECT_CALL,
+                  ASR_TYPED_PARAMETER, ASR_PROPERTY, ASR_METHOD_DECL):
+        output.update(match.group(1) for match in regex.finditer(line))
+    inherited = ASR_INHERITS.search(line)
+    if inherited:
+        output.update(CODE_IDENTIFIER.findall(inherited.group(1)))
+    # A bare expression can invoke a method; do not treat strings or
+    # non-call attribute accesses as declared identifiers.
+    if re.match(r"^\s*[A-Za-z_]\w*\s*\(", line):
+        matched = re.match(r"^\s*([A-Za-z_]\w*)\s*\(", line)
+        if matched:
+            output.add(matched.group(1))
+    return {name for name in output
+            if re.match(r"^[A-Z][A-Za-z0-9_]{2,89}$", name)
+            and name not in ASR_BANNED_NAMES
+            and not is_generic_code_term(name)}
 
 
 def safe_repo_file(root: Path, rel: str) -> Path | None:
@@ -116,43 +242,146 @@ def _snippet(lines: list[str], lineno: int, before=2, after=3) -> str:
     return "\n".join(f"{i}: {redact_sensitive(lines[i - 1].rstrip()[:180])}" for i in range(first, last + 1))[:1250]
 
 
-def index_repository(root: Path, paths: list[str], history: list[dict] | None = None) -> dict:
+def index_repository(root: Path, paths: list[str], history: list[dict] | None = None, *,
+                     read_source=None) -> dict:
     """Deterministically index actual source definitions, code excerpts, docs, history."""
     files: list[dict] = []
-    evidence: list[dict] = []
+    # Keep evidence from different concepts and files, instead of filling
+    # the whole budget from repeated generic symbols near the repository root.
+    # All candidates remain local and the final output is still bounded.
+    evidence_by_concept: dict[str, list[dict]] = {term: [] for term in CONCEPTS}
     docs: list[dict] = []
+    symbols_by_file: list[list[dict]] = []
+    identifiers_by_file: list[list[dict]] = []
     techs: set[str] = set()
     type_for_ext = {".cs": "C#", ".ts": "TypeScript", ".tsx": "React/TSX", ".js": "JavaScript",
                     ".jsx": "React/JSX", ".py": "Python", ".sql": "SQL", ".html": "HTML", ".css": "CSS"}
     for rel in paths[:1600]:
-        path = safe_repo_file(root, rel)
-        if path is None:
-            continue
         if len(files) >= 500:
             break
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-        files.append({"path": rel, "size": path.stat().st_size})
-        if path.suffix in type_for_ext:
-            techs.add(type_for_ext[path.suffix])
-        if path.suffix.lower() in DOC_EXTS and len(docs) < MAX_DOCS:
+        if read_source is None:
+            path = safe_repo_file(root, rel)
+            if path is None:
+                continue
+            body = path.read_text(encoding="utf-8", errors="replace")
+            size = path.stat().st_size
+            suffix = path.suffix.lower()
+        else:
+            # The remote reader verifies Git tree blob hashes and permits only
+            # UTF-8 files below the same local indexer's size limit.
+            if (not isinstance(rel, str) or not rel or "\\" in rel or
+                    rel.startswith(("/", "-")) or
+                    any(p in (".", "..", "") for p in rel.split("/")) or
+                    any(word in rel.casefold() for word in SENSITIVE_NAMES)):
+                continue
+            suffix = Path(rel).suffix.lower()
+            if suffix not in SOURCE_EXTS | DOC_EXTS | {".json"}:
+                continue
+            source = read_source(rel)
+            if source is None:
+                continue
+            body, size = source
+            if (not isinstance(body, str) or type(size) is not int or
+                    size < 0 or size > MAX_FILE_BYTES):
+                continue
+        lines = body.splitlines()
+        files.append({"path": rel, "size": size})
+        if suffix in type_for_ext:
+            techs.add(type_for_ext[suffix])
+        if suffix in DOC_EXTS and len(docs) < MAX_DOCS:
             # Documentation is a source, not a command to the model.
             excerpt = "\n".join(x for x in lines if x.strip())[:650]
             if excerpt:
                 docs.append({"path": rel, "excerpt": redact_sensitive(excerpt)})
-        if path.suffix.lower() not in SOURCE_EXTS or len(evidence) >= MAX_EVIDENCE:
+        if suffix not in SOURCE_EXTS:
             continue
+        hits_in_file: dict[str, int] = {}
+        symbols_in_file: list[dict] = []
+        identifiers_in_file: list[dict] = []
+        seen_identifiers = set()
+        in_asr_comment = False
         for lineno, line in enumerate(lines, 1):
-            if len(evidence) >= MAX_EVIDENCE:
-                break
-            for concept, (pattern, _) in CONCEPTS.items():
-                if re.search(pattern, line, flags=re.I):
-                    evidence.append({"concept": concept, "path": rel, "line": lineno,
-                                     "snippet": _snippet(lines, lineno),
-                                     "line_text": redact_sensitive(line.strip()[:200])})
-                    if len(evidence) >= MAX_EVIDENCE:
+            asr_line, in_asr_comment = _asr_code_only(line, in_asr_comment)
+            # Literal declarations only; no guessed symbol from a comment or
+            # an unverified model output. Four per file keeps the index small.
+            if len(symbols_in_file)<4 and not line.lstrip().startswith(("//", "#", "*", "/*")):
+                match=SYMBOL_DECLARATION.search(line)
+                if match:
+                    name=match.group(1)
+                    if 4<=len(name)<=90 and name.casefold() not in {"class", "function", "interface"}:
+                        symbols_in_file.append({
+                            "name":name,"concept":name,"path":rel,"line":lineno,
+                            "snippet":_snippet(lines,lineno),
+                            "line_text":redact_sensitive(line.strip()[:200])
+                        })
+            if len(identifiers_in_file) < 90 and asr_line.strip():
+                possible = _asr_identifier_names(asr_line[:300])
+                for name in sorted(possible, key=lambda n:asr_line.find(n)):
+                    if name in seen_identifiers:
+                        continue
+                    seen_identifiers.add(name)
+                    item = {
+                        "name":name,"path":rel,"line":lineno,
+                        "line_text":redact_sensitive(line.strip()[:200]),
+                        "snippet":_snippet(lines,lineno,before=1,after=1),
+                    }
+                    identifiers_in_file.append(item)
+                    if (name.endswith("DbContext") and name != "DbContext"
+                            and "DbContext" not in seen_identifiers
+                            and re.search(r"\bclass\s+" + re.escape(name) + r"\b", asr_line)):
+                        seen_identifiers.add("DbContext")
+                        identifiers_in_file.append({**item,
+                            "name":"DbContext", "observed":name})
+                    if len(identifiers_in_file) >= 90:
                         break
+            for concept, (pattern, _) in CONCEPTS.items():
+                bucket=evidence_by_concept[concept]
+                if (len(bucket)>=MAX_EVIDENCE or
+                        hits_in_file.get(concept,0)>=2):
+                    continue
+                if re.search(pattern,line,flags=re.I):
+                    bucket.append({"concept":concept,"path":rel,"line":lineno,
+                                   "snippet":_snippet(lines,lineno),
+                                   "line_text":redact_sensitive(line.strip()[:200])})
+                    hits_in_file[concept]=hits_in_file.get(concept,0)+1
+        if symbols_in_file:
+            symbols_by_file.append(symbols_in_file)
+        if identifiers_in_file:
+            identifiers_by_file.append(identifiers_in_file)
+    evidence=[]
+    for round_number in range(MAX_EVIDENCE):
+        added=False
+        for concept in CONCEPTS:
+            bucket=evidence_by_concept[concept]
+            if round_number<len(bucket):
+                evidence.append(bucket[round_number])
+                added=True
+                if len(evidence)>=MAX_EVIDENCE:
+                    break
+        if not added or len(evidence)>=MAX_EVIDENCE:
+            break
+    symbols=[]
+    for round_number in range(4):
+        for batch in symbols_by_file:
+            if round_number<len(batch):
+                symbols.append(batch[round_number])
+                if len(symbols)>=MAX_SYMBOLS:
+                    break
+        if len(symbols)>=MAX_SYMBOLS:
+            break
+    identifiers=[]
+    # Round robin: one file cannot monopolize snapshot identity evidence.
+    for round_number in range(90):
+        for batch in identifiers_by_file:
+            if round_number < len(batch):
+                identifiers.append(batch[round_number])
+                if len(identifiers) >= MAX_CODE_IDENTIFIERS:
+                    break
+        if len(identifiers) >= MAX_CODE_IDENTIFIERS:
+            break
     return {"files": files, "total_files": len(files), "technologies": sorted(techs),
-            "evidence": evidence, "documentation": docs, "history": (history or [])[:80],
+            "evidence": evidence, "symbols":symbols, "identifiers": identifiers,
+            "documentation": docs, "history": (history or [])[:80],
             "collaboration": len({h.get('author_email','').casefold() for h in (history or []) if h.get('author_email')}) > 1}
 
 
@@ -160,6 +389,8 @@ def concept_from_text(text: str) -> set[str]:
     text = text.casefold()
     found = set()
     for concept, (_, aliases) in CONCEPTS.items():
+        if is_generic_code_term(concept):
+            continue
         if any(re.search(r"(?<!\w)" + re.escape(a.casefold()) + r"(?!\w)", text, re.I) for a in aliases):
             found.add(concept)
     return found
@@ -167,24 +398,45 @@ def concept_from_text(text: str) -> set[str]:
 
 def match_lesson_to_repository(transcript: str, analysis: dict | None, repo: dict, cap: int = 8) -> list[dict]:
     """Return conservative links. Code presence + lesson mention only; no authorship inference."""
+    # The transcript, not a model-generated concept list, is the source of
+    # truth for candidate links. Historic caches and manually imported
+    # analyses can contain ungrounded terms. Appending them here allowed a
+    # hallucinated concept to link to real but unrelated code.
     text = transcript[:160_000]
-    if analysis:
-        text += "\n" + "\n".join(str(c.get('nome','')) for c in analysis.get('conceitos',[]) if isinstance(c,dict))
     concepts = concept_from_text(text)
     found = []
+    seen=set()
     for e in repo.get('evidence',[]):
-        if e['concept'] in concepts:
-            if e['concept'] in {x['concept'] for x in found}:
-                continue
+        if (not isinstance(e, dict) or is_generic_code_term(e.get('concept'))):
+            continue
+        if e['concept'] in concepts and e['concept'] not in seen:
             found.append(e)
-            if len(found) >= cap:
-                break
+            seen.add(e['concept'])
+            if len(found)>=cap:
+                return found
+    # Additional links to actual declared C#/TS/Python names seen literally
+    # in the lesson or extracted concepts. No fuzzy name guesses or authorship.
+    for e in repo.get('symbols',[]):
+        if not isinstance(e,dict):
+            continue
+        name=e.get('name','')
+        if (not isinstance(name,str) or len(name)<4 or
+                is_generic_code_term(name) or
+                not re.search(r"(?<![A-Za-z0-9_])"+re.escape(name)+r"(?![A-Za-z0-9_])",
+                              text,re.I) or name.casefold() in seen):
+            continue
+        found.append(e)
+        seen.add(name.casefold())
+        if len(found)>=cap:
+            break
     return found
 
 
 def find_code_line(repo: dict, path: str, line: int) -> dict | None:
-    for e in repo.get('evidence',[]):
-        if e['path'] == path and e['line'] == line:
+    # A declared name is more specific than the generic 'class' signal
+    # when both refer to the same source line.
+    for e in [*repo.get('symbols',[]),*repo.get('evidence',[])]:
+        if e.get('path') == path and e.get('line') == line:
             return e
     return None
 
@@ -196,9 +448,10 @@ def potential_transcript_corrections(transcript: str, repo: dict, cap=5) -> list
     """
     result = []
     low = transcript.casefold()
-    observed = {e['concept']:e for e in repo.get('evidence',[])}
+    observed = {e['concept']:e for e in repo.get('evidence',[])
+                if isinstance(e, dict) and not is_generic_code_term(e.get('concept'))}
     for concept, (_, aliases) in CONCEPTS.items():
-        if concept not in observed:
+        if is_generic_code_term(concept) or concept not in observed:
             continue
         for alias in aliases[1:]:
             if alias.casefold() in low and alias.casefold() != concept.casefold():

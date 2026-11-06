@@ -50,7 +50,7 @@ class ReadableLibraryV18Tests(unittest.TestCase):
                                      'descricao':'Apresentação da turma e organização'})
         note=(self.vault/'02-Minhas-Aulas/Aula-001/00-Visao-geral.md').read_text(encoding='utf-8')
         self.assertIn('Aula inicial',note)
-        self.assertIn('Nenhum conceito técnico comprovado',note)
+        self.assertIn('Ainda não há conceitos técnicos classificados com evidência suficiente',note)
         self.assertIn('Plano de aula não é prova de execução',note)
 
     def test_user_modified_overview_creates_proposal_not_overwrite(self):
@@ -90,7 +90,7 @@ class ReadableLibraryV18Tests(unittest.TestCase):
         self.assertIn('data-lib-action="organize"',html)
         self.assertIn('organize_library',html)
         self.assertIn('libRenderMarkdown(n.content',html)
-        self.assertIn('TRAMA v2.0',html)
+        self.assertIn('TRAMA v2.2.0',html)
         self.assertNotIn('class="win-controls"',html)
 
 class LocalAuditV18Tests(unittest.TestCase):

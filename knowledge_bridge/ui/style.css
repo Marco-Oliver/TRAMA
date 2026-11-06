@@ -183,3 +183,120 @@ button:not(:disabled):hover{filter:brightness(.98)}
 .transcript-find input{flex:1;min-width:190px}
 .transcript-find-excerpt{white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow:auto;padding:12px;border:1px solid #d8e1d9;border-radius:7px;font:inherit;font-size:.9rem;line-height:1.5}
 #transcript-search-results{display:grid;gap:10px;margin-top:12px}
+
+
+/* TRAMA 2.2 — diálogos e avisos internos legíveis, sem pop-ups do navegador. */
+.trama-action-dialog{width:min(510px,94vw);max-width:510px;border:1px solid #92aa9a;background:#fbfdf9;
+  border-radius:9px;box-shadow:0 18px 55px #152b2240;color:#213a2b;}
+.trama-action-dialog form,.trama-confirm-body{padding:22px 25px;}
+.trama-action-dialog .dialog-header{padding-bottom:13px;gap:14px;}
+.trama-action-dialog .dialog-header h2{font-size:19px;line-height:1.3;color:#234a33;}
+.trama-action-dialog .dialog-header button{flex:none;font-size:20px;border:1px solid #d0ddd2;
+  background:#f4f8f4;border-radius:5px;color:#546c5c;}
+.trama-action-dialog p{font-size:14px;line-height:1.6;color:#4f6757;margin:16px 0;}
+.trama-action-dialog label{font-size:13px;font-weight:700;color:#284a35;display:block;margin:13px 0 7px;}
+.trama-action-dialog input{display:block;width:100%;font:14px/1.4 'Segoe UI',Arial,sans-serif;
+  color:#203b2b;background:#fff;border:1px solid #aebfb1;border-radius:6px;padding:12px 13px;}
+.trama-action-dialog .dialog-actions{border-top:1px solid #e1e8e0;padding-top:15px;margin-top:20px;gap:10px;}
+.trama-action-dialog .dialog-actions button{font:600 13px 'Segoe UI',Arial,sans-serif;
+  padding:11px 16px;border-radius:6px;min-width:105px;}
+.trama-action-dialog .dialog-actions .trama-primary{border:1px solid #276746;
+  background:linear-gradient(#3a835a,#2b6f4a);color:#fff;min-width:145px;}
+.trama-inline-feedback{border-left:3px solid #74a286;background:#edf5ee;border-radius:3px;
+  padding:10px 12px;overflow-wrap:anywhere;min-height:42px;}
+.trama-action-dialog::backdrop{background:#0d1e168c;}
+.toast{max-width:min(520px,calc(100vw - 38px));min-width:min(325px,calc(100vw - 38px));
+  padding:15px 18px 15px 42px;font:500 14px/1.55 'Segoe UI',Arial,sans-serif;
+  background:#f7faf6;border:1px solid #a7c3ab;border-left:5px solid #3e885a;
+  color:#254a31;box-shadow:0 11px 34px #142c203b;border-radius:8px;overflow-wrap:anywhere;z-index:20;}
+.toast::before{content:'i';position:absolute;left:16px;top:15px;font:700 15px/24px 'Segoe UI',Arial;
+  background:#d5e9dc;width:24px;height:24px;border-radius:50%;text-align:center;color:#266640;}
+.toast[data-kind=error]{border-left-color:#af653f;background:#fdf8f2;color:#703d27;}
+.toast[data-kind=error]::before{content:'!';background:#f6e2d5;color:#9c4c2b;}
+.toast[data-kind=success]{border-left-color:#2e8353;background:#f2faf4;}
+.toast[data-kind=success]::before{content:'✓';background:#d8eedf;color:#21633d;}
+#backup-message,#repo-feedback,#ai-test-status{font-size:13px;line-height:1.55;}
+#auto-feedback{font-size:13px;line-height:1.55;}
+@media(max-width:600px){
+ .trama-action-dialog form,.trama-confirm-body{padding:15px 17px;}
+ .trama-action-dialog .dialog-actions{flex-wrap:wrap;}
+}
+
+/* 2.2: Markdown code citations from the indexed GitHub revision. */
+.lib-code-link{display:inline;vertical-align:baseline;padding:1px 3px;
+  border:0;border-bottom:1px solid #2d7451;border-radius:2px;
+  background:#edf5ef;color:#225b3c;font:inherit;line-height:inherit;
+  white-space:normal;overflow-wrap:anywhere;text-align:left;cursor:pointer;}
+.lib-code-link:hover,.lib-code-link:focus-visible{
+  background:#dceee1;color:#12472d;text-decoration:underline;}
+.lib-code-link code{font-size:.95em;color:inherit;background:transparent;
+  padding:0;white-space:normal;overflow-wrap:anywhere;}
+.lib-md p,.lib-md li{overflow-wrap:anywhere;}
+.lib-md pre,.teacher-markdown .lib-md pre{max-width:100%;overflow-x:auto;}
+
+/* 2.2: protected proposals are revisions to review, not duplicate projects. */
+.lib-file-row.lib-proposal{color:#885e24;background:#fffcf3;}
+.lib-file-row.lib-proposal:hover{background:#fff3d9;}
+.trama-diff-dialog{width:min(900px,95vw);max-width:900px;}
+.trama-diff-content{border:1px solid #d0dad1;background:#f7f8f6;border-radius:6px;
+ padding:8px 0;max-height:58vh;overflow:auto;
+ font:12px/1.5 'Cascadia Mono',Consolas,monospace;}
+.trama-diff-content>div{white-space:pre-wrap;overflow-wrap:anywhere;padding:3px 12px;}
+.trama-diff-added{background:#e2f1e5;color:#195d36;}
+.trama-diff-removed{background:#fbebdf;color:#874b2b;}
+.trama-diff-line{color:#4b594c;}
+
+/* Keep proposal actions available even when the optional right panel is hidden. */
+.lib-proposal-hint{margin:0 0 15px;padding:11px 13px;border:1px solid #d4c49e;
+ border-left:4px solid #b88a48;border-radius:5px;background:#fff9ee;
+ font-size:13px;line-height:1.55;color:#5c452c;}
+.lib-proposal-hint strong{display:inline;color:#6f4b24;}
+.lib-proposal-hint button,.lib-proposal-compare{border:1px solid #c6a976;
+ background:#fffaf1;color:#805121;border-radius:5px;padding:7px 10px;
+ font:600 12px 'Segoe UI',Arial,sans-serif;cursor:pointer;}
+.lib-proposal-compare{margin-left:6px;white-space:normal;}
+@media(max-width:930px){
+ .lib-heading-row{flex-wrap:wrap;gap:7px;}
+ .lib-proposal-compare{order:3;}
+}
+
+/* TRAMA 2.2: do not hide API failures inside a disappearing toast.
+   Show a durable, readable explanation alongside the lesson action. */
+.trama-ai-feedback{display:block;margin:11px 0 0;padding:12px 14px;
+ border:1px solid #d3bf8d;border-left:4px solid #a37a35;
+ background:#fff8e9;color:#654822;border-radius:6px;
+ font-size:13px;line-height:1.6;overflow-wrap:anywhere;}
+
+
+/* GitHub por aula: editor compacto, consistente com os diálogos do TRAMA. */
+.lesson-code-dialog{width:min(790px,96vw)}
+.lesson-code-dialog form{max-height:87vh;overflow:auto}
+.lesson-code-dialog h3{margin:16px 0 8px;font-size:13px;color:#285747}
+.code-repo-row{border:1px solid #bac9bd;background:#f0f5f0;border-radius:5px;margin:10px 0;padding:9px 12px}
+.code-repo-row legend{font-weight:700;padding:0 5px;color:#265340}
+.code-repo-row .context-fields{margin:3px 0 8px}
+.code-repo-row input,.code-repo-row select{max-width:100%;min-width:0}
+.code-remove-row{font-size:11px;border:1px solid #c5b4ac;background:#fff9f5;color:#834c33;padding:4px 9px;border-radius:4px}
+.lesson-map-dialog{width:min(1000px,97vw);max-height:94vh}
+.lesson-map-body{padding:16px 20px;max-height:87vh;overflow:auto}
+.lesson-map-body>label{display:block;font-size:12px;font-weight:600}
+.lesson-map-body>label input{display:block;width:100%;padding:8px;margin:5px 0}
+#lesson-map-quota,#lesson-code-token{background:#eaf1eb;padding:8px 10px;border:1px solid #cadbcc;border-radius:4px;font-size:12px}
+#lesson-map-results{max-height:44vh;overflow:auto;border:1px solid #cad7cb;border-radius:4px;margin:10px 0}
+.lesson-map-row{display:grid;grid-template-columns:108px 150px minmax(150px,1fr) 150px;align-items:center;gap:7px;padding:7px 9px;border-bottom:1px solid #d7e2d9;font-size:12px}
+.lesson-map-row:nth-child(even){background:#f0f4ef}
+.lesson-map-row select{width:100%;min-width:0}
+.lesson-map-row input[type=date]{max-width:150px}
+.lesson-map-row small{grid-column:1/-1;color:#64786c;font-size:11px}
+.lesson-map-previous{font-size:11px}
+#lesson-code-feedback,#lesson-map-feedback{white-space:normal;overflow-wrap:anywhere}
+@media(max-width:700px){.lesson-map-row{grid-template-columns:100px minmax(120px,1fr)}
+.lesson-map-row select,.lesson-map-previous{grid-column:1/-1}}
+
+/* Etapa 1 auditada: registro inválido sempre visível antes do consentimento. */
+.lesson-code-invalid{margin:10px 0;padding:10px 12px;background:#fff4eb;border:1px solid #cc8869;border-radius:4px}
+.lesson-code-invalid h3{margin:0 0 7px;color:#94442d}
+.lesson-code-invalid pre{white-space:pre-wrap;overflow:auto;max-height:210px;max-width:100%;font:11px Consolas,monospace;background:#fff9f4;padding:10px;border:1px solid #e1baaa}
+#trama-confirm-description{white-space:pre-wrap;max-height:min(45vh,350px);overflow:auto;overflow-wrap:anywhere}
+#lesson-map-branch{margin-bottom:9px}
+.lesson-map-body>label+label{margin-top:9px}

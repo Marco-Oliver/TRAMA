@@ -9,15 +9,17 @@ import re
 from difflib import SequenceMatcher
 import shutil
 import tempfile
-from collections import defaultdict
+from collections import defaultdict, Counter
 from pathlib import Path
 from urllib.parse import quote
 
-from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, timed_lines, study_windows
+from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, concept_file_slug, timed_lines, study_windows, opening_lesson_number_mismatch, suspected_technical_transcription, suspected_concept_name
 from .store import Store
-from .memory_atlas import make_atlas, render_atlas, lesson_order, norm
-from .code_intel import match_lesson_to_repository, potential_transcript_corrections
-from .learning_review import refresh_uncertainties, render_uncertainties
+from .memory_atlas import make_atlas, render_atlas, lesson_order, norm, note_for, literal_technical_mention
+from .code_intel import match_lesson_to_repository, potential_transcript_corrections, is_generic_code_term
+from .learning_review import refresh_uncertainties, render_uncertainties, code_evidence_lines
+from .frozen_code_resolution import match_frozen_question
+from .github_lesson_index import LessonRepositoryIndex
 
 
 def _escape_md(s: object) -> str:
@@ -38,9 +40,189 @@ def _time_id(timestamp: str) -> str:
 
 def _term_in_source(term: str, source: str) -> bool:
     """Literal, punctuation-aware presence; an IA interpretation isn't proof."""
-    needle = norm(term)
-    haystack = norm(source)
-    return bool(needle and re.search(r"(?<!\w)" + re.escape(needle) + r"(?!\w)", haystack))
+    return bool(literal_technical_mention(term, source))
+
+
+
+def _indexed_source_rows(source_rows: list[tuple[str, str]]):
+    """Assign a stable, noncolliding anchor to every timed transcript segment.
+
+    Auto-transcriptions can repeat a timestamp. Only such duplicates gain an
+    occurrence suffix; unique old links stay compatible with older notes.
+    """
+    totals = Counter(stamp for stamp, _ in source_rows if stamp != "sem horário")
+    encountered = defaultdict(int)
+    for stamp, sentence in source_rows:
+        if stamp == "sem horário":
+            continue
+        encountered[stamp] += 1
+        anchor = _time_id(stamp)
+        if totals[stamp] > 1:
+            anchor += f"-{encountered[stamp]}"
+        yield stamp, sentence, anchor
+
+
+def _transcript_seconds(stamp: str) -> int | None:
+    """Use only literal timestamp syntax parsed from the original TXT."""
+    parts = stamp.split(":")
+    if len(parts) not in (2, 3) or not all(x.isdigit() for x in parts):
+        return None
+    numbers = [int(x) for x in parts]
+    if numbers[-1] >= 60 or (len(numbers) == 3 and numbers[-2] >= 60):
+        return None
+    return numbers[0] * 60 + numbers[1] if len(numbers) == 2 else (
+        numbers[0] * 3600 + numbers[1] * 60 + numbers[2])
+
+
+def _nearby_transcript_context(
+    source_rows: list[tuple[str, str]], anchor: str,
+    max_seconds: int = 32, max_rows: int = 7,
+    indexed: list[tuple[str, str, str]] | None = None,
+    position: int | None = None
+) -> list[tuple[str, str]]:
+    """Adjacent original transcript fragments, without joining distant topics.
+
+    A timestamped fragment can be only a few words. Nearby rows help review
+    what was said, but are never certified as a model explanation. Preindexed
+    rows avoid rescanning a long lesson for every term occurrence.
+    """
+    if indexed is None:
+        indexed = list(_indexed_source_rows(source_rows))
+    if position is None:
+        position = next((i for i, (_, _, ref) in enumerate(indexed)
+                         if ref == anchor), None)
+    if position is None:
+        return []
+    original_time = _transcript_seconds(indexed[position][0])
+    if original_time is None:
+        return [(indexed[position][0], indexed[position][1])]
+    selected = [indexed[position]]
+    for item in indexed[position + 1:]:
+        if len(selected) >= max_rows:
+            break
+        seconds = _transcript_seconds(item[0])
+        if seconds is None or seconds < original_time or seconds - original_time > max_seconds:
+            break
+        selected.append(item)
+    return [(stamp, sentence) for stamp, sentence, _ in selected]
+
+
+_EXPLANATION_CLUES = re.compile(
+    r"\b(?:significa|significam|quer dizer|se chama|é um|é uma|serve para|"
+    r"permite|funciona como|tem suporte|suporte de longo|duração|"
+    r"anos de suporte|development kit|long.term support|"
+    r"o que(?: que)? é|que significa)\b",
+    re.I,
+)
+
+
+def _literal_timed_evidence(label: str, source_rows: list[tuple[str, str]],
+                            preferred: str = "", limit: int = 2) -> list[tuple[str, str, str, str]]:
+    """Prefer reviewable explanatory context over the first literal mentions.
+
+    Heuristics only prioritize *where to read*. They never certify that the
+    model's explanation was actually taught, demonstrated or learned.
+    """
+    matches = []
+    indexed = list(_indexed_source_rows(source_rows))
+    for position, (stamp, sentence, anchor) in enumerate(indexed):
+        if not sentence.strip():
+            continue
+        term = literal_technical_mention(label, sentence)
+        if term:
+            context = _nearby_transcript_context(
+                source_rows, anchor, max_rows=3, indexed=indexed,
+                position=position)
+            # A clue near the literal mention is more useful for studying
+            # than a passing mention. Never infer an explanation from this.
+            explanation_score = (
+                2 if _EXPLANATION_CLUES.search(sentence) else
+                1 if any(_EXPLANATION_CLUES.search(fragment)
+                         for _, fragment in context[1:]) else 0
+            )
+            matches.append((stamp, sentence, term, anchor, explanation_score))
+    # Do not dilute an explanatory passage with an unrelated earlier mention.
+    # Explicit verified times are retained even if heuristic wording is weak:
+    # the same concept may be explained differently in separate AI chunks.
+    best = max((row[4] for row in matches), default=0)
+    if best >= 2:
+        matches = [row for row in matches
+                   if row[4] >= 2 or (preferred and row[0] == preferred)]
+    elif best == 1:
+        matches = [row for row in matches
+                   if row[4] >= 1 or (preferred and row[0] == preferred)]
+    matches.sort(key=lambda row: (
+        -int(bool(preferred and row[0] == preferred)), -row[4]
+    ))
+    return [(stamp, sentence, term, anchor)
+            for stamp, sentence, term, anchor, _ in matches[:max(0, limit)]]
+
+
+def _group_timed_evidence(
+    source_rows: list[tuple[str, str]],
+    matches: list[tuple[str, str, str, str]],
+    preferred: str = ""
+) -> list[tuple[tuple[str, str, str, str], list[tuple[str, str]]]]:
+    """Present nearby verified mentions as one chronological study passage.
+
+    Ranking chooses useful mentions; publication restores transcript order and
+    merges overlapping source windows. Nothing is invented or removed from TXT.
+    Anchor identity, not timestamp alone, handles duplicated ASR time labels.
+    """
+    indexed = list(_indexed_source_rows(source_rows))
+    positions = {anchor: i for i, (_, _, anchor) in enumerate(indexed)}
+    groups = []
+    for match in sorted(matches, key=lambda row: positions.get(row[3], len(indexed))):
+        start = positions.get(match[3])
+        if start is None:
+            continue
+        context = _nearby_transcript_context(
+            source_rows, match[3], indexed=indexed, position=start)
+        if not context:
+            continue
+        end = start + len(context) - 1
+        if groups and start <= groups[-1][1]:
+            groups[-1][1] = max(groups[-1][1], end)
+        else:
+            groups.append([start, end, match])
+    return [
+        (
+            next((item for item in matches
+                  if item[0] == preferred and start <= positions[item[3]] <= end),
+                 first),
+            [(stamp, sentence) for stamp, sentence, _ in indexed[start:end + 1]],
+        )
+        for start, end, first in groups
+    ]
+
+
+def _source_quote(value: object, limit: int = 260, term: str = "") -> str:
+    """Inert Markdown excerpt centered around a literally found term.
+
+    Omitted material is marked with ellipses, never silently substituted. The
+    unmodified entire TXT remains available in the Obsidian attachments.
+    """
+    raw = str(value).replace("\r", " ").replace("\n", " ")
+    start, end = 0, min(limit, len(raw))
+    if term and len(raw) > limit:
+        found = re.search(re.escape(term), raw, flags=re.I)
+        if found:
+            start = max(0, min(found.start() - limit // 3, len(raw) - limit))
+            end = min(len(raw), start + limit)
+    excerpt = ("…" if start else "") + raw[start:end] + ("…" if end < len(raw) else "")
+    return (_escape_md(excerpt).replace("&", "&amp;")
+            .replace("<", "&lt;").replace(">", "&gt;")
+            .replace("[[", "［［").replace("]]", "］］"))
+
+
+def _project_ref(repo) -> str:
+    """Stable Obsidian note target for an immutable SHA/folder snapshot."""
+    name = f"{slug(repo['name'])}-{repo['sha'][:7]}"
+    if repo.get("frozen"):
+        identity = (str(repo["url"]) + "\n" + str(repo["sha"]) + "\n"
+                    + str(repo.get("folder", ""))).encode("utf-8")
+        return name + "-f" + hashlib.sha256(identity).hexdigest()[:8]
+    return name
 
 
 def _code_ref(repo, path: str, line: int) -> str:
@@ -57,10 +239,153 @@ def _code_ref(repo, path: str, line: int) -> str:
 class Publisher:
     def __init__(self, store: Store):
         self.db, self.vault = store, store.vault
+        self._concept_targets = {}
+        self.lesson_repo_index = LessonRepositoryIndex(store)
+        self._lesson_repo_memo = {}
+        self._frozen_question_memo = {}
+        self._concept_aliases = {}
         for folder in ["00-Inicio", "01-Meu-Conhecimento", "02-Minhas-Aulas", "03-Meus-Projetos",
                        "05-Anotacoes-Pessoais", "90-Sistema", "99-Anexos/Videos", "99-Anexos/Transcricoes-Originais",
                        "99-Anexos/Materiais-Originais", "99-Anexos/Contexto-Classroom"]:
             (self.vault / folder).mkdir(parents=True, exist_ok=True)
+
+    def _lesson_repos(self, lesson: str):
+        """Resolve each lesson only once during this publication."""
+        if lesson not in self._lesson_repo_memo:
+            self._lesson_repo_memo[lesson] = self.lesson_repo_index.for_lesson(lesson)
+        return self._lesson_repo_memo[lesson]
+
+    def _keep_previous_code(self, lines, rel, lesson, start_heading, end_heading):
+        """If a frozen index is unreachable, preserve prior SHA-matched code text.
+
+        Never recover stale code after explicit unfreeze or a changed SHA.
+        Only replace the generated section; other lesson content still updates.
+        """
+        if lesson not in self.lesson_repo_index.failed_lessons:
+            return lines
+        warning = self.lesson_repo_index.warning(lesson)
+        start = next((i for i, line in enumerate(lines) if line == start_heading), None)
+        if start is None:
+            return lines
+        previous = []
+        path = self.vault / rel
+        try:
+            if (path.is_file() and not path.is_symlink() and
+                    path.resolve().is_relative_to(self.vault) and
+                    path.stat().st_size <= 2_000_000):
+                old = path.read_text(encoding="utf-8")
+                left = old.find(start_heading + "\n")
+                right = old.find("\n" + end_heading, left + len(start_heading)) if left >= 0 else -1
+                if left >= 0 and right > left:
+                    previous = old[left + len(start_heading) + 1:right].splitlines()
+                    previous = [line for line in previous
+                                if not line.startswith("> **TRAMA (offline):**")]
+                    # A previous note might belong to an old, explicitly
+                    # unfrozen SHA. Do not silently reuse mismatched evidence.
+                    commits = set(re.findall(r"/blob/([0-9a-f]{40})/", "\n".join(previous), re.I))
+                    _, current, _ = self.lesson_repo_index._status.get(lesson, (0, [], []))
+                    pinned = {row["commit_sha"] for row in current}
+                    if not commits or not commits.issubset(pinned):
+                        previous = []
+        except (OSError, UnicodeError, ValueError):
+            previous = []
+        # Do not claim "no code" on a transient 403/429/network outage.
+        restored = previous if previous else ["", "*Relações não atualizadas: índice congelado indisponível.*"]
+        return lines[:start + 1] + restored + [
+            "", "> **TRAMA (offline):** " + warning,
+        ]
+
+    def _code_guess(self, lesson: str, question: str):
+        """Local, SHA-only evidence, never HEAD or another lesson's version."""
+        key = (lesson, question.casefold().strip())
+        if key not in self._frozen_question_memo:
+            selected = [row for row in self._lesson_repos(lesson)
+                        if row[0].get("frozen")]
+            self._frozen_question_memo[key] = match_frozen_question(question, selected)
+        return self._frozen_question_memo[key]
+
+    @staticmethod
+    def _marked_distortion(concept: dict, raw: str) -> bool:
+        """Concepts are not doubts. Only explicitly flagged ASR names may be
+        compared to code, and even those are ignored when the original name
+        is already present literally in the TXT or is ordinary Portuguese.
+        """
+        if not isinstance(concept, dict):
+            return False
+        name = str(concept.get("nome", "")).strip()
+        if not name:
+            return False
+        # A known whole-label ASR hint can be present literally in the TXT:
+        # the literal is the transcription error, not necessarily correct.
+        known_asr = suspected_concept_name(name)
+        flagged = bool(str(concept.get("suspeita_transcricao") or "").strip())
+        if not flagged and not known_asr:
+            return False
+        # Ordinary Portuguese nouns are not ASR errors simply because an
+        # English symbol happens to be orthographically similar.
+        if re.search(r"\b\w+(?:ção|ções|mento|mentos|dade|dades)\b",
+                     name.casefold(), re.UNICODE):
+            return False
+        if literal_technical_mention(name, raw) and not known_asr:
+            return False
+        return True
+
+    def _corrected_concept(self, src, name: str, concept: dict | None = None, raw: str = ""):
+        """Use a *marked* and nonliteral ASR concept label only as a hint."""
+        if not self._marked_distortion(concept or {}, raw):
+            return name
+        match = self._code_guess(src["lesson"] or "", name)
+        if not match or match["candidate"].casefold() == name.casefold():
+            return name
+        canonical = match["candidate"]
+        known_asr = suspected_concept_name(name)
+        if known_asr and canonical.casefold() != known_asr.casefold():
+            return name  # reject unrelated code names even with ASR warning
+        if concept_slug(canonical) in self._concept_targets:
+            self._concept_aliases[(src["id"], name.casefold())] = canonical
+            return canonical
+        return name
+
+    def _concept_target(self, name: str, source_id: str = "") -> str:
+        """Keep the spoken label in text; optionally link its verified alias."""
+        corrected = self._concept_aliases.get((source_id, name.casefold()), name)
+        return self._concept_targets.get(concept_slug(corrected), concept_file_slug(corrected))
+
+    @staticmethod
+    def _asr_concept_warning(concept: dict) -> str:
+        warning = str(concept.get("suspeita_transcricao") or "").strip()
+        suggestion = suspected_concept_name(concept.get("nome", ""))
+        if not warning and suggestion:
+            warning = ("Nome possivelmente distorcido pela transcrição; sugestão: "
+                       + suggestion + ". Conferir no áudio; não corrigido automaticamente.")
+        return warning
+
+    def _prepare_concept_targets(self):
+        """Retain legacy files on existing vaults; clean vaults use readable slugs.
+
+        The normalized comparison key (e.g. validacao-dado) groups variants.
+        Legacy paths and manually edited pages are not renamed or duplicated.
+        """
+        candidates = {}
+        for src in self.db.sources("transcript"):
+            analysis = self.db.analysis(src["id"], src["digest"]) or {}
+            for concept in analysis.get("conceitos", []):
+                if not isinstance(concept, dict):
+                    continue
+                name = str(concept.get("nome", "")).strip()
+                if name:
+                    names = candidates.setdefault(concept_slug(name), [])
+                    if name not in names:
+                        names.append(name)
+        folder = self.vault / "01-Meu-Conhecimento" / "Conceitos"
+        self._concept_targets = {}
+        for key, names in candidates.items():
+            options = list(dict.fromkeys(
+                [concept_file_slug(name) for name in names] + [key]))
+            existing = next((option for option in options
+                             if (folder / (option + ".md")).is_file()
+                             and not (folder / (option + ".md")).is_symlink()), "")
+            self._concept_targets[key] = existing or options[0]
 
     def write(self, rel: str, content: str) -> str:
         """Só sobrescreve algo que ainda corresponde ao hash da última gravação nossa."""
@@ -98,6 +423,31 @@ class Publisher:
                 os.unlink(tmp)
         self.db.register_write(rel, hashlib.sha256(data).hexdigest())
         return "written"
+
+    def _published_anchor_target(self, note: str, anchor: str) -> tuple[str, bool]:
+        """Link only to an actual anchored note, including protected proposals.
+
+        A manually edited note may lack generated anchors. In that case the
+        safe publisher writes a .PROPOSTA.md rather than replacing it. Point
+        to that proposed Markdown (clearly labeled), never a broken link.
+        """
+        path = self.vault / note
+        marker = re.compile(r"\^" + re.escape(anchor) + r"(?=\s|$)")
+        def has_anchor(candidate: Path) -> bool:
+            if (candidate.is_symlink() or not candidate.is_file() or
+                    candidate.stat().st_size > 2 * 1024 * 1024):
+                return False
+            return bool(marker.search(candidate.read_text(
+                encoding="utf-8", errors="replace")))
+
+        if has_anchor(path):
+            current_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+            if current_hash == self.db.last_write_hash(note):
+                return Path(note).with_suffix("").as_posix(), False
+        for proposal in sorted(path.parent.glob(path.stem + ".PROPOSTA*.md")):
+            if has_anchor(proposal):
+                return proposal.relative_to(self.vault).with_suffix("").as_posix(), True
+        return "", False
 
     def attachment(self, original: Path, kind: str) -> str:
         if kind == "video":
@@ -242,7 +592,19 @@ class Publisher:
             for src, note, analysis in summaries:
                 label = _escape_md(src['label'].removesuffix('.txt').removesuffix('.md'))
                 text = str(analysis['resumo']).replace('**Parte 1:**', '').strip()
-                rows.extend(['', f"### [[{Path(note).stem}|{label}]]", '', text[:1250]])
+                # A 1250-character cut used to hide the end of otherwise valid
+                # summaries, including examples and open questions. Keep a
+                # readable overview excerpt and explicitly link the full note.
+                preview=text if len(text)<=4500 else text[:4500].rsplit(' ',1)[0]
+                if len(preview)<len(text):
+                    preview += "\n\n*Resumo abreviado nesta visão geral; a explicação completa está na nota vinculada acima.*"
+                rows.extend(['', f"### [[{Path(note).stem}|{label}]]", '',
+                         "> **Síntese assistida por IA; conferir no TXT original.**", '', preview])
+            if analysis.get("qualidade_pendente"):
+                rows.append(
+                    "> **Fidelidade a conferir:** há alertas de qualidade na nota "
+                    "desta gravação. Abra a nota vinculada antes de tratar a "
+                    "síntese como conteúdo confirmado.")
         else:
             rows.append('**Pendente:** a IA ainda não gerou o resumo desta aula. Os materiais abaixo permanecem disponíveis.')
         rows += ['', '## Gravações e transcrições', '']
@@ -252,6 +614,16 @@ class Publisher:
                 status = 'resumida com IA' if self.db.analysis(src['id'], src['digest']) else 'aguardando análise'
                 rows.append(f"- [[{Path(note).stem}|{label}]] — {status}; "
                             f"transcrição original: `{_escape_md(src['label'])}` (consulte a aba Transcrição)")
+                source_text=(self.vault/src["stored_path"]).read_text(
+                    encoding="utf-8-sig", errors="replace")
+                mismatch=opening_lesson_number_mismatch(source_text, lesson)
+                if mismatch:
+                    stamp, spoken_number = mismatch
+                    rows.append(
+                        f"  - **Numeração a conferir:** o arquivo é "
+                        f"**{_escape_md(lesson)}**, mas no TXT em "
+                        f"**{_escape_md(stamp)}** aparece **aula {spoken_number}**. "
+                        "A identificação original foi preservada.")
         else:
             rows.append('*Nenhuma gravação transcrita importada ainda.*')
         links=[]
@@ -281,7 +653,7 @@ class Publisher:
                         rows.append(f"- Material publicado: <{link}>")
         else:
             rows.append('*Nenhuma publicação do Classroom relacionada a esta aula foi cadastrada.*')
-        rows += ['', '## Pessoas e assuntos mencionados', '']
+        rows += ['', '## Pessoas citadas', '']
         person_links=[]; concept_links=[]
         for item in contexts:
             for line in str(item.get('pessoas','')).splitlines():
@@ -302,10 +674,10 @@ class Publisher:
             for c in a.get('conceitos',[]):
                 name=c.get('nome','').strip()
                 if not name:continue
-                link=f"[[{concept_slug(name)}|{_escape_md(name)}]]"
+                link=f"[[{self._concept_target(name)}|{_escape_md(name)}]]"
                 if link not in concept_links:concept_links.append(link)
-        rows.extend(['**Pessoas (conforme fontes):**', ''] +
-                    ([f'- {link} — confira o contexto na fonte' for link in person_links] if person_links else ['*Ainda sem pessoas associadas com evidência.*']))
+        rows.extend([f'- {link} — confira o contexto na fonte' for link in person_links]
+                    if person_links else ['*Ainda sem pessoas associadas com evidência.*'])
         variant_warnings=[]
         for src, _note in recordings:
             analysis=self.db.analysis(src['id'],src['digest']) or {}
@@ -315,8 +687,39 @@ class Publisher:
         if variant_warnings:
             rows.extend(['', '**Grafias de nomes a conferir:**', ''])
             rows.extend('- '+_escape_md(w) for w in variant_warnings)
-        rows.extend(['', '**Conceitos identificados pela IA (conferir na fonte):**', ''] +
-                    ([f'- {link}' for link in concept_links] if concept_links else ['*Nenhum conceito técnico comprovado nesta aula.*']))
+        rows.extend(['', '## Conhecimentos técnicos citados', '',
+                     '> Classificação assistida por IA: confira a explicação na fonte.', ''] +
+                    ([f'- {link}' for link in concept_links] if concept_links else
+                     ['*Ainda não há conceitos técnicos classificados com evidência suficiente pela análise.*']))
+        # Legacy cached notes can still contain abbreviated technical labels
+        # that are present in the TXT but were rejected by strict whole-label
+        # matching. Surface them in the overview as observations, not as
+        # generated explanatory concept pages.
+        observed_terms=[]
+        for src,_note in recordings:
+            analysis=self.db.analysis(src['id'],src['digest']) or {}
+            if not analysis.get('conceitos_a_conferir'):
+                continue
+            original=self.vault/src['stored_path']
+            if not original.is_file() or original.is_symlink():
+                continue
+            raw=original.read_text(encoding='utf-8-sig',errors='replace')
+            for candidate in analysis.get('conceitos_a_conferir',[])[:12]:
+                if not isinstance(candidate,dict):
+                    continue
+                label=str(candidate.get('nome','')).strip()
+                if is_generic_code_term(label):
+                    continue
+                match=literal_technical_mention(label,raw)
+                pair=(label,match)
+                if match and pair not in observed_terms:
+                    observed_terms.append(pair)
+        if observed_terms:
+            rows.extend(['', '**Termos técnicos presentes no TXT, ainda sem explicação validada:**', '',
+                         '> Este levantamento é local e não consome IA. '
+                         'Uma menção não comprova que o conceito foi ensinado por completo.', ''])
+            rows.extend('- `'+_escape_md(label)+'` (menção: `'+_escape_md(match)+'`)'
+                        for label,match in observed_terms[:24])
         rows += ['', '## Evolução e relações com aulas anteriores', '',
                  '> As conexões abaixo vêm de conceitos identificados pela IA em fontes cadastradas. '
                  'São **candidatas**, não comprovação de aprendizado, domínio ou autoria.',
@@ -350,9 +753,8 @@ class Publisher:
                         'Isso é normal em apresentações ou encontros sem conteúdo técnico.*')
         rows += ['', '## Projetos relacionados', '']
         found_code=False
-        for repo in self.db.repositories():
+        for repo, payload in self._lesson_repos(lesson):
             try:
-                payload=json.loads(repo['payload'])
                 matches=[]
                 for src, _note in recordings:
                     raw=(self.vault/src['stored_path']).read_text(encoding='utf-8-sig',errors='replace')
@@ -360,14 +762,21 @@ class Publisher:
                     matches.extend(match_lesson_to_repository(raw,a,payload,cap=2))
                 if matches:
                     found_code=True
-                    ref=f"{slug(repo['name'])}-{repo['sha'][:7]}"
+                    ref=f"{_project_ref(repo)}"
                     rows.append(f"- [[{ref}|{_escape_md(repo['name'])}]] — código relacionado por conceito; "
                                 f"ex.: {_code_ref(repo, matches[0]['path'], matches[0]['line'])}. "
                                 '**Possível relação; não comprova autoria nem momento da implementação.**')
             except (ValueError, KeyError, TypeError):
                 continue
+        warning = self.lesson_repo_index.warning(lesson)
+        if warning:
+            rows.append("> " + warning)
         if not found_code:
-            rows.append('*Ainda não há código com relação verificável para esta aula.*')
+            rows.append("*Associação temporariamente pendente; não significa ausência de código.*"
+                        if "pendente por limite" in warning else
+                        "*Ainda não há código com relação verificável para esta aula.*")
+        rows = self._keep_previous_code(rows, rel, lesson,
+                                        "## Projetos relacionados", "## Fontes e materiais")
         rows += ['', '## Fontes e materiais', '']
         for src in self._lesson_extras(lesson):
             if src['kind']=='classroom':
@@ -426,13 +835,19 @@ class Publisher:
         fname = f"{slug(Path(src['label']).stem, 52)}-{src['id'][:7]}.md"
         rel = f"02-Minhas-Aulas/{lesson}/{fname}"
         concepts = analysis.get("conceitos",[]) if analysis else []
-        concept_links = []
-        for c in concepts:
-            name = c.get("nome", "").strip()
-            if name:
-                concept_links.append(f"[[{concept_slug(name)}|{_escape_md(name)}]]")
         raw = self.vault / src["stored_path"]
         text = raw.read_text(encoding="utf-8-sig",errors="replace")
+        concept_links_by_target = {}
+        for c in concepts:
+            if not isinstance(c, dict):
+                continue
+            name = str(c.get("nome", "")).strip()
+            if name:
+                canonical = self._corrected_concept(src, name, c, text)
+                target = self._concept_target(name, src["id"])
+                concept_links_by_target[target] = (
+                    f"[[{target}|{_escape_md(canonical)}]]")
+        concept_links = list(concept_links_by_target.values())
         # Uma apresentação ou encontro administrativo não vira falsamente um
         # módulo técnico só porque alguém mencionou a palavra 'programação'.
         lesson_kind=analysis.get('tipo_aula','indefinida') if analysis else 'indefinida'
@@ -442,23 +857,133 @@ class Publisher:
         times = evidence_excerpt(text)
         head = _frontmatter(tipo="aula", fonte_id=src["id"], aula=lesson,
                             gravacao=video, estado="resumida_com_ia" if analysis else "aguardando_ia")
-        body = [head, f"# {Path(src['label']).stem}", "", "## Resumo da aula"]
+        body = [head, f"# {Path(src['label']).stem}", ""]
+        mismatch = opening_lesson_number_mismatch(text, lesson)
+        if mismatch:
+            stamp, spoken_number = mismatch
+            body += [
+                "## Numeração da aula — conferir", "",
+                f"> O arquivo foi identificado como **{_escape_md(lesson)}**, mas a "
+                f"abertura da transcrição em **{_escape_md(stamp)}** cita "
+                f"**aula {spoken_number}**. Pode ser erro de transcrição ou referência "
+                "a outra aula. A numeração do arquivo não foi alterada.", "",
+            ]
+        body.append("## Resumo da aula")
         if analysis:
-            body += [analysis.get("resumo", "Sem resumo."), "",
-                     "## Conceitos identificados pela IA (conferir na fonte)", "",
-                     "> Os nomes e explicações abaixo são interpretações da transcrição. "
-                     "Um termo mencionado não significa que foi ensinado ou dominado."]
-            for c in concepts:
-                name = c.get("nome","")
-                if not name:
+            body.append(
+                "> **Síntese assistida por IA — conferir na transcrição original.** "
+                "Termos técnicos, exemplos e afirmações de implementação podem exigir "
+                "revisão; a síntese não prova que algo foi demonstrado nem aprendido.")
+            body.append(analysis.get("resumo") or "*Resumo da aula ainda incompleto; confira a transcrição original.*")
+            warnings=[w for w in analysis.get("qualidade_pendente",[])
+                      if isinstance(w,str) and w.strip()][:8]
+            if warnings:
+                body += ["", "## Qualidade da síntese — revisar", "",
+                         "> A fonte original foi preservada. Estes avisos são verificações locais "
+                         "e não exigem outra chamada à IA."]
+                body += [f"- {_escape_md(w)}" for w in warnings]
+            if concepts:
+                body += ["", "## Conceitos identificados pela IA (conferir na fonte)", "",
+                         "> Os nomes e explicações abaixo são interpretações da transcrição. "
+                         "Um termo mencionado não significa que foi ensinado ou dominado."]
+                for c in concepts:
+                    name = c.get("nome","")
+                    if not name:
+                        continue
+                    tempo = f" ({c['tempo']})" if c.get("tempo") else ""
+                    body.append(f"- **{_escape_md(name)}**{tempo}: {_escape_md(c.get('explicacao',''))}")
+                    warning = self._asr_concept_warning(c)
+                    if warning:
+                        body.append("  - **Nome possivelmente distorcido pela transcrição:** "
+                                    + _escape_md(warning))
+                    matched = (self._code_guess(lesson, name)
+                               if self._marked_distortion(c, text) else None)
+                    if matched and matched["candidate"].casefold() != name.casefold():
+                        body.append("  - **Nome provável no código:** "
+                                    + chr(96) + _escape_md(matched["candidate"]) + chr(96)
+                                    + " (nome original mantido; consulte Dúvidas técnicas abaixo).")
+            # Reconcile legacy cached analyses locally, without another API
+            # call: a spoken abbreviation can back a mention even when the
+            # whole expanded model label was not said. Do NOT auto-create a
+            # concept note: no explanation has been checked for this label.
+            suggested=[c for c in analysis.get("conceitos_a_conferir",[])
+                       if isinstance(c,dict) and c.get("nome")
+                       and not is_generic_code_term(c.get("nome"))]
+            observed=[]
+            unsupported=[]
+            for candidate in suggested[:12]:
+                mentioned=literal_technical_mention(candidate["nome"],text)
+                if mentioned:
+                    observed.append((candidate["nome"],mentioned))
+                else:
+                    unsupported.append(candidate)
+            if observed:
+                body += ["", "## Termos técnicos mencionados — explicação a conferir", "",
+                         "> Os nomes abaixo aparecem no TXT de forma abreviada ou normalizada. "
+                         "Isso não valida as explicações da IA nem comprova domínio."]
+                for label,found in observed:
+                    body.append("- `"+_escape_md(label)+"` — forma observada: `"+
+                                _escape_md(found)+"`; conferir o contexto na transcrição.")
+                    # This is a verified literal mention, not an ASR error:
+                    # never submit an unmarked concept to the matcher.
+            if unsupported:
+                body += ["", "## Termos sugeridos pela IA para conferir", "",
+                         "> Não foi encontrada menção literal nem abreviação verificável "
+                         "para estes rótulos na transcrição. Não são conhecimentos confirmados."]
+                for candidate in unsupported:
+                    label=str(candidate.get("nome",""))
+                    body.append("- `"+_escape_md(label)+
+                                "` — hipótese da IA, conferir com transcrição e materiais.")
+                    quote=str(candidate.get("evidencia_literal",""))[:260]
+                    if quote:
+                        stamp=str(candidate.get("tempo","")).strip()
+                        body.append("  - **Citação literal conferida no TXT**" +
+                                    (f" ({_escape_md(stamp)})" if stamp else "") +
+                                    ": “"+_escape_md(quote)+"”.")
+                        hypothesis=str(candidate.get("explicacao_sugerida",""))[:500]
+                        if hypothesis:
+                            body.append("  - **Interpretação da IA, não confirmada:** "+
+                                        _escape_md(hypothesis))
+            if analysis.get("exemplos"):
+                body += ["", "## Exemplos mencionados"] + [
+                    f"- {_escape_md(x)}" for x in analysis.get("exemplos",[])]
+            if analysis.get("exemplos_reconstruidos_a_conferir"):
+                body += ["", "## Exemplos reconstruídos pela IA, conferir", "",
+                         "> Estes exemplos NÃO foram encontrados literalmente no TXT. "
+                         "Não trate como código executado ou demonstrado."] + [
+                             f"- {_escape_md(x)}"
+                             for x in analysis.get("exemplos_reconstruidos_a_conferir", [])[:10]]
+            # Only the analysis' explicit doubts become stateful doubts.
+            # Never merge concepts or automatically suspected terms into this
+            # list; a Portuguese concept is not a transcription error.
+            questions = [q for q in analysis.get("duvidas",[])
+                         if isinstance(q,str) and q.strip()]
+            seen_questions = set()
+            question_entries = []
+            for q in questions:
+                key = q.casefold().strip()
+                if key in seen_questions:
                     continue
-                tempo = f" ({c['tempo']})" if c.get("tempo") else ""
-                body.append(f"- **{_escape_md(name)}**{tempo}: {_escape_md(c.get('explicacao',''))}")
-            body += ["", "## Exemplos mencionados"] + [f"- {_escape_md(x)}" for x in analysis.get("exemplos",[])]
-            if analysis.get("duvidas"):
+                seen_questions.add(key)
+                question_entries.append((q, self._code_guess(lesson, q)))
+            if question_entries:
                 body += ["", "## Dúvidas técnicas e passagens inaudíveis", "",
-                         "> Uma hipótese de transcrição não comprova erro nem aprendizado."] + [
-                             f"- {_escape_md(x)}" for x in analysis.get("duvidas",[])]
+                         "> Hipóteses encontradas no SHA congelado; o áudio "
+                         "não foi conferido e o TXT original foi preservado."]
+                current = {row["question"].casefold():row for row in
+                           self.db.uncertainties_for_source(src["id"])
+                           if row["source_digest"]==src["digest"]}
+                for question, match in question_entries:
+                    row = current.get(str(question).strip().casefold())
+                    status = row["status"] if row is not None else (
+                        "EXPLICADA_PELO_CODIGO" if match else "PENDENTE")
+                    body.append(f"- {_escape_md(question)} — **Estado:** `{status}`")
+                    if status == "EXPLICADA_PELO_CODIGO":
+                        # A later follow-up may have a DIFFERENT frozen SHA.
+                        evidences = json.loads(row["evidence_json"]) if row else [match]
+                        for evidence in evidences:
+                            if evidence and evidence.get("kind") == "codigo_congelado":
+                                body.extend(code_evidence_lines(evidence))
             if analysis.get("nomes_a_conferir"):
                 body += ["", "## Nomes e apelidos para conferir", "",
                          "> Nomes próprios ou apelidos podem estar corretos; não são dúvidas de programação."] + [
@@ -475,17 +1000,68 @@ class Publisher:
                                  ("atividades", "Atividades mencionadas"),
                                  ("ferramentas", "Ferramentas e recursos citados"),
                                  ("marcos", "Metodologia, decisões e contexto")):
-                body.extend(["", f"## {heading}", "",
-                             "> Extração assistida por IA; confirme na fonte original antes de tratar como fato."])
+                entries=[]
                 for entry in analysis.get(key, [])[:16]:
                     if not isinstance(entry, dict):
                         continue
                     parts = [entry.get(name, "") for name in ("nome", "papel", "informacao", "descricao", "contexto") if entry.get(name)]
                     if parts:
-                        body.append(f"- {_escape_md(' — '.join(parts))} " +
+                        entries.append(f"- {_escape_md(' — '.join(parts))} " +
                                     (f"(**{_escape_md(entry.get('tempo', ''))}**)" if entry.get('tempo') else "(sem horário confirmado)"))
-                if body[-1].startswith('> Extração'):
-                    body.append('*Não identificado nesta aula.*')
+                if entries:
+                    body.extend(["", f"## {heading}", "",
+                                 "> Extração assistida por IA; confirme na fonte original antes de tratar como fato.",
+                                 *entries])
+        # Only the original lesson receives targeted follow-up evidence. New
+        # lessons do not overwrite the former explanation or the source TXT.
+        # A local match is a lead to review, never automatic proof of learning.
+        if analysis:
+            pending = self.db.uncertainties_for_source(src["id"])
+            if pending:
+                body += ["", "## Dúvidas da aula e retomadas posteriores", "",
+                         "> Esta seção acompanha somente questões levantadas nesta fonte. "
+                         "Novas aulas e códigos são pistas; não comprovam que a dúvida foi resolvida.",
+                         ""]
+                for row in pending[:30]:
+                    question = _escape_md(row["question"])[:340]
+                    status = row["status"]
+                    body.append(f"### {question}")
+                    body.append(f"- Estado: `{status}`.")
+                    body.append(f"- [[{row['id']}|Abrir registro e histórico desta dúvida]]")
+                    if status not in ("NOVA_EVIDENCIA_PARA_REVISAR", "EXPLICADA_PELO_CODIGO"):
+                        body.append("- Nenhuma explicação posterior identificada nas fontes cadastradas.")
+                        body.append("")
+                        continue
+                    try:
+                        items = json.loads(row["evidence_json"])
+                    except (ValueError, TypeError):
+                        items = []
+                    if not isinstance(items, list):
+                        items = []
+                    for evidence in items[:8]:
+                        if not isinstance(evidence, dict):
+                            continue
+                        if evidence.get("kind") == "aula_posterior":
+                            later = self.db.get_source(evidence.get("source_id", ""))
+                            if later is None:
+                                continue
+                            link = Path(note_for(later)).with_suffix("").as_posix()
+                            stamp = _escape_md(evidence.get("timestamp") or "sem horário confirmado")
+                            excerpt = _escape_md(evidence.get("excerpt") or "")[:230]
+                            body.append(
+                                f"- **Aula posterior:** [[{link}|{_escape_md(later['lesson'] or later['label'])}]] "
+                                f"({stamp}) — trecho observado: “{excerpt}”.")
+                        elif evidence.get("kind") == "codigo_congelado":
+                            body.append("- **Código da versão congelada:** "
+                                        "ver dúvida técnica acima (pista, não prova do áudio).")
+                        elif evidence.get("kind") == "codigo":
+                            ref = _code_ref({"url":evidence.get("repo", ""),
+                                             "sha":evidence.get("sha", "")},
+                                            str(evidence.get("path", "")),
+                                            evidence.get("line", 0))
+                            body.append("- **Código relacionado:** " + ref +
+                                        " (relação candidata, sem comprovar autoria ou aprendizagem).")
+                    body.append("")
         self._append_context(body, lesson)
         # Source-grounded anchors make timestamps navigable without
         # modifying the preserved transcript in 99-Anexos.
@@ -500,15 +1076,29 @@ class Publisher:
                     for item in analysis.get(category, [])
                     if isinstance(item, dict))
         referenced_times.update(t for t, _sentence in evidence_excerpt(text))
-        indexed = {}
-        for stamp, sentence in timed_lines(text):
-            if stamp in referenced_times and stamp != "sem horário" and stamp not in indexed:
-                indexed[stamp] = sentence
+        source_rows = timed_lines(text)
+        # A missing/invalid model timestamp is not an absence of timestamp
+        # in the preserved TXT. Anchor literal mentions locally, without IA.
+        for concept in concepts:
+            if isinstance(concept, dict):
+                referenced_times.update(
+                    stamp for stamp, _sentence, _term, _anchor in
+                    _literal_timed_evidence(str(concept.get("nome", "")), source_rows)
+                )
+        indexed = [(stamp, sentence, anchor)
+                   for stamp, sentence, anchor in _indexed_source_rows(source_rows)
+                   if stamp in referenced_times and sentence.strip()]
         if indexed:
             body += ["", "## Trechos da transcrição com horários verificáveis", "",
-                     "> Trechos selecionados da transcrição; os horários não foram confirmados no vídeo."]
-            for stamp, sentence in indexed.items():
-                body.append(f"- **{stamp}** — {_escape_md(sentence[:420])} ^{_time_id(stamp)}")
+                     "> Trechos extraídos do TXT, sem comprovação do áudio do vídeo. "
+                     "Em horários repetidos, o sufixo da âncora identifica cada fala."]
+            for stamp, sentence, anchor in indexed:
+                # Keep a contextual mention for the same concept cited by a
+                # concept page, including very long timestamped paragraphs.
+                matching = next((literal_technical_mention(str(c.get("nome", "")), sentence)
+                                 for c in concepts if isinstance(c, dict)
+                                 and literal_technical_mention(str(c.get("nome", "")), sentence)), "")
+                body.append(f"- **{stamp}** — {_source_quote(sentence, 420, matching)} ^{anchor}")
         body += ["", "## Fontes originais", f"- Transcrição: [[{Path(src['stored_path']).stem}]]",
                  f"- Arquivo original: `{_escape_md(src['label'])}`", "", "## Conhecimentos relacionados",
                  ", ".join(concept_links) if concept_links else "*Serão vinculados após análise com IA.*",
@@ -527,14 +1117,18 @@ class Publisher:
             body.append("*Link da gravação ainda não informado. Cadastre em Aulas → Contexto +.*")
         body += ["", "> Os códigos e nomes técnicos devem ser conferidos com o repositório antes de serem considerados verificados."]
         body += ["", "## Relações com códigos e projetos", ""]
-        import json
         project_matches = []
-        for repo in self.db.repositories():
-            payload = json.loads(repo["payload"])
+        for repo, payload in self._lesson_repos(lesson):
+            if repo.get("origin") == "automatica":
+                body.append(f"- **Versão GitHub automática:** `{_escape_md(repo.get('version',''))}` "
+                            f"— confiança **{_escape_md(repo.get('confidence','baixa'))}** "
+                            f"— commit `{repo['sha'][:10]}`.")
+                if repo.get("confidence") == "baixa":
+                    body.append("> versão estimada; confira")
             matched = match_lesson_to_repository(text, analysis, payload, cap=5)
             if not matched:
                 continue
-            project_ref = f"{slug(repo['name'])}-{repo['sha'][:7]}"
+            project_ref = f"{_project_ref(repo)}"
             body.append(f"### [[{project_ref}|{_escape_md(repo['name'])}]]")
             body.append("*Conexão sugerida por conceito mencionado + código encontrado; não prova autoria nem que foi programado nesta aula.*")
             for e in matched:
@@ -547,8 +1141,24 @@ class Publisher:
                                 ".sql": "sql"}.get(ext, "text")
                     body.extend(["", f"```{language}", snippet.replace("```", "` ` `"), "```", ""])
             project_matches.append((repo, payload))
+        warning = self.lesson_repo_index.warning(lesson)
+        if warning:
+            body.append("> " + warning)
         if not project_matches:
-            body.append("*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
+            verified = any(row["status"] == "EXPLICADA_PELO_CODIGO"
+                           and row["source_digest"] == src["digest"]
+                           for row in self.db.uncertainties_for_source(src["id"]))
+            if verified:
+                body.append("*Dúvidas relacionadas a identificadores concretos da versão congelada "
+                            "estão documentadas acima. Não houve outra relação literal "
+                            "de conceito identificada nesta seção.*")
+            else:
+                body.append("*Associação temporariamente pendente; não significa ausência de código.*"
+                            if "pendente por limite" in warning else
+                            "*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
+        total, frozen, _ = self.lesson_repo_index._status.get(lesson, (0, [], []))
+        if total<0 or total>len(frozen):
+            body.append("**Código GitHub pendente:** congele a versão desta aula antes de relacionar código às notas.")
         body += ["", "## Comparação revisada por IA (com referências)"]
         validated_any=False
         for repo, payload in project_matches:
@@ -570,24 +1180,44 @@ class Publisher:
                             f"**[{item['status']}]**")
         if not validated_any:
             body.append('*Ainda sem comparação pela IA; relações acima são pistas verificadas de texto e código.*')
+        body = self._keep_previous_code(body, rel, lesson,
+                                        "## Relações com códigos e projetos",
+                                        "## Termos suspeitos da transcrição")
+        # Preserve offline ASR-only review hints separately from verified
+        # frozen-code matches; old lessons remain reviewable without code.
+        if not any(repo.get("frozen") for repo, _ in self._lesson_repos(lesson)):
+            raw_hints = suspected_technical_transcription(text)
+            if raw_hints:
+                body += ["", "## Hipóteses da transcrição sem conferência de código", "",
+                         "> O áudio não foi conferido. Estas são apenas grafias "
+                         "suspeitas do TXT; nenhum identificador específico "
+                         "de código foi verificado nesta aula.", ""]
+                for stamp, heard, suggestion in raw_hints:
+                    if is_generic_code_term(heard) or is_generic_code_term(suggestion):
+                        continue
+                    body.append("- **" + _escape_md(stamp) + "** — transcrito: "
+                                + chr(96) + _escape_md(heard) + chr(96)
+                                + "; hipótese a revisar: "
+                                + chr(96) + _escape_md(suggestion) + chr(96) + ".")
         body += ["", "## Termos suspeitos da transcrição", ""]
-        suggested=[]
-        for repo, payload in project_matches:
-            for hint in potential_transcript_corrections(text, payload):
-                key=(hint['heard'].lower(),hint['candidate'])
-                if key in suggested:
-                    continue
-                suggested.append(key)
-                body.append(f"- **HIPÓTESE, não correção automática:** `{_escape_md(hint['heard'])}` pode corresponder a "
-                            f"`{hint['candidate']}`, encontrado em {_code_ref(repo, hint['path'], hint['line'])} "
-                            f"({repo['name']}); confira o vídeo antes de confirmar.")
-        if not suggested:
-            body.append("*Nenhuma correção fundamentada encontrada.*")
+        # Do not duplicate the clue or propose broad conceptual rewordings.
+        # Every grounded correction lives in Dúvidas técnicas above.
+        if any(matched for _question, matched in
+               (question_entries if analysis else [])):
+            body.append("*Possíveis erros de grafia com identificador específico "
+                        "no código: ver Dúvidas técnicas e passagens inaudíveis acima.*")
+        else:
+            body.append("*Nenhuma correção específica fundamentada no código "
+                        "congelado desta aula.*")
         self.write(rel, "\n".join(body).strip() + "\n")
         return rel, concepts, modules
 
     def rebuild(self):
         """Deriva notas e revisão incremental das fontes originais cadastradas."""
+        self._lesson_repo_memo.clear()
+        self._frozen_question_memo.clear()
+        self._concept_aliases.clear()
+        self.lesson_repo_index.begin_run()
         # Fail closed before *any* Markdown write if a cached transcript no
         # longer agrees with the SQLite catalog. User notes stay untouched.
         from .content import file_hash
@@ -599,8 +1229,9 @@ class Publisher:
                 self.db.update_status(source["id"], "NEEDS_REVIEW")
                 raise ValueError("Fonte do cofre alterada ou ausente: " +
                                  source["label"] + ". Reimporte o original.")
-        refresh_uncertainties(self.db)
-        self._atlas = make_atlas(self.db)
+        refresh_uncertainties(self.db, self.lesson_repo_index)
+        self._prepare_concept_targets()
+        self._atlas = make_atlas(self.db, concept_targets=self._concept_targets)
         concept_map = defaultdict(list)
         module_map = defaultdict(list)
         lesson_links = []
@@ -634,7 +1265,11 @@ class Publisher:
             for concept in concepts:
                 name = concept.get("nome", "").strip()
                 if name:
-                    concept_map[concept_slug(name)].append((name,src,note,concept))
+                    canonical = self._corrected_concept(src, name, concept, original)
+                    stored_concept = ({**concept, "nome_original":name}
+                                      if canonical != name else concept)
+                    concept_map[concept_slug(canonical)].append(
+                        (canonical,src,note,stored_concept))
         # Classroom can contain names as explicitly user-provided text, even if there is
         # no transcript or code. It is a separate kind of evidence and must be labeled.
         lesson_to_note = {s['lesson']: n for s, n in lesson_links if s['lesson']}
@@ -674,13 +1309,16 @@ class Publisher:
         for lesson in sorted({s['lesson'] for s in self.db.sources() if s['lesson']} - transcripts_by_lesson):
             self._other_lesson_note(lesson, [s for s in self.db.sources() if s['lesson'] == lesson])
 
-        repo_rows = self.db.repositories()
-        repo_info = []
-        for repo in repo_rows:
-            import json
-            payload = json.loads(repo["payload"])
-            repo_info.append((repo,payload))
-            rel = f"03-Meus-Projetos/{slug(repo['name'])}-{repo['sha'][:7]}.md"
+        repo_info = [(dict(repo), json.loads(repo["payload"]))
+                     for repo in self.db.repositories()]
+        known_projects = {_project_ref(repo) for repo, _ in repo_info}
+        for lesson in all_lessons:
+            for repo, payload in self._lesson_repos(lesson):
+                if repo["frozen"] and _project_ref(repo) not in known_projects:
+                    known_projects.add(_project_ref(repo))
+                    repo_info.append((repo, payload))
+        for repo, payload in repo_info:
+            rel = f"03-Meus-Projetos/{_project_ref(repo)}.md"
             body = [_frontmatter(tipo="projeto", sha=repo["sha"], estado=repo["status"]),
                     f"# Projeto — {repo['name']}", "", f"- Repositório: {repo['url']}",
                     f"- Commit analisado: `{repo['sha']}`", "",
@@ -710,10 +1348,36 @@ class Publisher:
                 body += [f"### `{e['concept']}` — {_code_ref(repo, e['path'], e['line'])}", "",
                          f"```{lang}", e["snippet"].replace("```","` ` `"), "```", ""]
             if not payload.get("evidence"):
-                body.append("*Nenhum símbolo da lista rastreada encontrado.*")
+                body.append("*Nenhum conceito da lista rastreada encontrado.*")
+            # Names declared in source code (including course-specific service
+            # classes and interfaces) make the repository useful for studying,
+            # even when no predefined terminology pattern matches it.
+            symbols=payload.get("symbols",[])
+            if isinstance(symbols,list) and symbols:
+                body += ["", "## Classes, interfaces e funções presentes no código", "",
+                         "> Nomes e linhas obtidos dos arquivos do commit; não significam "
+                         "que o professor explicou estas declarações ou que o aluno as escreveu."]
+                seen_symbols=set()
+                for item in symbols:
+                    if not isinstance(item,dict):
+                        continue
+                    name=item.get("name","")
+                    path=item.get("path","")
+                    line=item.get("line",0)
+                    if not name or not path or (path,line) in seen_symbols:
+                        continue
+                    seen_symbols.add((path,line))
+                    body.append(f"- **`{_escape_md(name)}`** — {_code_ref(repo,path,line)}")
+                    if len(seen_symbols)>=35:
+                        body.append("*Outras declarações permanecem no índice local; "
+                                    "veja o repositório para o código completo.*")
+                        break
             body += ["", "## Conexões com aulas", ""]
             linked = False
             for src, note in lesson_links:
+                if not any(_project_ref(candidate) == _project_ref(repo)
+                           for candidate, _ in self._lesson_repos(src["lesson"] or "")):
+                    continue
                 raw=(self.vault/src["stored_path"]).read_text(encoding="utf-8-sig",errors="replace")
                 analysis=self.db.analysis(src["id"],src["digest"])
                 links=match_lesson_to_repository(raw,analysis,payload,cap=4)
@@ -746,15 +1410,64 @@ class Publisher:
             for (_, src, note, concept), literal in zip(entries, observed):
                 raw = (self.vault / src["stored_path"]).read_text(
                     encoding="utf-8-sig", errors="replace")
-                valid_times = {t for t, _ in timed_lines(raw) if t != "sem horário"}
-                stamp = str(concept.get("tempo", "")).strip()
+                recorded = str(concept.get("tempo", "")).strip()
+                source_rows = timed_lines(raw)
+                matches = _literal_timed_evidence(
+                    name, source_rows, preferred=recorded)
+                groups = _group_timed_evidence(source_rows, matches, preferred=recorded)
                 where = f"[[{Path(note).with_suffix('').as_posix()}|{_escape_md(src['label'])}]]"
-                timestamp_link = (f" · [[{Path(note).with_suffix('').as_posix()}#^{_time_id(stamp)}|{stamp}]]"
-                                  if stamp in valid_times else " · horário não localizado")
-                evidence_status = ("termo encontrado literalmente na transcrição"
-                                   if literal else "interpretação da IA; termo não encontrado literalmente")
-                body.append(f"- **{_escape_md(concept.get('explicacao', ''))}** — {where}"
-                            f"{timestamp_link} · *{evidence_status}*.")
+                explanation = _escape_md(concept.get("explicacao", ""))
+                body.extend(["", f"### {_escape_md(src['label'])}", "",
+                             "- **Explicação sugerida pela IA (conferir):** " +
+                             (explanation or "*Não fornecida pela análise.*"),
+                             f"- **Fonte:** {where}."])
+                warning = self._asr_concept_warning(concept)
+                if warning:
+                    body.append("- **Nome possivelmente distorcido pela transcrição:** "
+                                + _escape_md(warning))
+                if concept.get("nome_original"):
+                    body.append("- **Nome original mantido no TXT:** "
+                                + _escape_md(concept["nome_original"])
+                                + "; **nome provável no código:** "
+                                + chr(96) + _escape_md(name) + chr(96) + ".")
+                if groups:
+                    for (stamp, sentence, form, anchor), nearby in groups:
+                        target_note, is_proposal = self._published_anchor_target(
+                            note, anchor)
+                        source_time = (
+                            f"[[{target_note}#^{anchor}|{stamp}]]"
+                            if target_note else f"**{stamp}** (âncora ainda não publicada)"
+                        )
+                        body.append(
+                            f"- **Menção literal na transcrição:** "
+                            f"{source_time} — forma observada: "
+                            f"{chr(96)}{_escape_md(form)}{chr(96)}.")
+                        if is_proposal:
+                            body.append(
+                                "  > A referência abre uma **proposta de atualização**; "
+                                "sua nota editada manualmente não foi substituída.")
+                        body.extend([
+                            "",
+                            "  > **Contexto próximo do TXT (para conferência):** "
+                            "trechos originais em sequência; isso não valida automaticamente a explicação da IA.",
+                            "  >",
+                        ])
+                        for context_stamp, context_sentence in nearby:
+                            body.append(
+                                f"  > - {context_stamp} — {_source_quote(context_sentence, 300, form)}")
+                        body.append("")
+                    if not recorded or recorded not in {r[0] for r in matches}:
+                        body.append(
+                            "- **Horário da análise da IA:** ausente ou não associado "
+                            "à menção; horários acima recuperados diretamente do TXT.")
+                elif literal:
+                    body.append(
+                        "- **Menção no TXT:** termo encontrado literalmente, "
+                        "mas sem trecho com horário verificável nesta fonte.")
+                else:
+                    body.append(
+                        "- **Sem evidência literal:** o termo não foi localizado "
+                        "na transcrição; confira a interpretação da IA na fonte.")
             body += ["", "## Evidências e aprendizagem", "",
                      "- **Mencionado:** confira a fala original antes de considerar o conceito confirmado.",
                      "- **Ensinado:** requer explicação verificável na fonte; termo citado não basta.",
@@ -766,12 +1479,12 @@ class Publisher:
                            if norm(e["concept"]) == norm(name)]
                 if matches:
                     first = matches[0]
-                    body.append(f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{_escape_md(repo['name'])}]]: "
+                    body.append(f"- [[{_project_ref(repo)}|{_escape_md(repo['name'])}]]: "
                                 f"{_code_ref(repo, first['path'], first['line'])} — "
                                 "código existente, sem atribuição automática de autoria.")
             if body[-1] == "## Projetos relacionados":
                 body.append("*Nenhum vínculo de código encontrado no índice.*")
-            self.write(f"01-Meu-Conhecimento/Conceitos/{cslug}.md",
+            self.write(f"01-Meu-Conhecimento/Conceitos/{self._concept_target(name)}.md",
                        "\n".join(body) + "\n")
 
         # A module page is a readable review guide, not a 260-character index.
@@ -839,7 +1552,7 @@ class Publisher:
                              if stamp in valid_times else
                              f"[[{note_path}|{src['lesson'] or src['label']}]]")
                     literal = "termo literal presente" if _term_in_source(name, raw) else "termo inferido pela IA"
-                    body.append(f"- **[[{concept_slug(name)}|{_escape_md(name)}]]**: "
+                    body.append(f"- **[[{self._concept_target(name)}|{_escape_md(name)}]]**: "
                                 f"{_escape_md(explanation)} — {where} ({literal}).")
             if not seen:
                 body.append("*Nenhum conceito extraído ainda; o resumo por gravação permanece disponível.*")
@@ -851,7 +1564,7 @@ class Publisher:
                 if not docs:
                     continue
                 project_found = True
-                body.append(f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{_escape_md(repo['name'])}]] — "
+                body.append(f"- [[{_project_ref(repo)}|{_escape_md(repo['name'])}]] — "
                             + ", ".join(f"`{_escape_md(d['path'])}`" for d in docs[:4])
                             + "; documentação existente no repositório, não necessariamente conteúdo da aula")
             if not project_found:
@@ -879,11 +1592,14 @@ class Publisher:
                     "- [[Indice-de-Duvidas|Índice rastreável de dúvidas e evidências posteriores]]",
                     "> Evidências posteriores são pistas, nunca correções confirmadas automaticamente.",
                     "", "## Conceitos encontrados"]
-        context += [f"- [[{k}|{_escape_md(v[0][0])}]] — identificado pela IA; confirmar na fonte" for k,v in sorted(concept_map.items())]
+        context += [f"- [[{self._concept_target(v[0][0])}|{_escape_md(v[0][0])}]] — identificado pela IA; confirmar na fonte" for k,v in sorted(concept_map.items())]
         context += ["", "## Evolução: antes na aula, agora no código"]
         for repo,payload in repo_info:
             matches=[]
             for src,note in lesson_links:
+                if not any(_project_ref(candidate) == _project_ref(repo)
+                           for candidate, _ in self._lesson_repos(src["lesson"] or "")):
+                    continue
                 raw=(self.vault/src["stored_path"]).read_text(encoding="utf-8-sig",errors="replace")
                 analysis=self.db.analysis(src["id"],src["digest"])
                 ev=match_lesson_to_repository(raw,analysis,payload,cap=3)
@@ -893,7 +1609,7 @@ class Publisher:
                 context.append(f"- **{repo['name']}:** " + "; ".join(
                     f"[[{Path(n).stem}|{src['lesson'] or src['label']}]] aborda "
                     + ", ".join(f"`{e['concept']}`" for e in ev) for src,n,ev in matches[:5])
-                    + f"; trechos observados em [[{slug(repo['name'])}-{repo['sha'][:7]}|{repo['name']}]]. "
+                    + f"; trechos observados em [[{_project_ref(repo)}|{repo['name']}]]. "
                     + "*Associação candidata, não prova de quem implementou ou quando.*")
         context += ["", "## Pessoas mencionadas nas fontes", ""]
         context += [f"- [[{k}|{_escape_md(v[0][0])}]] — {len(v)} fonte(s); contexto/identidade a conferir" for k,v in sorted(person_map.items())]
@@ -917,7 +1633,7 @@ class Publisher:
             index.append(f"- [[00-contexto-{slug(lesson)}|{lesson}]] — contexto sem transcrição")
         index += [f"- [[{Path(note).stem}|{src['label']}]] — gravação e transcrição" for src,note in lesson_links]
         index += ["", "## Projetos"]
-        index += [f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{repo['name']}]] — {repo['url']}" for repo,_ in repo_info]
+        index += [f"- [[{_project_ref(repo)}|{repo['name']}]] — {repo['url']}" for repo,_ in repo_info]
         index += ["", "> A aplicação não altera conteúdo de `05-Anotacoes-Pessoais`."]
         self.write("00-Inicio/Dashboard.md", "\n".join(index)+"\n")
         states = defaultdict(int)

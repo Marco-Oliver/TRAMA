@@ -45,6 +45,24 @@ def _safe_archive_name(name: str) -> bool:
     return True
 
 
+def _filesystem_path(path: Path) -> Path:
+    """Use Windows extended-length paths for verified local files.
+
+    Deep GitHub checkouts can exceed MAX_PATH even when the Obsidian vault
+    itself is in Documents. This helper is only for OS filesystem operations;
+    ZIP entry names must remain portable POSIX paths and pass validation.
+    """
+    path = Path(path)
+    if os.name != "nt":
+        return path
+    absolute = str(path.resolve())
+    if absolute.startswith("\\\\?\\"):
+        return Path(absolute)
+    if absolute.startswith("\\\\"):
+        return Path("\\\\?\\UNC\\" + absolute.lstrip("\\"))
+    return Path("\\\\?\\" + absolute)
+
+
 def _hash_stream(stream):
     digest = hashlib.sha256()
     total = 0
@@ -67,12 +85,13 @@ def create_backup(vault: Path, destination: Path) -> dict:
     destination.parent.mkdir(parents=True, exist_ok=True)
     files = []
     total = 0
-    for file in sorted(vault.rglob("*")):
+    filesystem_vault = _filesystem_path(vault)
+    for file in sorted(filesystem_vault.rglob("*")):
         if file.is_symlink():
             raise ValueError("Backup não aceita links simbólicos: " + file.name)
         if not file.is_file():
             continue
-        rel = file.relative_to(vault).as_posix()
+        rel = file.relative_to(filesystem_vault).as_posix()
         if rel == MANIFEST:
             raise ValueError("Renomeie o manifesto reservado antes de criar backup.")
         if rel == DB_FILE or rel in (DB_FILE + "-wal", DB_FILE + "-shm"):
@@ -141,7 +160,7 @@ def restore_backup(archive_path: Path, destination_vault: Path) -> dict:
         raise ValueError("Informe um ZIP existente e uma pasta de cofre NOVA.")
     if destination_vault.is_relative_to(archive_path.parent) and destination_vault == archive_path.parent:
         raise ValueError("Pasta de destino inválida.")
-    destination_vault.parent.mkdir(parents=True, exist_ok=True)
+    _filesystem_path(destination_vault.parent).mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=".trama-restore-", dir=str(destination_vault.parent)))
     try:
         with zipfile.ZipFile(archive_path) as archive:
@@ -192,8 +211,9 @@ def restore_backup(archive_path: Path, destination_vault: Path) -> dict:
                     raise ValueError("Manifesto inválido.")
                 if expected["size"] < 0 or expected["size"] != info.file_size:
                     raise ValueError("Tamanho divergente no manifesto.")
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with archive.open(info) as inp, target.open("xb") as out:
+                filesystem_target = _filesystem_path(target)
+                filesystem_target.parent.mkdir(parents=True, exist_ok=True)
+                with archive.open(info) as inp, filesystem_target.open("xb") as out:
                     digest = hashlib.sha256()
                     size = 0
                     for block in iter(lambda: inp.read(1024 * 1024), b""):
@@ -210,9 +230,9 @@ def restore_backup(archive_path: Path, destination_vault: Path) -> dict:
                 raise ValueError("Banco SQLite do backup está corrompido.")
         if destination_vault.exists():
             raise FileExistsError("Destino passou a existir durante a restauração.")
-        os.rename(stage, destination_vault)
+        os.rename(_filesystem_path(stage), _filesystem_path(destination_vault))
         return {"ok": True, "path": str(destination_vault),
                 "files": len(entries), "bytes": sum(x["size"] for x in entries.values())}
     finally:
         if stage.exists():
-            shutil.rmtree(stage)
+            shutil.rmtree(_filesystem_path(stage))

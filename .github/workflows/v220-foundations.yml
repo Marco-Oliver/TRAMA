@@ -1,0 +1,44 @@
+name: TRAMA 2.2 - regression tests (no release)
+on:
+  push:
+    branches:
+      - feat/v2.2.0-automation-foundations
+      - feat/github-por-aula
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trama-v220-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regressions:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Validate Python syntax
+        run: python -m compileall -q knowledge_bridge tests
+      - name: Unit tests and integration tests
+        run: python -m unittest discover -s tests -q
+      - name: Adversarial checks
+        run: python qa_adversarial.py
+      - name: Review packaging and secrets
+        run: python tools/audit_release.py
+      - name: Validate JS syntax
+        run: |
+          node --check knowledge_bridge/ui/app.js
+          node --check knowledge_bridge/ui/library.js
+          node --check knowledge_bridge/ui/teacher.js
+          node --check knowledge_bridge/ui/lesson_code.js

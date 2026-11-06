@@ -42,3 +42,151 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check bandit
           python -m bandit -r knowledge_bridge -ll -ii
+
+  v220-windows:
+    name: TRAMA 2.2 - Windows e executavel (sem publicar)
+    # Only create a downloadable Preview after the unit/security, browser,
+    # and authentic public-source QA gates have all passed.
+    needs: [quality, v220-browser, v220-public-course]
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/v2.2.0-automation-foundations'
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Dependencias e compilador local
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check -r requirements.txt "pyinstaller>=6.10,<7"
+      - name: Compilar codigo Python
+        shell: pwsh
+        run: python -m compileall -q knowledge_bridge tests
+      - name: Testes Windows, caminhos longos e escala de 150 aulas
+        shell: pwsh
+        run: python -m unittest discover -s tests -q
+      - name: Casos adversariais Windows
+        shell: pwsh
+        run: python qa_adversarial.py
+      - name: Validar JavaScript
+        shell: pwsh
+        run: |
+          node --check knowledge_bridge/ui/app.js
+          node --check knowledge_bridge/ui/library.js
+          node --check knowledge_bridge/ui/teacher.js
+      - name: Preparar versao Preview isolada do TRAMA estavel
+        shell: pwsh
+        env:
+          TRAMA_PREVIEW_BUILD: ${{ github.run_number }}
+        run: python tools/build_preview_candidate.py
+      - name: Empacotar executavel Windows Preview sem publicar
+        shell: pwsh
+        run: python -m PyInstaller --clean --noconfirm TRAMA.spec
+      - name: Self-test do executavel empacotado
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path '.\\dist\\TRAMA\\TRAMA.exe').Path
+          $run = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru -Wait
+          if ($run.ExitCode -ne 0) { throw "TRAMA.exe saiu com erro: $($run.ExitCode)" }
+      - name: Compilar instalador isolado Preview sem publicar release
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $compiler = 'C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe'
+          if (-not (Test-Path $compiler)) { throw 'Inno Setup não encontrado' }
+          & $compiler 'TRAMA_Preview_Instalador.iss'
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path 'release\\TRAMA_Preview_Setup.exe')) {
+            throw 'Falha ao gerar instalador isolado Preview'
+          }
+      - name: Instalar e reinstalar Preview sem acessar dados da versao estavel
+        shell: pwsh
+        run: ./tools/windows_preview_smoke.ps1
+      - name: Conferir hash SHA-256 do instalador QA
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash 'release\\TRAMA_Preview_Setup.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  TRAMA_Preview_Setup.exe" | Set-Content 'release\\SHA256SUMS-Preview.txt' -Encoding ASCII
+          Get-Content 'release\\SHA256SUMS-Preview.txt'
+      - name: Anexar instalador Preview validado e hash sem publicar release
+        uses: actions/upload-artifact@v4
+        with:
+          name: TRAMA-v220-PR5-Preview-ISOLADA-NAO-RELEASE
+          path: |
+            release/TRAMA_Preview_Setup.exe
+            release/SHA256SUMS-Preview.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  v220-browser:
+    name: TRAMA 2.2 - interface real no Chromium (sem publicar)
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/v2.2.0-automation-foundations'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Instalar navegador de teste
+        run: |
+          npm install --no-save --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+      - name: Testar interface, entrada GitHub, busca e consentimento
+        run: node tests/ui_smoke.mjs
+      - name: Criar HTML que o executavel embute
+        run: |
+          python -c "from pathlib import Path; from knowledge_bridge.bridge import load_local_ui; p=Path('ui-smoke-artifacts/native-bundle.html'); p.parent.mkdir(exist_ok=True); p.write_text(load_local_ui(),encoding='utf-8')"
+      - name: Repetir os testes no HTML empacotado
+        env:
+          TRAMA_BUNDLED_HTML: ui-smoke-artifacts/native-bundle.html
+        run: node tests/ui_smoke.mjs
+      - name: Anexar capturas da UI aos resultados (nao publica release)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trama-v220-ui-screenshots
+          path: ui-smoke-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  v220-public-course:
+    name: TRAMA 2.2 - codigo autentico da Academia (TXT sinteticos)
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/v2.2.0-automation-foundations'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: trama
+          persist-credentials: false
+      - name: Baixar repositório público de referência em commit fixo
+        uses: actions/checkout@v4
+        with:
+          repository: academiadoprogramador-fullstack/gerador-de-certificados-2026
+          ref: cd86334568a034c9847b34e1e0e9841381fc31a1
+          path: academy-course-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Instalar dependencias do TRAMA
+        working-directory: trama
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Validar tres aulas sinteticas contra codigo publico real
+        working-directory: trama
+        env:
+          PYTHONPATH: .
+        run: python tools/qa_public_course.py ../academy-course-source
+      - name: Arquivar relatorio de integracao, sem dados privados
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trama-v220-auditoria-codigo-publico
+          path: trama/qa-artifacts/public-course-integration.md
+          if-no-files-found: ignore
+          retention-days: 14

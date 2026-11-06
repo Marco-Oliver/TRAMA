@@ -11,12 +11,14 @@ class NativeBootTests(TestCase):
         api=PublicApi(bridge)
         public={k:v for k,v in inspect.getmembers(api) if not k.startswith('_')}
         self.assertEqual(set(public), {
-            'snapshot','note','graph','audit_note','organize_library','select_vault','backup_vault','restore_vault','import_materials','auto_import',
+            'snapshot','vault_disk_usage','note','search_notes','graph','audit_note','organize_library','select_vault','backup_vault','restore_vault','import_materials','auto_import',
             'staged_items','stage_files','stage_clipboard_image','remove_staged','clear_staged','process_staged',
-            'process','process_lesson','add_repo','toggle_favorite','reveal_note','open_note',
-            'open_obsidian','open_attachment','open_video_link','window_action',
+            'process','process_lesson',
+            'lesson_code_config','save_lesson_code','lesson_code_changes','remove_lesson_code','save_github_token','remove_github_token','freeze_lesson_code','frozen_lesson_code','unfreeze_lesson_code','lesson_code_files','lesson_code_read_file','lesson_code_compare','lesson_code_diff_folders','preview_lesson_mappings','suggest_lesson_mappings','apply_lesson_mappings',
+            'add_repo','recalculate_github_versions','toggle_favorite','reveal_note','copy_note_link','compare_proposal','open_note',
+            'open_obsidian','open_attachment','open_video_link','open_code_link','window_action',
             'save_classroom_context','import_classroom_materials',
-            'ai_status','save_ai_key','remove_ai_key',
+            'ai_status','set_ai_processing_consent','save_ai_key','remove_ai_key',
             'test_ai','open_ai_test_report','search_transcript','teacher_ask','teacher_reset','check_updates','open_update_page','prepare_update','launch_update'
         })
         self.assertTrue(all(callable(v) for v in public.values()))

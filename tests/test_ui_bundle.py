@@ -33,6 +33,24 @@ class InterfaceBundleTests(unittest.TestCase):
                 self.assertIn("'sha256-"+digest+"'",policy)
         self.assertIn("connect-src 'none'",policy)
 
+    def test_graph_assets_are_inlined_and_hash_allowed(self):
+        import base64
+        import hashlib
+        import re
+        from pathlib import Path
+        html=load_local_ui()
+        ui=Path(__file__).resolve().parents[1]/'knowledge_bridge'/'ui'
+        policy=re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)"',html).group(1)
+        for name,tag in (('graph.js','script'),('graph.css','style')):
+            source=(ui/name).read_text(encoding='utf-8')
+            self.assertIn('<'+tag+'>'+source+'</'+tag+'>',html)
+            checksum=base64.b64encode(hashlib.sha256(source.encode('utf-8')).digest()).decode('ascii')
+            self.assertIn("'sha256-"+checksum+"'",policy)
+        self.assertIn('TramaGraph.mount',html)
+        self.assertIn('canvas',html)
+        self.assertNotIn('<script src=',html)
+        self.assertNotIn('<link rel="stylesheet"',html)
+
     def test_batch_dialog_does_not_process_during_file_selection(self):
         html=load_local_ui()
         self.assertIn('id="auto-paste-zone"',html)

@@ -4,6 +4,11 @@ on:
     branches:
       - fix/quality-personas-ui-security-20261031
       - fix/security-hardening-20261102
+      - feat/grafo-conexoes
+      - feat/github-por-aula
+  pull_request:
+    branches:
+      - feat/v2.2.0-automation-foundations
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,12 +18,12 @@ concurrency:
 jobs:
   python:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ (github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[full-audit]')) && 35 || 12 }}
+    timeout-minutes: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || contains(github.event.head_commit.message, '[full-audit]')) && 35 || 12 }}
     strategy:
       fail-fast: false
       matrix:
         # Normal pushes run only fast Linux tests; opt in to full QA with [full-audit].
-        os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[full-audit]')) && '["ubuntu-latest","windows-2022"]' || '["ubuntu-latest"]') }}
+        os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || contains(github.event.head_commit.message, '[full-audit]')) && '["ubuntu-latest","windows-2022"]' || '["ubuntu-latest"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -47,10 +52,11 @@ jobs:
       - name: Conferir sintaxe JS
         run: |
           node --check knowledge_bridge/ui/library.js
+          node --check knowledge_bridge/ui/graph.js
           node --check knowledge_bridge/ui/app.js
           node --check knowledge_bridge/ui/teacher.js
   browser:
-    if: (github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[full-audit]'))
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || contains(github.event.head_commit.message, '[full-audit]'))
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -83,7 +89,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
   installer:
-    if: (github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[full-audit]'))
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || contains(github.event.head_commit.message, '[full-audit]'))
     runs-on: windows-2022
     timeout-minutes: 45
     steps:

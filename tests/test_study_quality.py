@@ -23,7 +23,8 @@ class ClassroomStudyQualityTests(unittest.TestCase):
             "nomes_a_conferir": ["Thagão", "Rash"],
         }, raw)
         self.assertIn("Thagão", result["nomes_a_conferir"])
-        self.assertIn("Rash", result["nomes_a_conferir"])
+        self.assertNotIn("Rash", result["nomes_a_conferir"])
+        self.assertEqual(result["nomes_a_conferir"], ["Thagão"])
         self.assertNotIn("Thagão", result["duvidas"])
         self.assertEqual(len(result["duvidas"]), 1)
         self.assertIn("nomes_a_conferir", SYSTEM_INSTRUCTIONS)
@@ -81,11 +82,66 @@ class ScopedReanalysisTests(unittest.TestCase):
         with patch.object(self.bridge._key_vault, "configured",
                           return_value={"gemini": True}), \
              patch.object(self.bridge, "_make_application", return_value=app):
-            answer = self.bridge.process_lesson("Aula-002", True)
+            answer = self.bridge.process_lesson("Aula-002", True, True)
         self.assertTrue(answer["ok"], answer)
         app.process.assert_called_once_with(lesson_filter="Aula-002", force=True)
         app.close.assert_called_once()
         self.assertFalse(self.bridge._write_lock.locked())
+
+    def test_pending_lesson_resumes_with_cached_chunks_instead_of_forcing_all(self):
+        app = Mock()
+        app.store.sources.return_value = [
+            {"lesson":"Aula-002", "status":"PUBLISHED"},
+            {"lesson":"Aula-003", "status":"READY"},
+        ]
+        with patch.object(self.bridge._key_vault, "configured",
+                          return_value={"gemini":True}), \
+             patch.object(self.bridge, "_make_application", return_value=app):
+            answer=self.bridge.process_lesson("Aula-002", True)
+        self.assertTrue(answer["ok"], answer)
+        app.process.assert_called_once_with(lesson_filter="Aula-002",force=False)
+
+    def test_actual_provider_error_categorized_instead_of_guessed_quota(self):
+        waiting=[{"lesson":"Aula-002","status":"WAITING_FOR_PROVIDER"}]
+        reply=self.bridge._processing_feedback(
+            waiting,["Analisando A02", "Pausado sem cobrança: "
+                     "Todos os provedores falharam ou atingiram cotas: "
+                     "gemini: resposta estruturada inválida; nada será publicado"])
+        self.assertFalse(reply["ok"])
+        self.assertEqual(reply["reason"],"invalid_ai_response")
+        self.assertNotIn("cota da API",reply["message"])
+        self.assertEqual(reply["pending"],1)
+        quota=self.bridge._processing_feedback(
+            waiting,["Pausado sem cobrança: "
+                     "gemini: limite gratuito atingido (429)"])
+        self.assertEqual(quota["reason"],"api_quota")
+        self.assertIn("429",quota["message"])
+        local=self.bridge._processing_feedback(
+            waiting,["Pausado sem cobrança: "
+                     "Limite de segurança de requisições por execução atingido"])
+        self.assertEqual(local["reason"],"local_limit")
+        self.assertIn("limite local",local["message"])
+
+    def test_global_generate_reports_partial_failure_and_saves_progress(self):
+        app=Mock()
+        app.store.sources.return_value=[
+            {"lesson":"Aula-002", "status":"PUBLISHED"},
+            {"lesson":"Aula-002", "status":"WAITING_FOR_PROVIDER"},
+        ]
+        def interrupted_process():
+            logs.append("Pausado sem cobrança: Limite de segurança de requisições por execução atingido")
+        logs=[]
+        def create_app(_vault, log):
+            def interrupt():
+                log("Pausado sem cobrança: Limite de segurança de requisições por execução atingido")
+            app.process.side_effect=interrupt
+            return app
+        with patch.object(self.bridge, "_make_application", side_effect=create_app):
+            result=self.bridge.process(True)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"],"local_limit")
+        self.assertEqual(result["pending"],1)
+        app.close.assert_called_once()
 
     def test_consent_and_lesson_id_are_required(self):
         with patch.object(self.bridge, "_make_application",

@@ -30,16 +30,25 @@ class DistributionContractTests(unittest.TestCase):
 
     def test_version_bump_and_upgrade_validation(self):
         from knowledge_bridge.update_service import VERSION
-        self.assertEqual(VERSION, '2.1.0')
+        self.assertEqual(VERSION, '2.2.0')
         iss=(ROOT/'TRAMA_Instalador.iss').read_text(encoding='utf-8')
-        self.assertIn('MyAppVersion "2.1.0"',iss)
+        self.assertIn('MyAppVersion "2.2.0"',iss)
         js=(ROOT/'knowledge_bridge/ui/app.js').read_text(encoding='utf-8')
-        self.assertIn('Versão instalada: 2.1.0.',js)
+        self.assertIn('Versão instalada: 2.2.0.',js)
         script=(ROOT/'tools/windows_upgrade_smoke.ps1').read_text(encoding='utf-8')
-        self.assertIn('gh release download v2.0.1',script)
+        self.assertIn('gh release download v2.1.0',script)
         self.assertIn('api_keys.dpapi.json',script)
         pipeline=(ROOT/'.github/workflows/full-quality-audit.yml').read_text(encoding='utf-8')
         self.assertIn('windows_upgrade_smoke.ps1',pipeline)
+
+    def test_preview_artifact_requires_every_other_quality_gate(self):
+        workflow=(ROOT/'.github/workflows/quality-main.yml').read_text(encoding='utf-8')
+        self.assertIn('needs: [quality, v220-browser, v220-public-course]',workflow)
+        windows=workflow.split('  v220-windows:',1)[1].split('  v220-browser:',1)[0]
+        self.assertLess(windows.index('needs: [quality, v220-browser, v220-public-course]'),
+                        windows.index('actions/upload-artifact@v4'))
+        self.assertIn('windows_preview_smoke.ps1',windows)
+        self.assertIn('SHA256SUMS-Preview.txt',windows)
 
     def test_readme_has_real_screenshots_and_official_download_link(self):
         readme = (ROOT / 'README.md').read_text(encoding='utf-8')

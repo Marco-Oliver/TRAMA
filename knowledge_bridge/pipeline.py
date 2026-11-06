@@ -10,12 +10,12 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .ai import BudgetStopped, FreeAIRouter, NoFreeProvider, read_env
-from .content import chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines
-from .code_intel import index_repository, match_lesson_to_repository, find_code_line
+from .ai import AllProvidersFailed, BudgetStopped, FreeAIRouter, NoFreeProvider, read_env
+from .content import CHUNK_MAX_CHARS, chunks, file_hash, lesson_identity, slug, concept_slug, timed_lines, timestamp_seconds, suspected_concept_name
+from .code_intel import index_repository, match_lesson_to_repository, find_code_line, concept_from_text, redact_sensitive
 from .publishing import Publisher
 from .store import Store
-from .memory_atlas import related_prior
+from .memory_atlas import related_prior, norm, literal_technical_mention
 from .classroom import save_classroom_record
 
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm"}
@@ -133,9 +133,12 @@ class Application:
 
     def _verified_transcript(self, src) -> str:
         """Refuse missing or modified cached sources before sending content to AI."""
-        file = (self.store.vault / (src["stored_path"] or "")).resolve()
-        if (not file.is_relative_to(self.store.vault) or not file.is_file() or
-                file.is_symlink()):
+        # Check the STORED path before resolving it: Path.resolve() follows
+        # symbolic links, so checking file.is_symlink() afterwards is ineffective.
+        stored = self.store.vault / (src["stored_path"] or "")
+        file = stored.resolve()
+        if (stored.is_symlink() or not file.is_relative_to(self.store.vault)
+                or not file.is_file()):
             raise ValueError("Fonte original ausente ou caminho inseguro: " + src["label"])
         if file_hash(file) != src["digest"]:
             self.store.update_status(src["id"], "NEEDS_REVIEW")
@@ -148,7 +151,14 @@ class Application:
         """Limita resultados da IA e valida referências temporais reais."""
         if not isinstance(payload, dict):
             payload = {}
-        real_times = {t for t, _ in timed_lines(raw_text)}
+        source_lines = timed_lines(raw_text)
+        # Map each normalized clock value to the original TXT spelling.
+        # This preserves existing Obsidian anchors (e.g. ^min-2-20).
+        time_index = {}
+        for stamp, _ in source_lines:
+            second = timestamp_seconds(stamp)
+            if second is not None:
+                time_index.setdefault(second, stamp)
         def safe(value, size):
             return str(value)[:size].strip() if isinstance(value, (str, int, float)) else ""
         def entries(key, fields, cap):
@@ -157,8 +167,8 @@ class Application:
                 if not isinstance(entry, dict):
                     continue
                 obj = {name: safe(entry.get(name), limit) for name, limit in fields.items()}
-                stamp = safe(entry.get("tempo"), 20).strip("[]")
-                obj["tempo"] = stamp if stamp in real_times else ""
+                second = timestamp_seconds(safe(entry.get("tempo"), 20))
+                obj["tempo"] = time_index.get(second, "") if second is not None else ""
                 if any(obj.get(k) for k in fields):
                     result.append(obj)
                 if len(result) >= cap:
@@ -167,23 +177,32 @@ class Application:
         kinds = {"apresentacao", "tecnica", "organizacional", "atividade", "mista", "indefinida"}
         kind = safe(payload.get("tipo_aula"), 24)
         clean = {
-            "resumo": safe(payload.get("resumo"), 2200),
+            "resumo": safe(payload.get("resumo"), 4000 if len(raw_text) > 20_000 else 2000),
             "tipo_aula": kind if kind in kinds else "indefinida",
             "pessoas": entries("pessoas", {"nome": 130, "papel": 140, "informacao": 420}, 8),
             "atividades": entries("atividades", {"descricao": 380}, 8),
             "ferramentas": entries("ferramentas", {"nome": 110, "contexto": 360}, 8),
             "marcos": entries("marcos", {"descricao": 420}, 8),
-            "conceitos": entries("conceitos", {"nome": 90, "explicacao": 700}, 12),
-            "exemplos": [safe(x, 350) for x in payload.get("exemplos", []) if isinstance(x, str)][:7],
-            "duvidas": [safe(x, 350) for x in payload.get("duvidas", []) if isinstance(x, str)][:7],
+            "conceitos": entries("conceitos", {"nome": 90, "explicacao": 700, "evidencia": 260}, 20),
+            "exemplos": [safe(x, 350) for x in payload.get("exemplos", []) if isinstance(x, str)][:10],
+            "duvidas": [safe(x, 350) for x in payload.get("duvidas", []) if isinstance(x, str)][:10],
             "nomes_a_conferir": [safe(x, 180) for x in payload.get("nomes_a_conferir", [])
                                  if isinstance(x, str)][:7],
         }
-        # A provider can put a spoken personal name in multiple JSON fields.
-        # Resolve direct category conflicts deterministically rather than
-        # publishing a name as a programming concept or technical question.
+        # Reject names not literally spoken in THIS transcript chunk, not in
+        # system instructions or other lessons. Accent/case/punctuation agnostic,
+        # with token boundaries to avoid matching substrings inside other words.
+        spoken_names = " " + norm(" ".join(sentence for _, sentence in source_lines)) + " "
         def normalized_name(value):
-            return re.sub(r"\s+", " ", str(value).casefold().strip(' \t\r\n.,:;!?"“”')).strip()
+            return norm(value)
+        def actually_spoken(value):
+            key = normalized_name(value)
+            return bool(key) and (" " + key + " ") in spoken_names
+        clean["pessoas"] = [person for person in clean["pessoas"]
+                            if actually_spoken(person.get("nome", ""))]
+        clean["nomes_a_conferir"] = [name for name in clean["nomes_a_conferir"]
+                                    if actually_spoken(name)]
+        # Keep the existing separation between personal names and concepts.
         known_names = {
             normalized_name(value) for value in clean["nomes_a_conferir"]
         } | {
@@ -200,9 +219,119 @@ class Application:
                 doubt for doubt in clean["duvidas"]
                 if normalized_name(doubt) not in known_names
             ]
+        # Compare quotes against spoken text, not TXT timestamp markers.
+        # Punctuation, case and accents are normalized, but technical names
+        # are NEVER corrected/inferred from ASR automatically.
+        spoken = norm(" ".join(sentence for _, sentence in source_lines))
+        normalized_spoken = " " + spoken + " "
+        grounded=[]
+        unverified=[]
+        for concept in clean["conceitos"]:
+            label=concept.get("nome","").strip()
+            if not label:
+                continue
+            observed=literal_technical_mention(label,raw_text)
+            quote=concept.get("evidencia","").strip()
+            normalized_quote=norm(quote)
+            verified_quote = (
+                bool(normalized_quote) and len(normalized_quote) >= 18
+                and (" " + normalized_quote + " ") in normalized_spoken
+            )
+            if observed:
+                # Only the NAME is observed. No claim of pedagogical correctness.
+                concept["confianca"] = "nome_literal"
+                grounded.append(concept)
+            elif verified_quote:
+                # The SPEECH is observed; the interpretation/label still needs
+                # human review and is never an automatic spelling correction.
+                concept["confianca"] = "citacao_literal"
+                grounded.append(concept)
+            else:
+                unverified.append({
+                    "nome": label,
+                    "motivo": "Rótulo técnico inferido pela IA; sem nome ou citação literal validada.",
+                    "evidencia_literal": "",
+                    "explicacao_sugerida": "",
+                    "tempo": "",
+                })
+        for concept in grounded:
+            suggestion = suspected_concept_name(concept.get("nome", ""))
+            if suggestion:
+                concept["suspeita_transcricao"] = (
+                    "Nome possivelmente distorcido pela transcrição; sugestão: "
+                    + suggestion + ". Conferir no áudio; não corrigido automaticamente."
+                )
+        clean["conceitos"]=grounded
+        clean["conceitos_a_conferir"]=unverified[:12]
+        # Only verbatim examples belong in the confirmed-example section.
+        # Normalize punctuation/accents/spacing like literal concept quotes.
+        # Keep fabricated or reconstructed snippets visible for human review.
+        literal_examples, reconstructed_examples = [], []
+        for example in clean["exemplos"]:
+            quoted = norm(example)
+            if len(quoted) >= 6 and (" " + quoted + " ") in normalized_spoken:
+                literal_examples.append(example)
+            else:
+                reconstructed_examples.append(example)
+        clean["exemplos"] = literal_examples
+        clean["exemplos_reconstruidos_a_conferir"] = reconstructed_examples
+        # A shallow or empty summary is not silently promoted as complete
+        # knowledge. Do not spend a second paid/free call automatically:
+        # preserve the original and mark the deficiency for later review.
+        review=[]
+        if len(raw_text.strip())>=1600 and len(clean["resumo"])<160:
+            review.append("Resumo curto para o volume da transcrição; revisar fidelidade e detalhes.")
+        if len(raw_text.strip())>=400 and not clean["resumo"]:
+            review.append("A IA não forneceu síntese; consultar a transcrição original.")
+        # Strongly recognizable technical names are auditable without an
+        # additional AI call. A phonetic ASR spelling may legitimately differ:
+        # report a REVIEW HINT, never silently replace or delete the summary.
+        technical_names = (
+            "RabbitMQ", "MassTransit", "Kafka", "GraphQL", "JWT", "Docker",
+            "HttpClient", "exhaustMap", "takeUntilDestroyed", "RxJS",
+            "Angular", "React", "C#", "SQL",
+        )
+        unsupported = [
+            label for label in technical_names
+            if literal_technical_mention(label, clean["resumo"])
+            and not literal_technical_mention(label, raw_text)
+        ]
+        if unsupported:
+            review.append(
+                "Nomes técnicos da síntese não encontrados literalmente neste trecho "
+                "do TXT: " + ", ".join(unsupported[:8]) +
+                ". Pode ser erro de ASR ou interpretação da IA; conferir áudio/fonte.")
+        clean["qualidade_pendente"]=review
         return clean
 
+    def assign_github_versions(self, recalculate=False):
+        """Local TXT-to-version matching, no AI configuration needed."""
+        from .github_auto_versions import GithubAutoMapper
+        mapper = GithubAutoMapper(self.store, log=self.log)
+        return mapper.assign(recalculate=recalculate)
+
+    def recalculate_github_versions(self, repo_url):
+        """User-requested recalculation; never modifies manual assignments."""
+        from .github_auto_versions import GithubAutoMapper, role_for
+        role = role_for(repo_url)
+        repo = repo_url.rstrip("/").removesuffix(".git")
+        row = next((x for x in self.store.auto_repositories()
+                    if x["repo_url"] == repo), None)
+        if not row:
+            raise ValueError("Repositório automático não cadastrado.")
+        mapper = GithubAutoMapper(self.store, log=self.log)
+        self.store.save_auto_repository(repo, role, bool(row["private"]), "pending")
+        versions = mapper.discover(repo)
+        if versions is None:
+            return {"mapped":0,"pending":mapper.pending,"versions":[]}
+        result = mapper.assign(recalculate=True)
+        self.publisher.rebuild()
+        return {**result,"versions":[v["name"] for v in versions]}
+
     def process(self, lesson_filter: str | None = None, force: bool = False):
+        automatic = self.assign_github_versions()
+        for warning in automatic.get("pending",[]):
+            self.log("Versões automáticas: " + str(warning)[:200])
         sources = self.store.sources("transcript")
         if lesson_filter is not None:
             sources = [s for s in sources if s["lesson"] == lesson_filter]
@@ -216,7 +345,12 @@ class Application:
             context_rows = self.publisher._context_rows(src['lesson'] or '')
             context_payload = [item for _, item in context_rows]
             context_digest = hashlib.sha256(json.dumps(context_payload,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
-            segment_digest = hashlib.sha256((src['digest']+context_digest).encode()).hexdigest()
+            # A cache from the 11.500-character layout cannot be reused for a
+            # now-larger 40.000-character chunk with the same index/source.
+            # Preserve old records, but never mistake them for valid new chunks.
+            segment_digest = hashlib.sha256(
+                (src['digest'] + context_digest + f":chunk-layout:v2:{CHUNK_MAX_CHARS}").encode()
+            ).hexdigest()
             done = self.store.conn.execute("SELECT digest,payload FROM analyses WHERE source_id=?",(src["id"],)).fetchone()
             was_done = bool(done and done['digest']==src['digest'] and
                 json.loads(done['payload']).get('_context_revision')==context_digest)
@@ -225,13 +359,32 @@ class Application:
                 continue
             pieces = chunks(text)
             all_results = []
+            lesson_failed = False
             self.store.update_status(src["id"], "PROCESSING")
             self.log(f"Analisando {src['label']} em {len(pieces)} trecho(s).")
             for i, piece in enumerate(pieces):
                 cached = None if force else self.store.get_chunk(src["id"], segment_digest, i)
                 if cached:
-                    all_results.append(cached)
-                    self.log(f"  Trecho {i+1}: reaproveitado.")
+                    # Older cached chunk analyses may have been checked
+                    # against the whole recording. Revalidate locally and
+                    # preserve earlier warnings without spending another
+                    # provider request or changing the original text.
+                    validated = self._clean_result(cached, piece)
+                    previous_unverified = cached.get("conceitos_a_conferir", [])
+                    if isinstance(previous_unverified, list):
+                        for item in previous_unverified:
+                            if (isinstance(item, dict) and item.get("nome") and
+                                    item not in validated["conceitos_a_conferir"] and
+                                    len(validated["conceitos_a_conferir"]) < 12):
+                                validated["conceitos_a_conferir"].append(item)
+                    previous_warnings = cached.get("qualidade_pendente", [])
+                    if isinstance(previous_warnings, list):
+                        for warning in previous_warnings:
+                            if (isinstance(warning, str) and warning not in validated["qualidade_pendente"]
+                                    and len(validated["qualidade_pendente"]) < 8):
+                                validated["qualidade_pendente"].append(warning)
+                    all_results.append(validated)
+                    self.log(f"  Trecho {i+1}: reaproveitado e conferido na fonte local.")
                     continue
                 try:
                     context_fragments=[]
@@ -243,7 +396,10 @@ class Application:
                     context='\n'.join(context_fragments[:4])[:3000]
                     prior = related_prior(self.store, src['lesson'] or '', piece)
                     result = self.ai.analyze(piece, f"Arquivo {src['label']}, trecho {i+1}/{len(pieces)}.\n{context}\n{prior}")
-                    clean = self._clean_result(result.payload, text)
+                    # Ground timestamps and technical labels to THIS segment.
+                    # A time or keyword in another segment is not evidence
+                    # that the provider analyzed it correctly here.
+                    clean = self._clean_result(result.payload, piece)
                     self.store.save_chunk(src["id"], segment_digest, i, result.provider,result.model,clean)
                     all_results.append(clean)
                     self.log(f"  Trecho {i+1}: {result.provider} / {result.model}.")
@@ -251,15 +407,41 @@ class Application:
                     self.store.update_status(src["id"], "WAITING_FOR_PROVIDER")
                     self.log(f"Pausado sem cobrança: {exc}")
                     return self.publisher.rebuild()
+                except AllProvidersFailed:
+                    # Invalid content does not mean quota exhaustion: keep other lessons running.
+                    self.store.update_status(src["id"], "NEEDS_REVIEW")
+                    self.log(f"Falha de conteúdo em {src['label']}: aula para revisão; seguindo o lote.")
+                    lesson_failed = True
+                    break
                 except Exception as exc:
                     self.store.update_status(src["id"], "NEEDS_REVIEW")
-                    self.log(f"Erro controlado em {src['label']}: {type(exc).__name__}. Verifique a configuração.")
-                    return self.publisher.rebuild()
+                    # Never expose original provider payload, HTTP response,
+                    # secrets or full traceback to the user-visible log.
+                    cause = redact_sensitive(str(exc).replace("\n", " ")[:300])
+                    # Include the actual failure category without printing
+                    # raw API key assignments accidentally embedded in an
+                    # exception raised by third-party code.
+                    cause = re.sub(
+                        r"(?i)\b([A-Z0-9_]*(?:API_KEY|ACCESS_TOKEN|CLIENT_SECRET|"
+                        r"PASSWORD|PRIVATE_KEY))\s*[:=]\s*[^\s,;]+",
+                        r"\1=[SEGREDO-OCULTO]", cause)
+                    self.log(
+                        f"Falha em {src['label']}: {type(exc).__name__}: "
+                        f"{cause or 'erro não detalhado'}. Aula mantida para revisão.")
+                    lesson_failed = True
+                    break
+            if lesson_failed:
+                # Preserve completed chunks, then continue with other lessons.
+                # Only exhaustion of the free-tier/local budget stops the batch.
+                continue
             # Consolidação estruturada sem requisição adicional.
-            combined = {"resumo":"\n\n".join(f"**Parte {i+1}:** {x['resumo']}" for i,x in enumerate(all_results)),
+            combined = {"resumo": (all_results[0]["resumo"] if len(all_results) == 1 else
+                         "\n\n".join(f"**Trecho {i+1}:** {x['resumo']}" for i,x in enumerate(all_results))),
                         "tipo_aula": "indefinida", "pessoas": [], "atividades": [],
                         "ferramentas": [], "marcos": [], "conceitos": [],
-                        "exemplos": [], "duvidas": [], "nomes_a_conferir": []}
+                        "exemplos": [], "exemplos_reconstruidos_a_conferir": [],
+                        "duvidas": [], "nomes_a_conferir": [],
+                        "conceitos_a_conferir": []}
             # Preserve different explanations/timestamps from distinct parts of
             # the same recording. A concept may be introduced and then applied.
             known = set()
@@ -280,10 +462,20 @@ class Application:
                         # Dedup keeps different evidence timestamps if substantive text differs.
                         if item not in combined[category]:
                             combined[category].append(item)
-                combined["exemplos"].extend(result.get("exemplos", []))
-                combined["duvidas"].extend(result.get("duvidas", []))
-                combined["nomes_a_conferir"].extend(result.get("nomes_a_conferir", []))
+                for category, limit in (("exemplos", 10),
+                                        ("exemplos_reconstruidos_a_conferir", 10),
+                                        ("duvidas", 10), ("nomes_a_conferir", 7)):
+                    for item in result.get(category, []):
+                        if item and item not in combined[category] and len(combined[category]) < limit:
+                            combined[category].append(item)
+                for caution in result.get("conceitos_a_conferir", []):
+                    if caution not in combined["conceitos_a_conferir"]:
+                        combined["conceitos_a_conferir"].append(caution)
             combined['_context_revision']=context_digest
+            # Preserve warnings from each analyzed segment for the published note.
+            combined['qualidade_pendente']=list(dict.fromkeys(
+                warning for part in all_results for warning in
+                part.get('qualidade_pendente',[]) if isinstance(warning,str)))[:8]
             meta = self.store.conn.execute("SELECT provider,model FROM chunks WHERE source_id=? AND digest=? ORDER BY segment LIMIT 1",
                                            (src["id"],segment_digest)).fetchone()
             self.store.save_analysis(src["id"], src["digest"],meta["provider"] if meta else "unknown",
@@ -304,7 +496,48 @@ class Application:
     @staticmethod
     def _check_comparison(payload: dict, transcript: str, repository: dict) -> dict:
         """Discard fabricated source paths/lines/timestamps. Keep hypotheses as hypotheses."""
-        valid_times={t for t,_ in timed_lines(transcript)}
+        time_index = {}
+        for stamp, _ in timed_lines(transcript):
+            second = timestamp_seconds(stamp)
+            if second is not None:
+                time_index.setdefault(second, stamp)
+        def matched_time(value):
+            second = timestamp_seconds(value)
+            return time_index.get(second, "") if second is not None else ""
+        observed_concepts = concept_from_text(transcript)
+        indexed = [item for item in (
+            *repository.get("evidence", []), *repository.get("symbols", []))
+            if isinstance(item, dict)]
+
+        def code_supports(label: str, path: str = "", line: int = 0,
+                          require_lecture: bool = False) -> bool:
+            """A reference to one valid line is not proof of a DIFFERENT term.
+
+            When a line includes several indexed concepts, any matching one
+            suffices. A completely unrelated label must be discarded, even
+            when the model cited a valid path/line of some other concept.
+            """
+            if not label.strip():
+                return False
+            candidates = [item for item in indexed if
+                          (not path or item.get("path") == path) and
+                          (not line or item.get("line") == line)]
+            model_terms = concept_from_text(label)
+            for item in candidates:
+                term = str(item.get("concept", "")).strip()
+                if term in model_terms and (
+                        not require_lecture or term in observed_concepts):
+                    return True
+                # Arbitrary actual declaration names cannot use the
+                # predefined alias table; require literal token boundaries.
+                symbol = str(item.get("name", "")).strip()
+                if (len(symbol) >= 4 and
+                        re.search(r"(?<![A-Za-z0-9_])" + re.escape(symbol) +
+                                  r"(?![A-Za-z0-9_])", label, re.I) and
+                        (not require_lecture or literal_technical_mention(symbol, transcript))):
+                    return True
+            return False
+
         out={"resumo":str(payload.get("resumo", ""))[:1000],
              "relacoes":[],"correcoes":[],"novidades":[]}
         for row in payload.get("relacoes",[])[:8]:
@@ -312,10 +545,12 @@ class Application:
             path=str(row.get('path',''))
             try:line=int(row.get('line',0))
             except (ValueError,TypeError):continue
+            label=str(row.get('conceito',''))[:90]
             if not find_code_line(repository,path,line):continue
-            stamp=str(row.get('tempo','')).strip('[]')
-            out['relacoes'].append({"conceito":str(row.get('conceito',''))[:90],
-                 "tempo":stamp if stamp in valid_times else "", "path":path,"line":line,
+            if not code_supports(label,path,line,require_lecture=True):continue
+            stamp=matched_time(row.get('tempo',''))
+            out['relacoes'].append({"conceito":label,
+                 "tempo":stamp, "path":path,"line":line,
                  "explicacao":str(row.get('explicacao',''))[:450],
                  "evolucao":str(row.get('evolucao',''))[:450], "status":"SUGESTÃO — verificar fontes"})
         for row in payload.get("correcoes",[])[:5]:
@@ -326,16 +561,23 @@ class Application:
             except (ValueError,TypeError):continue
             if not heard or heard.casefold() not in transcript.casefold():continue
             if not find_code_line(repository,path,line):continue
-            stamp=str(row.get('tempo','')).strip('[]')
+            if not code_supports(str(row.get("sugestao",""))[:100],path,line):continue
+            stamp=matched_time(row.get('tempo',''))
             out['correcoes'].append({"ouvido":heard,"sugestao":str(row.get('sugestao',''))[:100],
-                "tempo":stamp if stamp in valid_times else "", "path":path,"line":line,
+                "tempo":stamp, "path":path,"line":line,
                 "justificativa":str(row.get('justificativa',''))[:350],
                 "status":"HIPÓTESE — revisão humana necessária"})
         for row in payload.get('novidades',[])[:5]:
             if not isinstance(row,dict):continue
-            stamp=str(row.get('tempo','')).strip('[]')
-            out['novidades'].append({"conceito":str(row.get('conceito',''))[:100],
-                "tempo":stamp if stamp in valid_times else "",
+            label=str(row.get('conceito',''))[:100]
+            # Novelty is a hypothesis grounded in actual code or lecture,
+            # not a free-standing invented model label.
+            if not (code_supports(label) or
+                    literal_technical_mention(label,transcript)):
+                continue
+            stamp=matched_time(row.get('tempo',''))
+            out['novidades'].append({"conceito":label,
+                "tempo":stamp,
                 "explicacao":str(row.get('explicacao',''))[:350]})
         return out
 
@@ -345,8 +587,7 @@ class Application:
             analysis=self.store.analysis(src['id'],src['digest'])
             if not analysis:continue  # no externally generated claims without prior summary
             transcript=self._verified_transcript(src)
-            for repo in self.store.repositories():
-                payload=json.loads(repo['payload'])
+            for repo, payload in self.publisher._lesson_repos(src["lesson"] or ""):
                 matched=match_lesson_to_repository(transcript,analysis,payload,cap=10)
                 if not matched:continue
                 if self.store.connection(src['id'],src['digest'],repo['url'],repo['sha']):continue
@@ -377,6 +618,18 @@ class Application:
                 raise ValueError("Informe pasta Git local ou URL HTTPS pública de repositório GitHub.")
             owner, name = source.removesuffix("/").removesuffix(".git").split("/")[-2:]
             source_id = f"https://github.com/{owner}/{name}"
+            from .github_auto_versions import GithubAutoMapper
+            mapper = GithubAutoMapper(self.store,log=self.log)
+            versions = mapper.discover(source_id)
+            if versions is None:
+                # Rate limit/offline: preserve registration and TXT, retry on
+                # the next import/process after the GitHub reset.
+                return True
+            if versions:
+                # No clone or checkout. Versions are immutable Git REST SHAs,
+                # indexed lazily once per version and reused across lessons.
+                return True
+            # No identifiable versions: retain the previous global HEAD index.
             checkout_dir = self.store.vault / ".base-conhecimento" / "repos" / f"{slug(owner)}-{slug(name)}"
             checkout_dir.parent.mkdir(parents=True,exist_ok=True)
             if not checkout_dir.exists():
@@ -425,7 +678,8 @@ class Application:
                             "-c", "credential.helper="]
             run = subprocess.run(["git", *sandbox_opts, *args], capture_output=True,
                                  text=True, timeout=180, check=False, encoding="utf-8",
-                                 errors="replace", env=env)
+                                 errors="replace", env=env,
+                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise RuntimeError("Git indisponível ou operação demorou demais") from exc
         if run.returncode:

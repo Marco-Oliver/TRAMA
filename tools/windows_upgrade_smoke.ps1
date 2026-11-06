@@ -1,4 +1,4 @@
-# Validacao real de upgrade v2.0.1 -> v2.1.0 em runner Windows limpo.
+# Validacao real de upgrade v2.1.0 -> v2.2.0 em runner Windows limpo.
 # Dados e chaves ficticias; nenhuma conta privada e acessada.
 $ErrorActionPreference = 'Stop'
 function Invoke-BoundedProcess {
@@ -27,8 +27,8 @@ $oldSetup = Join-Path $oldSetupDir 'TRAMA_Setup.exe'
 $newSetup = Join-Path (Get-Location) 'release\TRAMA_Setup.exe'
 if (-not (Test-Path $newSetup)) { throw 'Instalador candidato nao encontrado.' }
 New-Item -ItemType Directory -Force -Path $inbox, $oldSetupDir | Out-Null
-git worktree add --detach $legacyRoot 'v2.0.1'
-if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel recuperar v2.0.1.' }
+git worktree add --detach $legacyRoot 'v2.1.0'
+if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel recuperar v2.1.0.' }
 
 try {
     '[0:04] Console.WriteLine exibe texto no terminal.' |
@@ -45,14 +45,14 @@ try {
     $catalog = Join-Path $vault '.base-conhecimento\estado.sqlite3'
     if (-not (Test-Path $catalog)) { throw 'Banco anterior nao foi criado.' }
 
-    gh release download v2.0.1 --repo 'Marco-Oliver/TRAMA' --pattern 'TRAMA_Setup.exe' --dir $oldSetupDir
+    gh release download v2.1.0 --repo 'Marco-Oliver/TRAMA' --pattern 'TRAMA_Setup.exe' --dir $oldSetupDir
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $oldSetup)) {
-        throw 'Falha ao baixar instalador oficial v2.0.1.'
+        throw 'Falha ao baixar instalador oficial v2.1.0.'
     }
     $arguments = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/DIR=' + $installDir))
-    Invoke-BoundedProcess $oldSetup $arguments 'Instalar v2.0.1' 180
+    Invoke-BoundedProcess $oldSetup $arguments 'Instalar v2.1.0' 180
     $exe = Join-Path $installDir 'TRAMA.exe'
-    if (-not (Test-Path $exe)) { throw 'TRAMA.exe v2.0.1 ausente.' }
+    if (-not (Test-Path $exe)) { throw 'TRAMA.exe v2.1.0 ausente.' }
     $oldExeHash = (Get-FileHash $exe -Algorithm SHA256).Hash
 
     # Teste exclusivo com dados sinteticos; arquivo DPAPI ficticio.
@@ -66,7 +66,7 @@ try {
     $settingsHash = (Get-FileHash $settingsFile -Algorithm SHA256).Hash
     $keyHash = (Get-FileHash $keyFile -Algorithm SHA256).Hash
 
-    Invoke-BoundedProcess $newSetup $arguments 'Upgrade candidato v2.1.0' 180
+    Invoke-BoundedProcess $newSetup $arguments 'Upgrade candidato v2.2.0' 180
     if (-not (Test-Path $exe)) { throw 'TRAMA.exe atualizado ausente.' }
     if ((Get-FileHash $exe -Algorithm SHA256).Hash -eq $oldExeHash) {
         throw 'Upgrade nao trocou o executavel.'
@@ -87,7 +87,7 @@ try {
 
     $uninstall = Join-Path $installDir 'unins000.exe'
     if (-not (Test-Path $uninstall)) { throw 'Desinstalador nao encontrado.' }
-    Invoke-BoundedProcess $uninstall @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') 'Desinstalar v2.1.0' 180
+    Invoke-BoundedProcess $uninstall @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') 'Desinstalar v2.2.0' 180
     if (-not (Test-Path $personal) -or (Get-FileHash $personal -Algorithm SHA256).Hash -ne $manualHash) {
         throw 'Desinstalacao modificou nota manual.'
     }
@@ -95,7 +95,7 @@ try {
         (Get-FileHash $keyFile -Algorithm SHA256).Hash -ne $keyHash) {
         throw 'Desinstalacao modificou preferencias ou credenciais sinteticas.'
     }
-    Write-Output 'PASS: v2.0.1 -> v2.1.0 preserva SQLite, notas, ajustes e chaves sinteticas.'
+    Write-Output 'PASS: v2.1.0 -> v2.2.0 preserva SQLite, notas, ajustes e chaves sinteticas.'
 } finally {
     git worktree remove --force $legacyRoot | Out-Null
 }

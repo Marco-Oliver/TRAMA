@@ -79,8 +79,12 @@ def fabricated_timestamp():
         app.store.save_analysis(src['id'],src['digest'],'stub','qa',a)
         atlas=make_atlas(app.store)
         mention=atlas['concepts'][0]['mentions'][0]
-        assert mention['timestamp']=='' and 'sem horário' in mention['confidence']
+        # Invalid IA time must never appear as a verified timestamp. The
+        # literal TXT mention can still recover its own real source time.
+        assert mention['timestamp']=='44:44'
+        assert 'recuperado do TXT' in mention['confidence']
         assert '99:99' not in render_atlas(atlas)
+        assert '44:44' in render_atlas(atlas)
     finally:app.close();home.cleanup()
 
 

@@ -75,6 +75,42 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(len(result['nodes']),2)
         self.assertEqual(len(result['edges']),1)
 
+    def test_graph_provides_kinds_without_changing_notes(self):
+        overview=self.vault/'02-Minhas-Aulas'/'Aula-131'
+        overview.mkdir()
+        (overview/'00-Visao-geral.md').write_text(
+            '---\ntipo: visao_geral\n---\n# Aula 131\n\n[[POO]]\n',
+            encoding='utf-8')
+        (overview/'A131-V01.md').write_text(
+            '---\ntipo: aula\n---\n# Gravação 01\n\n[[POO]]\n',
+            encoding='utf-8')
+        (overview/'Duvida.md').write_text(
+            '---\ntipo: duvida\n---\n# Dúvida\n\n[[POO]]\n',
+            encoding='utf-8')
+        projects=self.vault/'03-Meus-Projetos'
+        projects.mkdir()
+        (projects/'App.md').write_text('# Aplicativo\n',encoding='utf-8')
+        index=self.vault/'Minha-Biblioteca.md'
+        index.write_text('# Minha Biblioteca\n',encoding='utf-8')
+        doubt_folder=self.vault/'01-Meu-Conhecimento'/'Duvidas'
+        doubt_folder.mkdir()
+        (doubt_folder/'duvida-123.md').write_text('# Dúvida sem tipo\n',encoding='utf-8')
+        (know_index:=self.vault/'01-Meu-Conhecimento'/'Indice-de-Duvidas.md').write_text(
+            '# Índice de dúvidas\n',encoding='utf-8')
+        result=self.bridge.graph()
+        types={item['id']:item['kind'] for item in result['nodes']}
+        self.assertEqual(types['01-Meu-Conhecimento/POO.md'],'conceito')
+        self.assertEqual(types['02-Minhas-Aulas/Aula 168.md'],'aula')
+        self.assertEqual(types['02-Minhas-Aulas/Aula-131/00-Visao-geral.md'],'indice')
+        self.assertEqual(types['02-Minhas-Aulas/Aula-131/A131-V01.md'],'aula')
+        self.assertEqual(types['02-Minhas-Aulas/Aula-131/Duvida.md'],'duvida')
+        self.assertEqual(types['03-Meus-Projetos/App.md'],'projeto')
+        self.assertEqual(types['Minha-Biblioteca.md'],'indice')
+        self.assertEqual(types['01-Meu-Conhecimento/Duvidas/duvida-123.md'],'duvida')
+        self.assertEqual(types['01-Meu-Conhecimento/Indice-de-Duvidas.md'],'indice')
+        self.assertTrue(all(item['kind'] for item in result['nodes']))
+        self.assertEqual(self.bridge.graph()['edges'],result['edges'])
+
     def test_reading_does_not_change_notes(self):
         file=self.vault/'02-Minhas-Aulas'/'Aula 168.md'
         original=file.read_bytes()

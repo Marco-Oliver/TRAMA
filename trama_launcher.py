@@ -49,6 +49,12 @@ def smoke_test() -> None:
     api = PublicApi(Bridge())
     assert isinstance(api.snapshot(), dict)
     assert not hasattr(api, "window")
+    from knowledge_bridge.gui_legacy import APP_ROOT, DATA_HOME, PREVIEW_BUNDLE
+    preview_marker=(APP_ROOT / "assets" / "trama-preview.marker").is_file()
+    assert PREVIEW_BUNDLE == preview_marker
+    if preview_marker:
+        assert DATA_HOME.name == "TRAMA-Preview", (
+            "QA preview must not read stable TRAMA app data or keys")
     if sys.platform == "win32":
         import webview  # verifies the frozen Windows GUI dependency is present
         assert callable(webview.create_window)

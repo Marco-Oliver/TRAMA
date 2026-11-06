@@ -164,20 +164,37 @@ Veja os workflows na pasta [`.github/workflows`](.github/workflows).
 </details>
 
 
-## 🛡️ O que muda na atualização 2.1.0
+## ✅ TRAMA 2.2.0 — versão estável
 
-A nova versão reúne as melhorias da IA Professor, o estudo de transcrições originais e os ajustes de segurança desde a 2.0.1:
+O TRAMA organiza a transcrição e o código do professor na mesma biblioteca do Obsidian.
+Nesta versão, cada aula pode receber uma **versão Git congelada** para conferir
+termos e dúvidas sem usar a branch `main` nem consumir novas chamadas de IA.
 
-- **IA Professor com evidências:** usa, mediante autorização, trechos verificados do TXT original e referências às notas do Obsidian; não trata citações como prova de que a resposta esteja correta.
-- **Busca em transcrições:** procure termos como `dotnet`, `SDK` e `terminal` na aula, com trechos e horários do arquivo original, sem gastar cota de IA.
-- **Resumos mais claros:** distingue nomes/apelidos de conceitos técnicos e marca explicitamente aulas sem análise por IA.
-- **Reprocessamento individual:** permite reanalisar uma aula com confirmação, preservando edições manuais e criando propostas quando há conflito.
-- **Compatibilidade Windows:** leitura SQLite corrigida e testes de regressão, interface e atualização de instalador.
+- **Código certo para cada aula:** descoberta de `v0`, `v1` e demais versões; relacionamentos com SHA, caminho e linha, e revisão manual de associações.
+- **Dúvidas com evidências:** reconhece grafias suspeitas por identificadores reais do código daquela aula; não resolve dúvidas com links de URLs, `using` ou palavras genéricas.
+- **Conceitos com nomes distorcidos:** rótulos como `DB Contact` podem apontar para **uma única página `DbContext`**, com aviso e grafia original preservada, quando o código confirma a hipótese.
+- **Notas legíveis:** trechos C# preservam `<` e `>` no Markdown, sem duplicar pistas.
+- **Sem custos ocultos:** importação e organização local continuam disponíveis sem IA, enquanto a IA Professor permanece opcional.
 
-**Para quem já tem o TRAMA 2.0.1:** use **Ajustes → Verificar atualizações** quando a 2.1.0 aparecer. Não instale a edição Preview separada. O instalador oficial usa a **mesma identidade, pasta e nome** do aplicativo existente e mantém cofre, configurações e chaves locais. Faça o backup do cofre antes de reprocessar aulas. A versão pública atual é indicada pelo selo **Última versão** no topo.
+[Ver alterações detalhadas](CHANGELOG.md) · [Release oficial 2.2.0](https://github.com/Marco-Oliver/TRAMA/releases/tag/v2.2.0)
 
+### 🔄 Atualização da 2.1.0 para a 2.2.0
+
+No TRAMA 2.1.0, abra **Ajustes → Verificar atualizações**. O aplicativo
+identifica a release estável, baixa `TRAMA_Setup.exe` e valida o
+`SHA256SUMS.txt` antes de pedir sua autorização para executar o instalador.
+
+O instalador usa **o mesmo AppId e a mesma pasta** da edição estável anterior.
+Ele não inclui nem substitui seu cofre do Obsidian, o SQLite de estudos,
+o arquivo de preferências ou o armazenamento local de chaves. A pipeline Windows
+testa essa atualização com dados e credenciais fictícios. Crie um backup do cofre
+em **Ajustes → Criar backup local (.zip)** antes de iniciar.
+
+**Limite:** o teste automatizado não modifica nem comprova os dados existentes
+na sua máquina. Não instale uma Preview como substituta da versão estável.
 
 ---
+
 
 <div align="center">
 

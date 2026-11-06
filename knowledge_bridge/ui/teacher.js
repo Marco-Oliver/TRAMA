@@ -69,6 +69,10 @@ function teacherDrawMessages(){
   }
   log.append(wrap);
  }
+ log.querySelectorAll('[data-lib-code]').forEach(link=>link.addEventListener('click',async()=>{
+  const result=await call('open_code_link',link.dataset.libCode);
+  if(!result?.ok)$('teacher-feedback').textContent=result?.message||'Referência de código não indexada.';
+ }));
  log.scrollTop=log.scrollHeight;
 }
 function renderTeacher(el){
@@ -89,7 +93,7 @@ function renderTeacher(el){
    <label for="teacher-code">Cole seu código (não será executado)</label>
    <textarea id="teacher-code" rows="6" maxlength="6500" spellcheck="false" placeholder="Cole apenas o código que deseja revisar. Remova senhas e chaves."></textarea>
   </div>
-  <label class="teacher-consent"><input type="checkbox" id="teacher-consent"/>
+  <label class="teacher-consent" id="teacher-consent-row"><input type="checkbox" id="teacher-consent"/>
    Autorizo enviar esta pergunta, o código colado (se houver), trechos das notas e transcrições selecionadas e parte da conversa à API gratuita configurada.</label>
   <div class="teacher-controls"><p id="teacher-feedback" role="status">Uma pergunta pode consumir cota gratuita da API. Nenhuma cobrança é garantida se a conta externa tiver faturamento habilitado.</p>
   <button id="teacher-submit" type="submit">Enviar pergunta</button></div>
@@ -113,6 +117,12 @@ function renderTeacher(el){
  el.querySelector('#teacher-code').value=teacherState.code;
  syncMode();
  teacherDrawMessages();
+ // A preference in Ajustes authorizes only actions explicitly initiated by the user.
+ call('ai_status').then(status=>{
+  if(!el.querySelector('#teacher-consent-row'))return;
+  app.aiConsent=status?.processing_consent===true;
+  el.querySelector('#teacher-consent-row').classList.toggle('hidden',app.aiConsent);
+ });
  el.querySelector('#teacher-clear').addEventListener('click',async()=>{
   if(teacherState.busy)return;
   const response=await call('teacher_reset');
@@ -130,7 +140,7 @@ function renderTeacher(el){
   const status=el.querySelector('#teacher-feedback'),button=el.querySelector('#teacher-submit');
   if(!question){status.textContent='Escreva sua dúvida primeiro.';return;}
   if(teacherState.mode==='corrigir'&&!code.trim()){status.textContent='Cole o código para corrigir.';return;}
-  if(!el.querySelector('#teacher-consent').checked){status.textContent='Marque a autorização para enviar dados à API.';return;}
+  if(!app.aiConsent && !el.querySelector('#teacher-consent').checked){status.textContent='Marque a autorização para enviar dados à API.';return;}
   teacherState.busy=true;button.disabled=true;
   status.textContent='Buscando suas aulas e preparando uma resposta baseada nas fontes…';
   teacherState.draft=question;teacherState.code=code;

@@ -110,7 +110,7 @@ class ReliableAutomation(unittest.TestCase):
 
     def test_batch_interruption_resumes_cached_chunks(self):
         lesson = ("[0:01] O professor falou de console.\n" +
-                  "[0:02] Exemplos de console.\n" + "Texto adicional sobre console. " * 550 +
+                  "[0:02] Exemplos de console.\n" + "Texto adicional sobre console. " * 1450 +
                   "\n[1:20] Mais exemplos de console e explicações.")
         source = self.add_lesson(1, lesson)
         calls = []

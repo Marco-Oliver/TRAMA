@@ -11,13 +11,52 @@ import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
-from .content import slug, concept_slug, timed_lines
+from .content import slug, concept_slug, concept_file_slug, timed_lines
 
 
 def norm(value: object) -> str:
     txt = unicodedata.normalize('NFKD', str(value)).encode('ascii','ignore').decode().casefold()
     txt = txt.replace('++', ' plus plus ').replace('#', ' sharp ').replace('+', ' plus ')
     return re.sub(r'[^a-z0-9]+', ' ', txt).strip()
+
+
+def literal_technical_mention(label: str, source: str) -> str:
+    """Return an actually present rendering of a technical name, or empty.
+
+    The model may label 'SDK (Software Development Kit)' when speech only says
+    'SDK', or 'Comando dotnet --version' when speech says 'dotnet --version'.
+    Both are literal terms, but expanding their explanations remains an
+    unverified interpretation. This intentionally does NOT fuzzy-correct
+    'exaust map' to 'exhaustMap' or infer a concept from source code alone.
+    """
+    if not isinstance(label, str) or not isinstance(source, str):
+        return ""
+    label = label.strip()[:120]
+    if not label:
+        return ""
+    candidates = [label]
+    parenthesized = re.fullmatch(r"(.{2,75}?)\s+\(([^()]{3,65})\)", label)
+    if parenthesized:
+        candidates.append(parenthesized.group(1).strip())
+    for candidate in tuple(candidates):
+        short = re.sub(
+            r"^(?:comando|operador|função|funcao|método|metodo|classe)\s+",
+            "", candidate, flags=re.I
+        ).strip()
+        if short != candidate:
+            candidates.append(short)
+    normalized_source = " " + norm(source) + " "
+    for candidate in candidates:
+        needle = norm(candidate)
+        if needle == "c" and candidate.strip().casefold() == "c":
+            # C is a real programming-language name, but must not match
+            # C#, C++, variable names or words just containing the letter.
+            if re.search(r"(?<![A-Za-z0-9_+#])c(?![A-Za-z0-9_+#])",
+                         source, flags=re.I):
+                return candidate
+        elif len(needle) >= 3 and " " + needle + " " in normalized_source:
+            return candidate
+    return ""
 
 
 def safe(value: object, limit: int = 300) -> str:
@@ -34,7 +73,8 @@ def note_for(src) -> str:
             f"{slug(Path(src['label']).stem,52)}-{src['id'][:7]}.md")
 
 
-def make_atlas(store, max_concepts: int = 2000) -> dict:
+def make_atlas(store, max_concepts: int = 2000,
+               concept_targets: dict | None = None) -> dict:
     """Somente fontes catalogadas. Nenhum acesso à rede. Saída JSON serializável."""
     sources = store.sources('transcript')
     concepts: dict[str, dict] = {}
@@ -46,31 +86,55 @@ def make_atlas(store, max_concepts: int = 2000) -> dict:
         if not original.is_relative_to(store.vault) or not original.is_file():
             continue
         raw = original.read_text(encoding='utf-8-sig',errors='replace')
-        timestamps = dict(timed_lines(raw))
-        raw_norm = norm(raw)
+        segments = timed_lines(raw)
+        by_timestamp = defaultdict(list)
+        for timed, spoken in segments:
+            if timed != 'sem horário':
+                by_timestamp[timed].append(spoken)
         for row in result.get('conceitos',[]) if isinstance(result.get('conceitos'),list) else []:
             if not isinstance(row,dict):continue
             name = str(row.get('nome','')).strip()[:90]
-            key = norm(name)
+            key = concept_slug(name)
             if (len(key)<3 and key != "c") or len(key)>90:continue
             if key not in concepts and len(concepts)>=max_concepts:continue
             stamp = str(row.get('tempo','')).strip('[]')
-            exists = bool(stamp and stamp in timestamps)
-            literal = (' '+key+' ') in (' '+raw_norm+' ')
-            excerpt_norm=norm(timestamps.get(stamp,'')) if exists else ''
-            at_anchor=exists and (' '+key+' ') in (' '+excerpt_norm+' ')
-            confidence = ('termo encontrado no horário citado' if at_anchor else
-                'horário existe; termo encontrado em outro trecho' if exists and literal else
-                'horário existe; relação sem termo literal no trecho' if exists else
-                'sem horário confirmado; conceito interpretado pela IA')
-            # Não inferir que o texto associado à âncora realmente prova o conceito.
+            stated = by_timestamp.get(stamp, [])
+            literal = bool(literal_technical_mention(name, raw))
+            same_time = [spoken for spoken in stated
+                         if literal_technical_mention(name, spoken)]
+            observed = [(timed, spoken) for timed, spoken in segments
+                        if timed != 'sem horário' and
+                        literal_technical_mention(name, spoken)]
+            if same_time:
+                resolved_time, excerpt = stamp, same_time[0]
+                confidence = ('termo encontrado em horário repetido; conferir a ocorrência'
+                              if len(stated) > 1 else
+                              'termo encontrado no horário citado')
+            elif observed:
+                # The model's timestamp is missing, mistaken or belongs to a
+                # different utterance. Trust the TXT for the literal mention.
+                resolved_time, excerpt = observed[0]
+                confidence = ('menção literal em outro horário no TXT; '
+                              'horário da IA não confirma essa menção'
+                              if stated else
+                              'menção literal com horário recuperado do TXT')
+            elif stated:
+                resolved_time, excerpt = stamp, stated[0]
+                confidence = ('horário informado pela IA sem menção literal '
+                              'do conceito no trecho')
+            else:
+                resolved_time, excerpt = '', ''
+                confidence = ('termo presente no TXT, mas sem horário identificável'
+                              if literal else
+                              'sem menção literal nem horário confirmado')
+            # No label or model claim alone certifies teaching or mastery.
             rec = {'lesson':src['lesson'] or 'Sem número', 'video':src['video'] or '',
                    'source_id':src['id'], 'note':note_for(src), 'label':src['label'],
-                   'timestamp':stamp if exists else '',
-                   'excerpt':timestamps.get(stamp, '')[:250] if exists else '',
+                   'timestamp':resolved_time, 'excerpt':excerpt[:250],
                    'explanation':str(row.get('explicacao',''))[:600],
                    'confidence':confidence, 'literal':literal}
-            bucket = concepts.setdefault(key, {'name':name,'key':key,'slug':concept_slug(name),'mentions':[]})
+            target = (concept_targets or {}).get(key, concept_file_slug(name))
+            bucket = concepts.setdefault(key, {'name':name,'key':key,'slug':target,'mentions':[]})
             if not any(x['source_id']==rec['source_id'] and x['timestamp']==rec['timestamp'] for x in bucket['mentions']):
                 bucket['mentions'].append(rec)
     for value in concepts.values():
@@ -87,7 +151,7 @@ def make_atlas(store, max_concepts: int = 2000) -> dict:
         evidence=[]
         for item in payload.get('evidence',[])[:500]:
             if not isinstance(item,dict):continue
-            key=norm(item.get('concept',''))
+            key=concept_slug(str(item.get('concept','')))
             if key not in concepts:continue
             path=str(item.get('path',''))[:220]
             line=item.get('line',0)

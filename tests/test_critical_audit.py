@@ -28,7 +28,7 @@ class CriticalAuditTests(unittest.TestCase):
                              "conceitos": [{"nome": name, "explicacao": name, "tempo": "0:01"}]},
                             "gemini", "mock")
         self.app.ai.analyze = analyze
-        with patch("knowledge_bridge.pipeline.chunks", return_value=["a", "b", "c", "d"]):
+        with patch("knowledge_bridge.pipeline.chunks", return_value=[path.read_text(encoding="utf-8")] * 4):
             self.app.process()
         source = self.app.store.sources("transcript")[0]
         analysis = self.app.store.analysis(source["id"], source["digest"])
