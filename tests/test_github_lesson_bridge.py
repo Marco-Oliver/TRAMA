@@ -94,8 +94,8 @@ class LessonCodeBridgeTests(unittest.TestCase):
             self.assertTrue(all(c in ("",f"git/trees/{A}?recursive=1",f"compare/{B}...{A}")
                                 for c in self.calls))
             self.assertGreaterEqual(built.call_count,4)
-            self.assertTrue(all(call.kwargs["vault"]==self.vault
-                                for call in built.call_args_list))
+            self.assertTrue(all(call.kwargs["vault"].resolve()==self.vault.resolve()
+                                for call in built.call_args_list),built.call_args_list)
         self.assertFalse((self.vault/"github-cache").exists())
         self.assertTrue((self.cache_home/"github-cache").exists())
 
