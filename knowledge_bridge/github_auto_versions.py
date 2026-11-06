@@ -64,6 +64,22 @@ def _literal(text, term):
                           normalized(text)))
 
 
+def _changed_lines(patch):
+    """Read added-side line numbers from a bounded GitHub unified diff."""
+    result=set()
+    lineno=None
+    for raw in str(patch)[:140000].splitlines():
+        if raw.startswith("@@"):
+            match=re.search(r"\+(\d+)(?:,(\d+))?",raw)
+            lineno=int(match.group(1)) if match else None
+        elif lineno is not None and raw.startswith("+") and not raw.startswith("+++"):
+            result.add(lineno)
+            lineno+=1
+        elif lineno is not None and raw.startswith(" "):
+            lineno+=1
+    return sorted(result)
+
+
 def _words(value):
     # Split PascalCase to match spoken terms in a natural-language TXT.
     value = re.sub(r"([a-z\d])([A-Z])", r"\1 \2", str(value))
@@ -145,6 +161,7 @@ class GithubAutoMapper:
                 version["folder"] = ""
                 version["first_exclusive_at"] = ""
                 version["changed_paths"] = None
+                version["changed_lines"] = {}
             for i,version in enumerate(versions):
                 if i == 0:
                     continue
@@ -162,6 +179,11 @@ class GithubAutoMapper:
                 version["changed_paths"] = [f["filename"] for f in compared["files"]
                     if isinstance(f,dict) and f.get("status") in
                     ("added","modified","renamed","copied") and isinstance(f.get("filename"),str)]
+                version["changed_lines"] = {
+                    f["filename"]:_changed_lines(f.get("patch",""))
+                    for f in compared["files"]
+                    if isinstance(f,dict) and f.get("status") == "modified"
+                    and isinstance(f.get("filename"),str)}
             versions.sort(key=lambda x:(x["number"],x["first_exclusive_at"],x["name"].casefold()))
             self.store.save_auto_repository(
                 repo,role,private,"ready" if versions else "no_versions",versions)
@@ -187,8 +209,13 @@ class GithubAutoMapper:
         if changed is None:
             changed = [f["path"] for f in payload.get("files",[])]
         permitted = set(changed)
-        symbols = [item for item in payload.get("symbols",[]) if item.get("path") in permitted]
-        evidence = [item for item in payload.get("evidence",[]) if item.get("path") in permitted]
+        modified = version.get("changed_lines",{})
+        def altered(item):
+            path = item.get("path")
+            return (path in permitted and
+                    (path not in modified or item.get("line") in modified[path]))
+        symbols = [item for item in payload.get("symbols",[]) if altered(item)]
+        evidence = [item for item in payload.get("evidence",[]) if altered(item)]
         return {"symbols":symbols,"evidence":evidence,
                 "files":[p for p in permitted if isinstance(p,str)]}
 
@@ -288,6 +315,17 @@ class GithubAutoMapper:
         changed = 0
         for record in self.store.auto_repositories():
             repo = record["repo_url"]
+            if record["status"] == "index_paused":
+                try:
+                    retry_at = json.loads(record["message"]).get("retry_at")
+                except (ValueError,TypeError):
+                    retry_at = None
+                if isinstance(retry_at,(int,float)) and time.time() < retry_at:
+                    self.pending.append("Indexação GitHub pausada; aguarde a cota REST.")
+                    continue
+                self.store.save_auto_repository(
+                    repo,record["role"],bool(record["private"]),"ready")
+                record=next(r for r in self.store.auto_repositories() if r["repo_url"] == repo)
             if record["status"] in ("pending","paused"):
                 self.discover(repo)
                 record = next(r for r in self.store.auto_repositories() if r["repo_url"] == repo)
@@ -322,6 +360,10 @@ class GithubAutoMapper:
                 diffs = [self._delta(repo,v,versions[i-1] if i else None)
                          for i,v in enumerate(versions)]
             except GithubRateLimitError as exc:
+                self.store.save_auto_repository(
+                    repo,record["role"],bool(record["private"]),"index_paused",
+                    message=json.dumps({"retry_at":exc.retry_at,"error":str(exc)},
+                                       ensure_ascii=False))
                 self.pending.append(str(exc))
                 self.log("Associação pausada por cota; decisões anteriores mantidas.")
                 break
@@ -334,7 +376,7 @@ class GithubAutoMapper:
                 options = [self._score(text,diff,v["number"]) for diff,v in zip(diffs,versions)]
                 score_list = [result[0] for result in options]
                 # Pure revision/quebra-cuca should not acquire code by proximity.
-                if REVIEW.search(normalized(text)) and not any(x[1] >= 3 or x[2] > 0
+                if REVIEW.search(normalized(text)) and not any(x[1] >= 3
                                                                for x in options):
                     score_list = [0.0]*len(versions)
                 scores[lesson] = score_list

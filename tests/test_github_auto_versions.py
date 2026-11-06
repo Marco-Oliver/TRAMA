@@ -115,7 +115,7 @@ class AutoVersionsEndToEnd(unittest.TestCase):
                   ("NoteService"),("v2 CategoryService"),("CategoryService"),
                   ("v3 ArchiveService"),("ArchiveService")]
         paths=[self.txt(i,text) for i,text in enumerate(examples,1)]
-        paths.append(self.txt(9,"revisão e quebra-cuca sem código"))
+        paths.append(self.txt(9,"revisão da v2 e quebra-cuca sem código"))
         return AutoOrganizer(self.app).run(paths,REPO,authorized=True)
 
     def test_url_txt_four_versions_eight_lessons_and_review_note(self):
@@ -179,6 +179,35 @@ class AutoVersionsEndToEnd(unittest.TestCase):
         with patch.object(GithubMapping,"_get",side_effect=AssertionError("should not query completed mapping")):
             self.assertEqual(self.app.assign_github_versions()["mapped"],0)
         self.assertEqual(self.app.store.github_lesson_refs("Aula-001")[1][0]["commit_sha"],first)
+
+    def test_rate_limit_during_snapshots_pauses_until_reset(self):
+        from knowledge_bridge.github_mapping import GithubRateLimitError
+        from knowledge_bridge.github_lesson_index import LessonRepositoryIndex
+        import time
+        self.import_all()
+        before=self.app.store.github_lesson_refs("Aula-001")[1][0]["commit_sha"]
+        with patch.object(LessonRepositoryIndex, "_snapshot",
+                          side_effect=GithubRateLimitError(time.time()+3600, 429)):
+            response=self.app.assign_github_versions(recalculate=True)
+        self.assertEqual(response["mapped"],0)
+        self.assertEqual(self.app.store.auto_repositories()[0]["status"],"index_paused")
+        self.assertEqual(self.app.store.github_lesson_refs("Aula-001")[1][0]["commit_sha"],before)
+        with patch.object(GithubMapping, "_get",
+                          side_effect=AssertionError("Must await reset")):
+            response=self.app.assign_github_versions()
+        self.assertEqual(response["mapped"],0)
+        self.assertEqual(self.app.store.auto_repositories()[0]["status"],"index_paused")
+
+    def test_low_confidence_warning_reaches_obsidian(self):
+        self.import_all()
+        repo=self.app.store.auto_repositories()[0]
+        import json
+        selected=json.loads(repo["versions_json"])[0]
+        self.assertTrue(self.app.store.set_auto_decision(
+            REPO,"Aula-001","professor",False,selected,"baixa",recalculate=True))
+        self.app.publisher.rebuild()
+        self.assertIn("versão estimada; confira", self.content_note(1))
+        self.assertIn("confiança **baixa**", self.content_note(1))
 
     def test_role_and_version_name_detection(self):
         self.assertEqual(role_for(REPO),"professor")
