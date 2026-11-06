@@ -193,8 +193,12 @@ try{
     // GitHub lesson mapping is manual and must remain inert until confirmation.
     await page.locator('#btn-lesson-code').click();
     await page.locator('#lesson-code-dialog').waitFor({state:'visible'});
-    if(!(await page.locator('#lesson-code-token').innerText()).includes('TRAMA_GITHUB_TOKEN'))
-      throw Error('Registration does not recommend a token when absent');
+    if(!(await page.locator('#lesson-code-token').innerText()).toLowerCase().includes('token github'))
+      throw Error('Registration must show whether GitHub credentials are configured');
+    if(await page.locator('#lesson-code-github-key[type="password"]').count()!==1 ||
+       await page.locator('#lesson-code-save-token').count()!==1 ||
+       await page.locator('#lesson-code-remove-token').count()!==1)
+      throw Error('Secure DPAPI GitHub token controls are missing');
     await page.locator('#lesson-code-add-teacher').click();
     await page.locator('#lesson-code-add-teacher').click();
     await page.locator('#lesson-code-add-student').click();
