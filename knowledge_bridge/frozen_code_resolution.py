@@ -91,6 +91,14 @@ def _similarity(first, second):
     if min(len(first), len(second)) >= 4 and (
             first.startswith(second) or second.startswith(first)):
         return 0.92
+    # Portuguese ASR commonly keeps just an opening nasal syllable
+    # (e.g. a nasal vowel followed by n). Only accept this contraction when
+    # the OTHER specific words also match, as enforced by _ratio().
+    if (len(first) == 2 and first[1] == "n" and
+            len(second) >= 5 and second[0] in "aeiou" and second[1] == "n"
+            or len(second) == 2 and second[1] == "n" and
+            len(first) >= 5 and first[0] in "aeiou" and first[1] == "n"):
+        return 0.80
     literal = SequenceMatcher(None, first, second, autojunk=False).ratio()
     # Consonant identity handles vowels distorted by PT-BR speech recognition
     # (contact/context, valor/value); require a nontrivial consonant shape.
@@ -99,7 +107,8 @@ def _similarity(first, second):
     if min(len(consonant_first), len(consonant_second)) >= 2:
         skeletal = SequenceMatcher(
             None, consonant_first, consonant_second, autojunk=False).ratio()
-        if min(len(consonant_first), len(consonant_second)) >= 3:
+        if (min(len(consonant_first), len(consonant_second)) >= 2
+                and min(len(first),len(second)) >= 4 and skeletal >= 0.80):
             return max(literal, skeletal)
     # One-letter skeletons are only useful for short spoken stopwords
     # such as a phonetic 'bai' / written 'by'; not for longer terms.
@@ -165,6 +174,10 @@ def match_frozen_question(question, repositories):
     if not isinstance(question, str) or not question.strip():
         return None
     focused = focus_question(question)
+    # A grammatically correct Portuguese noun is not a misspelled English
+    # code identifier. Analysis concepts are excluded by the publisher too.
+    if re.search(r"\b\w+(?:ção|ções|dade|dades)\b", focused.casefold(), re.UNICODE):
+        return None
     spoken = tokens(focused)
     status201 = bool(re.search(r"\bstatus\s*2011?\b", _ascii(focused)))
     matches = []
