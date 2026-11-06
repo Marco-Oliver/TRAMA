@@ -313,14 +313,20 @@ class Publisher:
         if not isinstance(concept, dict):
             return False
         name = str(concept.get("nome", "")).strip()
-        if not name or not str(concept.get("suspeita_transcricao") or "").strip():
+        if not name:
+            return False
+        # A known whole-label ASR hint can be present literally in the TXT:
+        # the literal is the transcription error, not necessarily correct.
+        known_asr = suspected_concept_name(name)
+        flagged = bool(str(concept.get("suspeita_transcricao") or "").strip())
+        if not flagged and not known_asr:
             return False
         # Ordinary Portuguese nouns are not ASR errors simply because an
         # English symbol happens to be orthographically similar.
         if re.search(r"\b\w+(?:ção|ções|mento|mentos|dade|dades)\b",
                      name.casefold(), re.UNICODE):
             return False
-        if literal_technical_mention(name, raw):
+        if literal_technical_mention(name, raw) and not known_asr:
             return False
         return True
 
@@ -332,6 +338,9 @@ class Publisher:
         if not match or match["candidate"].casefold() == name.casefold():
             return name
         canonical = match["candidate"]
+        known_asr = suspected_concept_name(name)
+        if known_asr and canonical.casefold() != known_asr.casefold():
+            return name  # reject unrelated code names even with ASR warning
         if concept_slug(canonical) in self._concept_targets:
             self._concept_aliases[(src["id"], name.casefold())] = canonical
             return canonical

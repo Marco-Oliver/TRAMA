@@ -30,13 +30,13 @@ class DistributionContractTests(unittest.TestCase):
 
     def test_version_bump_and_upgrade_validation(self):
         from knowledge_bridge.update_service import VERSION
-        self.assertEqual(VERSION, '2.1.0')
+        self.assertEqual(VERSION, '2.2.0')
         iss=(ROOT/'TRAMA_Instalador.iss').read_text(encoding='utf-8')
-        self.assertIn('MyAppVersion "2.1.0"',iss)
+        self.assertIn('MyAppVersion "2.2.0"',iss)
         js=(ROOT/'knowledge_bridge/ui/app.js').read_text(encoding='utf-8')
-        self.assertIn('Versão instalada: 2.1.0.',js)
+        self.assertIn('Versão instalada: 2.2.0.',js)
         script=(ROOT/'tools/windows_upgrade_smoke.ps1').read_text(encoding='utf-8')
-        self.assertIn('gh release download v2.0.1',script)
+        self.assertIn('gh release download v2.1.0',script)
         self.assertIn('api_keys.dpapi.json',script)
         pipeline=(ROOT/'.github/workflows/full-quality-audit.yml').read_text(encoding='utf-8')
         self.assertIn('windows_upgrade_smoke.ps1',pipeline)

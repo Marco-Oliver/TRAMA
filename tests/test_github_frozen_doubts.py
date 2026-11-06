@@ -247,7 +247,7 @@ class FrozenV1DoubtsTests(unittest.TestCase):
         knowledge = note.split("## Conhecimentos relacionados",1)[1].split("\n## ",1)[0]
         self.assertEqual(knowledge.count("[[dbcontext|DbContext]]"), 1)
         self.assertNotIn("[[dbcontext|DB Contact]]", knowledge)
-        self.assertIn("[[db-contact|DB Contact]]", knowledge)
+        self.assertNotIn("[[db-contact|DB Contact]]", knowledge)
         self.assertIn("[[autenticacao|Autenticação]]", knowledge)
         self.assertIn("[[geracao-de-token|Geração de token]]", knowledge)
         self.assertNotIn("EstaAutenticado", doubts)
@@ -279,8 +279,8 @@ class FrozenV1DoubtsTests(unittest.TestCase):
         # DB Contact should share the existing DbContext concept file.
         concepts = self.app.store.vault / "01-Meu-Conhecimento" / "Conceitos"
         self.assertTrue((concepts / "dbcontext.md").exists())
-        self.assertTrue((concepts / "db-contact.md").exists())
-        self.assertIn("DB Contact", (concepts / "db-contact.md").read_text(encoding="utf-8"))
+        self.assertFalse((concepts / "db-contact.md").exists())
+        self.assertIn("DB Contact", (concepts / "dbcontext.md").read_text(encoding="utf-8"))
         suspect = note.split("## Termos suspeitos da transcrição", 1)[1]
         self.assertNotIn("Entity Framework", suspect)
         self.assertNotIn("migrações", suspect)
