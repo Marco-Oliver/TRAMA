@@ -69,7 +69,7 @@ class LessonCodeConfigTests(unittest.TestCase):
         self.assertIn("Aula-001", loaded["aulas"])
         self.assertNotIn("Aula-002", loaded["aulas"])
         self.assertTrue(any("Aula-002" in issue and "repo" in issue for issue in loaded["erros"]))
-        save_lessons(self.vault, {"Aula-003": {"professor": [], "dupla": []}})
+        save_lessons(self.vault, {"Aula-003": {"professor": [dict(PROFESSOR)], "dupla": []}})
         self.assertIn("Aula-002", json.loads(self.path.read_text())["aulas"])
 
     def test_syntactically_invalid_json_remains_untouched(self):
@@ -190,10 +190,15 @@ class MappingSuggestionTests(unittest.TestCase):
         def mocked(_self, repo, endpoint):
             self.assertEqual(repo, self.repo)
             received.append(endpoint)
+            if endpoint.startswith("commits?per_page=1"):
+                return self.payloads["commits?per_page=100"][:1]
+            if endpoint.startswith("commits?per_page=100") and "since=" in endpoint:
+                return self.payloads["commits?per_page=100"][:1]
             return self.payloads[endpoint]
         with patch.object(GithubMapping, "_get", mocked):
             preview = preview_mapping(self.vault, self.repo)
-        self.assertEqual(len(received), 3)
+        self.assertGreaterEqual(len(received), 4)
+        self.assertTrue(any("since=" in url and "until=" in url for url in received))
         self.assertEqual(received.count(f"git/trees/{self.sha}?recursive=1"), 1)
         self.assertTrue(any(x["tipo"]=="pasta" and x["pasta"]=="V3"
                             for x in preview["candidatos"]))
@@ -229,6 +234,72 @@ class MappingSuggestionTests(unittest.TestCase):
         self.assertEqual(sum(x["tipo"] == "commit" for x in catalogue["candidatos"]), 160)
         self.assertEqual(sum(x.startswith("commits?") for x in seen), 2)
         self.assertEqual(sum("recursive=1" in x for x in seen), 1)
+
+
+    def test_priority_same_day_pasta_before_commit_and_previous_before_future(self):
+        base = [
+            {"id":"commit:abc","tipo":"commit","data":"2026-11-03"},
+            {"id":"pasta:v3","tipo":"pasta","data":"2026-11-03"},
+            {"id":"tag:v3","tipo":"tag","data":"2026-11-03"}
+        ]
+        rows = GithubMapping.suggestions({"candidatos":base},[
+            {"aula":"Aula-131","data":"2026-11-03","origem_data":"contexto_classroom"}])
+        self.assertEqual(rows[0]["candidato_id"],"pasta:v3")
+        earlier = [{"id":"commit:older","tipo":"commit","data":"2026-11-02"},
+                   {"id":"pasta:future","tipo":"pasta","data":"2026-11-04"}]
+        chosen = GithubMapping.suggestions({"candidatos":earlier},[
+            {"aula":"Aula-132","data":"2026-11-03","origem_data":"contexto_classroom"}])
+        self.assertEqual(chosen[0]["candidato_id"],"commit:older")
+
+    def test_date_windows_recover_old_commits_beyond_recent_300_and_branch_tip(self):
+        tip, old = "a"*40, "b"*40
+        history = [{"sha":f"{i+200:040x}",
+                    "commit":{"message":"Intermediário",
+                              "committer":{"date":"2024-05-27T12:00:00Z"}}}
+                   for i in range(100)]
+        old_record = {"sha":old,"commit":{"message":"Aula antiga",
+                                         "committer":{"date":"2024-06-01T12:00:00Z"}}}
+        calls = []
+        def fake(_client, repo, endpoint):
+            self.assertEqual(repo, self.repo)
+            calls.append(endpoint)
+            if endpoint == "commits?per_page=1&sha=course%2Fv7":
+                return [{"sha":tip,"commit":{"message":"Atual",
+                    "committer":{"date":"2026-11-05T12:00:00Z"}}}]
+            if endpoint.startswith("commits?") and "since=" in endpoint:
+                self.assertIn("&sha=course%2Fv7",endpoint)
+                if "page=1" in endpoint and len([x for x in calls if "page=1" in x])==1:
+                    return history
+                if "page=2" in endpoint:
+                    return [old_record]
+                return []
+            if endpoint == "tags?per_page=100":
+                return []
+            if endpoint == f"git/trees/{tip}?recursive=1":
+                return {"tree":[{"type":"tree","path":"V1"}],"truncated":False}
+            raise AssertionError(endpoint)
+        with patch.object(GithubMapping,"_get",fake):
+            result=GithubMapping(token="").catalogue(
+                self.repo,lessons=[{"aula":"Aula-001","data":"2024-06-01"}],
+                branch="course/v7")
+        self.assertTrue(any(c["ref"]==old for c in result["candidatos"]))
+        suggestion=GithubMapping.suggestions(result,[
+            {"aula":"Aula-001","data":"2024-06-01","origem_data":"contexto_classroom"}])
+        self.assertEqual(suggestion[0]["candidato_id"],"commit:"+old)
+        self.assertIn(f"git/trees/{tip}?recursive=1",calls)
+        self.assertTrue(any("since=" in item and "until=" in item for item in calls))
+        self.assertTrue(any("page=2" in item for item in calls))
+        self.assertEqual(result["branch"],"course/v7")
+
+    def test_explicit_redirect_message_without_following_new_location(self):
+        from urllib.error import HTTPError
+        client=GithubMapping(token="")
+        moved=HTTPError("https://api.github.com/repos/example/old",301,
+                        "Moved Permanently",{"Location":"https://evil.invalid/"},None)
+        with patch.object(client._opener,"open",side_effect=moved) as opened:
+            with self.assertRaisesRegex(ValueError,"mudou de nome/endereço"):
+                client._get(self.repo,"tags?per_page=100")
+        opened.assert_called_once()
 
     def test_missing_date_gives_no_guess(self):
         rows = GithubMapping.suggestions({"candidatos":[{"id":"commit:any","data":"2026-11-03"}]},
