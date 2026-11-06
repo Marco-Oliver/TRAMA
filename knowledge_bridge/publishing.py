@@ -1124,6 +1124,22 @@ class Publisher:
         body = self._keep_previous_code(body, rel, lesson,
                                         "## Relações com códigos e projetos",
                                         "## Termos suspeitos da transcrição")
+        # Preserve offline ASR-only review hints separately from verified
+        # frozen-code matches; old lessons remain reviewable without code.
+        if not any(repo.get("frozen") for repo, _ in self._lesson_repos(lesson)):
+            raw_hints = suspected_technical_transcription(text)
+            if raw_hints:
+                body += ["", "## Hipóteses da transcrição sem conferência de código", "",
+                         "> O áudio não foi conferido. Estas são apenas grafias "
+                         "suspeitas do TXT; nenhum identificador específico "
+                         "de código foi verificado nesta aula.", ""]
+                for stamp, heard, suggestion in raw_hints:
+                    if is_generic_code_term(heard) or is_generic_code_term(suggestion):
+                        continue
+                    body.append("- **" + _escape_md(stamp) + "** — transcrito: "
+                                + chr(96) + _escape_md(heard) + chr(96)
+                                + "; hipótese a revisar: "
+                                + chr(96) + _escape_md(suggestion) + chr(96) + ".")
         body += ["", "## Termos suspeitos da transcrição", ""]
         # Only surface phonetic *errors* grounded in specific identifiers
         # on this lesson's immutable SHA. Broad concept aliases such as
