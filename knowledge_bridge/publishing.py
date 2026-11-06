@@ -652,9 +652,6 @@ class Publisher:
             rows.append('*Nenhum conceito com relação temporal validável nesta aula. '
                         'Isso é normal em apresentações ou encontros sem conteúdo técnico.*')
         rows += ['', '## Projetos relacionados', '']
-        warning = self.lesson_repo_index.warning(lesson)
-        if warning:
-            rows.append("> " + warning)
         found_code=False
         for repo, payload in self._lesson_repos(lesson):
             try:
@@ -671,6 +668,9 @@ class Publisher:
                                 '**Possível relação; não comprova autoria nem momento da implementação.**')
             except (ValueError, KeyError, TypeError):
                 continue
+        warning = self.lesson_repo_index.warning(lesson)
+        if warning:
+            rows.append("> " + warning)
         if not found_code:
             rows.append('*Ainda não há código com relação verificável para esta aula.*')
         rows += ['', '## Fontes e materiais', '']
@@ -968,9 +968,6 @@ class Publisher:
             body.append("*Link da gravação ainda não informado. Cadastre em Aulas → Contexto +.*")
         body += ["", "> Os códigos e nomes técnicos devem ser conferidos com o repositório antes de serem considerados verificados."]
         body += ["", "## Relações com códigos e projetos", ""]
-        warning = self.lesson_repo_index.warning(lesson)
-        if warning:
-            body.append("> " + warning)
         project_matches = []
         for repo, payload in self._lesson_repos(lesson):
             matched = match_lesson_to_repository(text, analysis, payload, cap=5)
@@ -989,6 +986,9 @@ class Publisher:
                                 ".sql": "sql"}.get(ext, "text")
                     body.extend(["", f"```{language}", snippet.replace("```", "` ` `"), "```", ""])
             project_matches.append((repo, payload))
+        warning = self.lesson_repo_index.warning(lesson)
+        if warning:
+            body.append("> " + warning)
         if not project_matches:
             body.append("*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
         total, frozen=self.db.github_lesson_refs(lesson)

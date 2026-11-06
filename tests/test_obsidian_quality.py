@@ -171,9 +171,34 @@ class QualityTests(unittest.TestCase):
             "ref_tipo":"commit","ref":"a"*40,"pasta":""}],"dupla":[]}})
         self.app.store.freeze_github_ref("Aula-001","professor","repo","current",
             "https://github.com/academia/projeto","commit","a"*40,"","a"*40)
-        self.app.publisher.rebuild()
+        # A frozen lesson must index *actual bytes* from that immutable Git
+        # tree; the global HEAD payload above is not a valid substitute.
+        import hashlib
+        from unittest.mock import patch
+        from knowledge_bridge.github_mapping import GithubMapping
+        from knowledge_bridge.github_code import GithubCodeReader
+        contents = ("\n" * 18 + "obs.subscribe();\n").encode("utf-8")
+        blob = hashlib.sha1(b"blob " + str(len(contents)).encode()
+                            + b"\x00" + contents, usedforsecurity=False).hexdigest()
+        frozen_sha = "a" * 40
+
+        def get(client, repo, endpoint):
+            self.assertEqual(repo, "https://github.com/academia/projeto")
+            if endpoint == "":
+                return {"private": False}
+            if endpoint == f"git/trees/{frozen_sha}?recursive=1":
+                return {"truncated": False, "tree": [{
+                    "type": "blob", "mode": "100644", "path": "src/app.ts",
+                    "size": len(contents), "sha": blob}]}
+            raise AssertionError("Unexpected branch/HEAD lookup: " + endpoint)
+
+        with patch.object(GithubMapping, "_get", get), \
+             patch.object(GithubCodeReader, "_raw",
+                          lambda reader, repo, sha, path, private: contents):
+            self.app.publisher.rebuild()
         lecture = self.lesson_note().read_text(encoding="utf-8")
-        project = next((self.vault / "03-Meus-Projetos").glob("*.md")).read_text(encoding="utf-8")
+        project = next(p for p in (self.vault / "03-Meus-Projetos").glob("*.md")
+                       if "-f" in p.stem).read_text(encoding="utf-8")
         self.assertIn("/blob/" + "a"*40 + "/src/app.ts#L19", lecture)
         self.assertIn("obs.subscribe()", lecture)
         self.assertIn("```typescript", lecture)
