@@ -12,6 +12,7 @@ from pathlib import Path
 import stat
 import sys
 import tempfile
+import time
 
 from .paths import DATA_HOME
 from .secure_keys import _crypt
@@ -67,19 +68,24 @@ class GithubCache:
             return None
         if len(data) > MAX_OBJECT:
             return None
-        try:
-            os.utime(path, None, follow_symlinks=False)
-        except NotImplementedError:
-            # Windows does not expose follow_symlinks for utime. Do not
-            # touch a replacement symlink; cached bytes remain read-only.
-            if not path.is_symlink():
-                try:
-                    os.utime(path, None)
-                except OSError:
-                    pass
-        except OSError:
-            pass
+        self._touch(path)
         return data
+
+    def _touch(self, path):
+        """Monotonic LRU order even when Windows timestamps share one clock tick."""
+        try:
+            if path.is_symlink():
+                return
+            latest = max((item.stat().st_mtime_ns for item in self.root.glob("*.entry")
+                          if item.is_file() and not item.is_symlink()), default=0)
+            stamp = max(time.time_ns(), latest + 1_000_000)  # Distinct at >=1 ms.
+            try:
+                os.utime(path, ns=(stamp, stamp), follow_symlinks=False)
+            except NotImplementedError:
+                if not path.is_symlink():
+                    os.utime(path, ns=(stamp, stamp))
+        except (OSError, ValueError):
+            pass
 
     def put(self, key, data, private=False):
         if (type(private) is not bool or not isinstance(data, bytes)
@@ -110,6 +116,7 @@ class GithubCache:
             finally:
                 if os.path.exists(tmp):
                     os.unlink(tmp)
+            self._touch(path)
             self._evict()
             return True
         except OSError:
