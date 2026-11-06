@@ -105,6 +105,21 @@ class LessonCodeBridgeTests(unittest.TestCase):
                       "lesson-code-inspect-compare","lesson-code-inspect-diff"):
             self.assertIn('id="'+ident+'"',html)
 
+    def test_read_only_inspection_never_creates_sqlite_without_lock(self):
+        from knowledge_bridge.lesson_code_config import read_config, save_lessons
+        fresh=Path(self.temp.name)/"fresh"
+        fresh.mkdir()
+        save_lessons(fresh,read_config(self.vault)["aulas"])
+        other=Bridge()
+        other.settings={"vault":str(fresh)}
+        db=fresh/".base-conhecimento"/"estado.sqlite3"
+        self.assertFalse(db.exists())
+        with patch.object(GithubMapping,"_get",side_effect=AssertionError("No HTTP")):
+            response=other.lesson_code_files("Aula-131","professor","backend")
+        self.assertFalse(response["ok"],response)
+        self.assertIn("congele a versão desta aula",response["message"])
+        self.assertFalse(db.exists())
+
     def test_without_frozen_sha_warns_and_never_calls_network(self):
         self.assertTrue(self.bridge.unfreeze_lesson_code(
             "Aula-131","professor","backend","current",True)["ok"])

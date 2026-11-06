@@ -1272,7 +1272,6 @@ class Bridge:
         from .github_cache import GithubCache
         from .github_code import GithubCodeReader
         from .lesson_code_config import read_config, LESSON_RE, ID_RE
-        from .store import Store
         if (not isinstance(lesson, str) or not LESSON_RE.fullmatch(lesson)
                 or role not in ("professor", "dupla")
                 or not isinstance(repository_id, str) or not ID_RE.fullmatch(repository_id)
@@ -1291,11 +1290,19 @@ class Bridge:
         spec=entry.get("anterior") if slot=="previous" else entry
         if spec is None:
             raise ValueError("Cadastre a referência anterior e congele a versão desta aula.")
-        db=Store(vault)
+        db_path=vault/".base-conhecimento"/"estado.sqlite3"
+        if not db_path.is_file() or db_path.is_symlink():
+            raise ValueError("congele a versão desta aula")
         try:
-            locked=db.github_ref(lesson,role,repository_id,slot)
-        finally:
-            db.close()
+            with closing(sqlite3.connect(db_path.as_uri()+"?mode=ro",uri=True,timeout=3)) as conn:
+                conn.row_factory=sqlite3.Row
+                row=conn.execute(
+                    "SELECT * FROM github_lesson_refs WHERE lesson=? AND role=? "
+                    "AND repository_id=? AND slot=?",
+                    (lesson,role,repository_id,slot)).fetchone()
+                locked=dict(row) if row else None
+        except sqlite3.Error:
+            locked=None
         if locked is None:
             raise ValueError("congele a versão desta aula")
         expected=(entry["repo"],spec["ref_tipo"],spec["ref"],spec.get("pasta",""))
