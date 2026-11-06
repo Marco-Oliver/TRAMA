@@ -326,6 +326,45 @@ class MappingBridgeTests(unittest.TestCase):
         self.assertFalse(self.bridge.save_lesson_code("Aula-131",data,confirmed=False)["ok"])
         self.assertTrue(self.bridge.save_lesson_code("Aula-131",data,confirmed=True)["ok"])
 
+    def test_replace_invalid_requires_original_digest_and_confirmation(self):
+        config=self.vault/".base-conhecimento"/"aulas-github.json"
+        config.parent.mkdir(parents=True,exist_ok=True)
+        invalid={"professor":[dict(PROFESSOR,repo="https://evil.invalid/repo")],
+                 "dupla":[],"extra":"preservar!"}
+        config.write_text(json.dumps({"schema":1,"aulas":{"Aula-131":invalid}}),
+                          encoding="utf-8")
+        offered=self.bridge.lesson_code_config("Aula-131")
+        original=offered["invalid"]["Aula-131"]
+        self.assertEqual(original["raw"],invalid)
+        valid={"professor":[dict(PROFESSOR)],"dupla":[]}
+        self.assertFalse(self.bridge.save_lesson_code("Aula-131",valid,True)["ok"])
+        self.assertFalse(self.bridge.save_lesson_code("Aula-131",valid,
+                         True,True,"0"*64)["ok"])
+        self.assertEqual(json.loads(config.read_text())["aulas"]["Aula-131"],invalid)
+        self.assertTrue(self.bridge.save_lesson_code("Aula-131",valid,True,
+                        True,original["digest"])["ok"])
+        self.assertEqual(read_config(self.vault)["aulas"]["Aula-131"],valid)
+
+    def test_empty_registration_rejected_even_with_generic_confirmation(self):
+        self.assertFalse(self.bridge.save_lesson_code("Aula-131",{
+            "professor":[],"dupla":[]},True)["ok"])
+        self.assertFalse((self.vault/".base-conhecimento"/"aulas-github.json").exists())
+
+    def test_python_remaps_changed_dates_without_network_access(self):
+        self.bridge._mapping_preview={
+            "aulas":[{"aula":"Aula-131","data":"2026-11-03",
+                      "origem_data":"contexto_classroom"}],
+            "candidatos":[
+                {"id":"commit:abc","tipo":"commit","data":"2026-11-04"},
+                {"id":"pasta:v3","tipo":"pasta","data":"2026-11-03"}
+            ]
+        }
+        result=self.bridge.suggest_lesson_mappings({"Aula-131":"2026-11-03"})
+        self.assertTrue(result["ok"],result)
+        self.assertEqual(result["aulas"][0]["candidato_id"],"pasta:v3")
+        self.assertFalse(self.bridge.suggest_lesson_mappings({"Aula-999":"2026-11-03"})["ok"])
+        self.assertFalse((self.vault/".base-conhecimento"/"aulas-github.json").exists())
+
     def test_packaged_editor_js_is_inline_and_hashed(self):
         html=load_local_ui()
         self.assertIn("lesson-code-dialog",html)
