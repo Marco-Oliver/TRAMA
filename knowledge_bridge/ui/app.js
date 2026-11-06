@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const TRAMA_PREVIEW_CHECK_ON_OPEN = false; // Build script enables only for isolated Preview.
 const escapeHTML = value => String(value??'').replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-const app={view:'lessons',tab:'Nota completa',snapshot:null,note:null,selected:null,filter:'',listFilter:'all',aiConsent:false};
+const app={view:'lessons',tab:'Nota completa',snapshot:null,note:null,selected:null,filter:'',listFilter:'all',aiConsent:false,graphView:null};
 let bridge=null;
 const categories={lessons:'02-Minhas-Aulas',knowledge:'01-Meu-Conhecimento',projects:'03-Meus-Projetos'};
 const titles={lessons:'Minhas Aulas',knowledge:'Meu Conhecimento',projects:'Meus Projetos',library:'Biblioteca do Obsidian'};
@@ -46,7 +46,7 @@ function askTramaConfirm(title,description,acceptLabel='Continuar'){
 }
 async function call(name,...args){if(!bridge||typeof bridge[name]!=='function'){notify('Conecte o aplicativo TRAMA.');return null;}try{return await bridge[name](...args);}catch(e){notify('Falha ao executar: '+String(e).slice(0,160));return null;}}
 async function refresh(){const data=await call('snapshot');if(!data)return;app.snapshot=data;libraryState.favorites=new Set(data.favorites||[]);document.body.classList.toggle('connected',!!data.connected);$('connect-state').textContent=data.connected?'Obsidian conectado':'Configure o cofre do Obsidian';const s=data.stats||{};$('status-counts').textContent=`▤ ${s.notes||0} notas   │   ▶ ${s.videos||0} vídeos   │   ▤ ${s.transcriptions||0} transcrições   │   ▰ ${s.materials||0} materiais   │   ▱ ${s.repositories||0} projetos`;
- document.querySelector('.status-version').textContent='TRAMA v2.1.0  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
+ document.querySelector('.status-version').textContent='TRAMA v2.2.0  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
  if(!data.connected){app.note=null;app.selected=null;}
  renderNavigation();await render();}
 function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
@@ -72,11 +72,12 @@ function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
 }
 function renderNavigation(){document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.view===app.view));}
 async function setView(view){app.view=view;app.filter='';app.listFilter='all';app.tab=view==='lessons'?'Nota completa':'Resumo';$('search-all').value='';$('list-search').value='';renderNavigation();await render();}
-async function render(){if(!app.snapshot)return;if(app.view==='library'){await renderLibraryView();return;}if(['graph','home','settings','teacher'].includes(app.view)){renderOverlay();return;}
+async function render(){if(app.view!=='graph'&&app.graphView){app.graphView.destroy();app.graphView=null;}if(!app.snapshot)return;if(app.view==='library'){await renderLibraryView();return;}if(['graph','home','settings','teacher'].includes(app.view)){renderOverlay();return;}
  $('library-workspace').classList.add('hidden');$('overlay-screen').classList.add('hidden');$('list-panel').classList.remove('hidden');$('note-panel').classList.remove('hidden');$('details-panel').classList.remove('hidden');
  $('list-title').textContent=titles[app.view]||'Minha Biblioteca';
  document.querySelectorAll('[data-list-filter]').forEach(btn=>btn.classList.toggle('active',btn.dataset.listFilter===app.listFilter));
  $('btn-context').style.display=app.view==='lessons'?'':'none';
+  $('btn-lesson-code').style.display=app.view==='lessons'?'':'none';
  $('list-search').placeholder=app.view==='lessons'?'Buscar aulas...':'Buscar notas...';
  const notes=getNotes();if(!notes.some(n=>n.id===app.selected))app.selected=notes[0]?.id||null;
  renderList(notes);if(app.selected){app.note=await call('note',app.selected);}else app.note=null;
@@ -299,7 +300,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
  if(app.view==='settings'){
   el.innerHTML=`<div class="wide-header"><h2>Ajustes</h2><p>O cofre do Obsidian é a fonte principal. O TRAMA não cria outra biblioteca.</p></div>
   <div class="settings-grid"><div class="setting-block"><h3>Atualizações do TRAMA</h3>
-    <p><strong>Versão instalada: 2.1.0.</strong> Para atualizar: clique em Verificar, depois em Baixar e confirme a instalação. Você não precisa reinstalar Python nem baixar arquivos ZIP.</p>
+    <p><strong>Versão instalada: 2.2.0.</strong> Para atualizar: clique em Verificar, depois em Baixar e confirme a instalação. Você não precisa reinstalar Python nem baixar arquivos ZIP.</p>
     <button id="check-updates">Verificar atualizações</button>
     <p id="update-message" class="setting-status">Clique em “Verificar atualizações” para consultar o GitHub.</p>
     <button id="install-update" class="hidden">Baixar e instalar nova versão</button>
@@ -456,13 +457,12 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
   el.querySelector('#home-library').addEventListener('click',()=>setView('library'));return;
  }
  const graph=await call('graph');const nodes=graph?.nodes||[],edges=graph?.edges||[];
- el.innerHTML=`<div class="wide-header"><h2>Grafo de conexões</h2><p>${nodes.length} notas e ${edges.length} links reais entre arquivos do Obsidian.</p></div><div class="graph-box" id="graph-box"><svg id="graph-svg" viewBox="0 0 1000 700" aria-label="Grafo das notas"></svg></div>`;
- if(!nodes.length){el.querySelector('.graph-box').innerHTML='<p class="empty-text" class="graph-empty">Seu grafo será construído quando suas notas tiverem links internos [[...]].</p>';return;}
- const svg=$('graph-svg'),ns='http://www.w3.org/2000/svg';const clusters={'01-Meu-Conhecimento':[-240,-90],'02-Minhas-Aulas':[200,-70],'03-Meus-Projetos':[0,180],'00-Inicio':[0,-220]};const counts={};
- const pos=nodes.map(n=>{const i=counts[n.section]||0;counts[n.section]=i+1;const a=i*2.399,r=65+16*Math.sqrt(i),c=clusters[n.section]||[0,0];return [500+c[0]+Math.cos(a)*r,350+c[1]+Math.sin(a)*r];});
- for(const [a,b] of edges){const edge=document.createElementNS(ns,'line');edge.setAttribute('x1',pos[a][0]);edge.setAttribute('y1',pos[a][1]);edge.setAttribute('x2',pos[b][0]);edge.setAttribute('y2',pos[b][1]);svg.appendChild(edge);}
- const colors={'01-Meu-Conhecimento':'#4b9166','02-Minhas-Aulas':'#5b89b1','03-Meus-Projetos':'#be9664','00-Inicio':'#8b7ba8'};
- nodes.forEach((n,i)=>{const g=document.createElementNS(ns,'g');const node=document.createElementNS(ns,'circle');node.setAttribute('cx',pos[i][0]);node.setAttribute('cy',pos[i][1]);node.setAttribute('r',5.5);node.setAttribute('fill',colors[n.section]||'#91a59c');node.addEventListener('click',async()=>{app.selected=n.id;app.view='library';await render();});g.appendChild(node);if(i<25){const label=document.createElementNS(ns,'text');label.setAttribute('x',pos[i][0]+10);label.setAttribute('y',pos[i][1]-9);label.textContent=n.title.slice(0,30);g.appendChild(label);}svg.appendChild(g);});
+ if(app.graphView){app.graphView.destroy();app.graphView=null;}
+ el.innerHTML=`<div class="wide-header"><h2>Grafo de conexões</h2><p>${nodes.length} notas e ${edges.length} links reais entre arquivos do Obsidian. Passe o mouse para ver as ligações; clique para abrir.</p></div><div id="graph-host"></div>`;
+ if(!nodes.length){$('graph-host').innerHTML='<p class="empty-text">Seu grafo será construído quando suas notas tiverem links internos [[...]].</p>';return;}
+ app.graphView=TramaGraph.mount($('graph-host'),{nodes,edges},{
+   onOpen:async id=>{app.selected=id;app.view='library';renderNavigation();await render();}
+ });
 }
 function openClassroomContext(){
  const dlg=$('classroom-dialog');$('context-feedback').textContent='';
@@ -581,6 +581,18 @@ function bind(){document.querySelectorAll('.nav-item').forEach(el=>el.addEventLi
  $('btn-settings').addEventListener('click',()=>setView('settings'));
  $('btn-context').addEventListener('click',openClassroomContext);
  $('repo-form').addEventListener('submit',submitRepo);
+ $('repo-recalculate').addEventListener('click',async()=>{
+   const repo=$('repo-url').value.trim();
+   if(!repo){$('repo-feedback').textContent='Informe o repositório para recalcular.';return;}
+   if(!await askTramaConfirm('Recalcular versões automáticas',
+      'Reavaliar versões de todas as aulas deste repositório? Ajustes manuais serão preservados.','Recalcular'))return;
+   $('repo-feedback').textContent='Recalculando versões por conteúdo, fala e ordem...';
+   const result=await call('recalculate_github_versions',repo,true);
+   $('repo-feedback').textContent=result?.ok?
+      'Recálculo finalizado: '+(result.mapped||0)+' aula(s). '+(result.pending||[]).join(' '):
+      (result?.message||'Não foi possível recalcular.');
+   if(result?.ok){await refresh();}
+ });
  $('repo-close').addEventListener('click',closeRepoDialog);
  $('repo-cancel').addEventListener('click',closeRepoDialog);
  $('auto-close').addEventListener('click',closeAutoImport);

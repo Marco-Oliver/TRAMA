@@ -16,8 +16,10 @@ from urllib.parse import quote
 from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, slug, concept_slug, concept_file_slug, timed_lines, study_windows, opening_lesson_number_mismatch, suspected_technical_transcription, suspected_concept_name
 from .store import Store
 from .memory_atlas import make_atlas, render_atlas, lesson_order, norm, note_for, literal_technical_mention
-from .code_intel import match_lesson_to_repository, potential_transcript_corrections
-from .learning_review import refresh_uncertainties, render_uncertainties
+from .code_intel import match_lesson_to_repository, potential_transcript_corrections, is_generic_code_term
+from .learning_review import refresh_uncertainties, render_uncertainties, code_evidence_lines
+from .frozen_code_resolution import match_frozen_question
+from .github_lesson_index import LessonRepositoryIndex
 
 
 def _escape_md(s: object) -> str:
@@ -213,6 +215,16 @@ def _source_quote(value: object, limit: int = 260, term: str = "") -> str:
             .replace("[[", "［［").replace("]]", "］］"))
 
 
+def _project_ref(repo) -> str:
+    """Stable Obsidian note target for an immutable SHA/folder snapshot."""
+    name = f"{slug(repo['name'])}-{repo['sha'][:7]}"
+    if repo.get("frozen"):
+        identity = (str(repo["url"]) + "\n" + str(repo["sha"]) + "\n"
+                    + str(repo.get("folder", ""))).encode("utf-8")
+        return name + "-f" + hashlib.sha256(identity).hexdigest()[:8]
+    return name
+
+
 def _code_ref(repo, path: str, line: int) -> str:
     """Link to the immutable GitHub revision; local repos retain path:line."""
     location = f"{_escape_md(path)}:{line}"
@@ -228,14 +240,116 @@ class Publisher:
     def __init__(self, store: Store):
         self.db, self.vault = store, store.vault
         self._concept_targets = {}
+        self.lesson_repo_index = LessonRepositoryIndex(store)
+        self._lesson_repo_memo = {}
+        self._frozen_question_memo = {}
+        self._concept_aliases = {}
         for folder in ["00-Inicio", "01-Meu-Conhecimento", "02-Minhas-Aulas", "03-Meus-Projetos",
                        "05-Anotacoes-Pessoais", "90-Sistema", "99-Anexos/Videos", "99-Anexos/Transcricoes-Originais",
                        "99-Anexos/Materiais-Originais", "99-Anexos/Contexto-Classroom"]:
             (self.vault / folder).mkdir(parents=True, exist_ok=True)
 
-    def _concept_target(self, name: str) -> str:
-        """Filename of a known concept group, independent of its comparison key."""
-        return self._concept_targets.get(concept_slug(name), concept_file_slug(name))
+    def _lesson_repos(self, lesson: str):
+        """Resolve each lesson only once during this publication."""
+        if lesson not in self._lesson_repo_memo:
+            self._lesson_repo_memo[lesson] = self.lesson_repo_index.for_lesson(lesson)
+        return self._lesson_repo_memo[lesson]
+
+    def _keep_previous_code(self, lines, rel, lesson, start_heading, end_heading):
+        """If a frozen index is unreachable, preserve prior SHA-matched code text.
+
+        Never recover stale code after explicit unfreeze or a changed SHA.
+        Only replace the generated section; other lesson content still updates.
+        """
+        if lesson not in self.lesson_repo_index.failed_lessons:
+            return lines
+        warning = self.lesson_repo_index.warning(lesson)
+        start = next((i for i, line in enumerate(lines) if line == start_heading), None)
+        if start is None:
+            return lines
+        previous = []
+        path = self.vault / rel
+        try:
+            if (path.is_file() and not path.is_symlink() and
+                    path.resolve().is_relative_to(self.vault) and
+                    path.stat().st_size <= 2_000_000):
+                old = path.read_text(encoding="utf-8")
+                left = old.find(start_heading + "\n")
+                right = old.find("\n" + end_heading, left + len(start_heading)) if left >= 0 else -1
+                if left >= 0 and right > left:
+                    previous = old[left + len(start_heading) + 1:right].splitlines()
+                    previous = [line for line in previous
+                                if not line.startswith("> **TRAMA (offline):**")]
+                    # A previous note might belong to an old, explicitly
+                    # unfrozen SHA. Do not silently reuse mismatched evidence.
+                    commits = set(re.findall(r"/blob/([0-9a-f]{40})/", "\n".join(previous), re.I))
+                    _, current, _ = self.lesson_repo_index._status.get(lesson, (0, [], []))
+                    pinned = {row["commit_sha"] for row in current}
+                    if not commits or not commits.issubset(pinned):
+                        previous = []
+        except (OSError, UnicodeError, ValueError):
+            previous = []
+        # Do not claim "no code" on a transient 403/429/network outage.
+        restored = previous if previous else ["", "*Relações não atualizadas: índice congelado indisponível.*"]
+        return lines[:start + 1] + restored + [
+            "", "> **TRAMA (offline):** " + warning,
+        ]
+
+    def _code_guess(self, lesson: str, question: str):
+        """Local, SHA-only evidence, never HEAD or another lesson's version."""
+        key = (lesson, question.casefold().strip())
+        if key not in self._frozen_question_memo:
+            selected = [row for row in self._lesson_repos(lesson)
+                        if row[0].get("frozen")]
+            self._frozen_question_memo[key] = match_frozen_question(question, selected)
+        return self._frozen_question_memo[key]
+
+    @staticmethod
+    def _marked_distortion(concept: dict, raw: str) -> bool:
+        """Concepts are not doubts. Only explicitly flagged ASR names may be
+        compared to code, and even those are ignored when the original name
+        is already present literally in the TXT or is ordinary Portuguese.
+        """
+        if not isinstance(concept, dict):
+            return False
+        name = str(concept.get("nome", "")).strip()
+        if not name:
+            return False
+        # A known whole-label ASR hint can be present literally in the TXT:
+        # the literal is the transcription error, not necessarily correct.
+        known_asr = suspected_concept_name(name)
+        flagged = bool(str(concept.get("suspeita_transcricao") or "").strip())
+        if not flagged and not known_asr:
+            return False
+        # Ordinary Portuguese nouns are not ASR errors simply because an
+        # English symbol happens to be orthographically similar.
+        if re.search(r"\b\w+(?:ção|ções|mento|mentos|dade|dades)\b",
+                     name.casefold(), re.UNICODE):
+            return False
+        if literal_technical_mention(name, raw) and not known_asr:
+            return False
+        return True
+
+    def _corrected_concept(self, src, name: str, concept: dict | None = None, raw: str = ""):
+        """Use a *marked* and nonliteral ASR concept label only as a hint."""
+        if not self._marked_distortion(concept or {}, raw):
+            return name
+        match = self._code_guess(src["lesson"] or "", name)
+        if not match or match["candidate"].casefold() == name.casefold():
+            return name
+        canonical = match["candidate"]
+        known_asr = suspected_concept_name(name)
+        if known_asr and canonical.casefold() != known_asr.casefold():
+            return name  # reject unrelated code names even with ASR warning
+        if concept_slug(canonical) in self._concept_targets:
+            self._concept_aliases[(src["id"], name.casefold())] = canonical
+            return canonical
+        return name
+
+    def _concept_target(self, name: str, source_id: str = "") -> str:
+        """Keep the spoken label in text; optionally link its verified alias."""
+        corrected = self._concept_aliases.get((source_id, name.casefold()), name)
+        return self._concept_targets.get(concept_slug(corrected), concept_file_slug(corrected))
 
     @staticmethod
     def _asr_concept_warning(concept: dict) -> str:
@@ -594,6 +708,8 @@ class Publisher:
                 if not isinstance(candidate,dict):
                     continue
                 label=str(candidate.get('nome','')).strip()
+                if is_generic_code_term(label):
+                    continue
                 match=literal_technical_mention(label,raw)
                 pair=(label,match)
                 if match and pair not in observed_terms:
@@ -637,9 +753,8 @@ class Publisher:
                         'Isso é normal em apresentações ou encontros sem conteúdo técnico.*')
         rows += ['', '## Projetos relacionados', '']
         found_code=False
-        for repo in self.db.repositories():
+        for repo, payload in self._lesson_repos(lesson):
             try:
-                payload=json.loads(repo['payload'])
                 matches=[]
                 for src, _note in recordings:
                     raw=(self.vault/src['stored_path']).read_text(encoding='utf-8-sig',errors='replace')
@@ -647,14 +762,21 @@ class Publisher:
                     matches.extend(match_lesson_to_repository(raw,a,payload,cap=2))
                 if matches:
                     found_code=True
-                    ref=f"{slug(repo['name'])}-{repo['sha'][:7]}"
+                    ref=f"{_project_ref(repo)}"
                     rows.append(f"- [[{ref}|{_escape_md(repo['name'])}]] — código relacionado por conceito; "
                                 f"ex.: {_code_ref(repo, matches[0]['path'], matches[0]['line'])}. "
                                 '**Possível relação; não comprova autoria nem momento da implementação.**')
             except (ValueError, KeyError, TypeError):
                 continue
+        warning = self.lesson_repo_index.warning(lesson)
+        if warning:
+            rows.append("> " + warning)
         if not found_code:
-            rows.append('*Ainda não há código com relação verificável para esta aula.*')
+            rows.append("*Associação temporariamente pendente; não significa ausência de código.*"
+                        if "pendente por limite" in warning else
+                        "*Ainda não há código com relação verificável para esta aula.*")
+        rows = self._keep_previous_code(rows, rel, lesson,
+                                        "## Projetos relacionados", "## Fontes e materiais")
         rows += ['', '## Fontes e materiais', '']
         for src in self._lesson_extras(lesson):
             if src['kind']=='classroom':
@@ -713,13 +835,19 @@ class Publisher:
         fname = f"{slug(Path(src['label']).stem, 52)}-{src['id'][:7]}.md"
         rel = f"02-Minhas-Aulas/{lesson}/{fname}"
         concepts = analysis.get("conceitos",[]) if analysis else []
-        concept_links = []
-        for c in concepts:
-            name = c.get("nome", "").strip()
-            if name:
-                concept_links.append(f"[[{self._concept_target(name)}|{_escape_md(name)}]]")
         raw = self.vault / src["stored_path"]
         text = raw.read_text(encoding="utf-8-sig",errors="replace")
+        concept_links_by_target = {}
+        for c in concepts:
+            if not isinstance(c, dict):
+                continue
+            name = str(c.get("nome", "")).strip()
+            if name:
+                canonical = self._corrected_concept(src, name, c, text)
+                target = self._concept_target(name, src["id"])
+                concept_links_by_target[target] = (
+                    f"[[{target}|{_escape_md(canonical)}]]")
+        concept_links = list(concept_links_by_target.values())
         # Uma apresentação ou encontro administrativo não vira falsamente um
         # módulo técnico só porque alguém mencionou a palavra 'programação'.
         lesson_kind=analysis.get('tipo_aula','indefinida') if analysis else 'indefinida'
@@ -768,12 +896,19 @@ class Publisher:
                     if warning:
                         body.append("  - **Nome possivelmente distorcido pela transcrição:** "
                                     + _escape_md(warning))
+                    matched = (self._code_guess(lesson, name)
+                               if self._marked_distortion(c, text) else None)
+                    if matched and matched["candidate"].casefold() != name.casefold():
+                        body.append("  - **Nome provável no código:** "
+                                    + chr(96) + _escape_md(matched["candidate"]) + chr(96)
+                                    + " (nome original mantido; consulte Dúvidas técnicas abaixo).")
             # Reconcile legacy cached analyses locally, without another API
             # call: a spoken abbreviation can back a mention even when the
             # whole expanded model label was not said. Do NOT auto-create a
             # concept note: no explanation has been checked for this label.
             suggested=[c for c in analysis.get("conceitos_a_conferir",[])
-                       if isinstance(c,dict) and c.get("nome")]
+                       if isinstance(c,dict) and c.get("nome")
+                       and not is_generic_code_term(c.get("nome"))]
             observed=[]
             unsupported=[]
             for candidate in suggested[:12]:
@@ -789,6 +924,8 @@ class Publisher:
                 for label,found in observed:
                     body.append("- `"+_escape_md(label)+"` — forma observada: `"+
                                 _escape_md(found)+"`; conferir o contexto na transcrição.")
+                    # This is a verified literal mention, not an ASR error:
+                    # never submit an unmarked concept to the matcher.
             if unsupported:
                 body += ["", "## Termos sugeridos pela IA para conferir", "",
                          "> Não foi encontrada menção literal nem abreviação verificável "
@@ -816,10 +953,37 @@ class Publisher:
                          "Não trate como código executado ou demonstrado."] + [
                              f"- {_escape_md(x)}"
                              for x in analysis.get("exemplos_reconstruidos_a_conferir", [])[:10]]
-            if analysis.get("duvidas"):
+            # Only the analysis' explicit doubts become stateful doubts.
+            # Never merge concepts or automatically suspected terms into this
+            # list; a Portuguese concept is not a transcription error.
+            questions = [q for q in analysis.get("duvidas",[])
+                         if isinstance(q,str) and q.strip()]
+            seen_questions = set()
+            question_entries = []
+            for q in questions:
+                key = q.casefold().strip()
+                if key in seen_questions:
+                    continue
+                seen_questions.add(key)
+                question_entries.append((q, self._code_guess(lesson, q)))
+            if question_entries:
                 body += ["", "## Dúvidas técnicas e passagens inaudíveis", "",
-                         "> Uma hipótese de transcrição não comprova erro nem aprendizado."] + [
-                             f"- {_escape_md(x)}" for x in analysis.get("duvidas",[])]
+                         "> Hipóteses encontradas no SHA congelado; o áudio "
+                         "não foi conferido e o TXT original foi preservado."]
+                current = {row["question"].casefold():row for row in
+                           self.db.uncertainties_for_source(src["id"])
+                           if row["source_digest"]==src["digest"]}
+                for question, match in question_entries:
+                    row = current.get(str(question).strip().casefold())
+                    status = row["status"] if row is not None else (
+                        "EXPLICADA_PELO_CODIGO" if match else "PENDENTE")
+                    body.append(f"- {_escape_md(question)} — **Estado:** `{status}`")
+                    if status == "EXPLICADA_PELO_CODIGO":
+                        # A later follow-up may have a DIFFERENT frozen SHA.
+                        evidences = json.loads(row["evidence_json"]) if row else [match]
+                        for evidence in evidences:
+                            if evidence and evidence.get("kind") == "codigo_congelado":
+                                body.extend(code_evidence_lines(evidence))
             if analysis.get("nomes_a_conferir"):
                 body += ["", "## Nomes e apelidos para conferir", "",
                          "> Nomes próprios ou apelidos podem estar corretos; não são dúvidas de programação."] + [
@@ -864,7 +1028,7 @@ class Publisher:
                     body.append(f"### {question}")
                     body.append(f"- Estado: `{status}`.")
                     body.append(f"- [[{row['id']}|Abrir registro e histórico desta dúvida]]")
-                    if status != "NOVA_EVIDENCIA_PARA_REVISAR":
+                    if status not in ("NOVA_EVIDENCIA_PARA_REVISAR", "EXPLICADA_PELO_CODIGO"):
                         body.append("- Nenhuma explicação posterior identificada nas fontes cadastradas.")
                         body.append("")
                         continue
@@ -887,6 +1051,9 @@ class Publisher:
                             body.append(
                                 f"- **Aula posterior:** [[{link}|{_escape_md(later['lesson'] or later['label'])}]] "
                                 f"({stamp}) — trecho observado: “{excerpt}”.")
+                        elif evidence.get("kind") == "codigo_congelado":
+                            body.append("- **Código da versão congelada:** "
+                                        "ver dúvida técnica acima (pista, não prova do áudio).")
                         elif evidence.get("kind") == "codigo":
                             ref = _code_ref({"url":evidence.get("repo", ""),
                                              "sha":evidence.get("sha", "")},
@@ -951,12 +1118,17 @@ class Publisher:
         body += ["", "> Os códigos e nomes técnicos devem ser conferidos com o repositório antes de serem considerados verificados."]
         body += ["", "## Relações com códigos e projetos", ""]
         project_matches = []
-        for repo in self.db.repositories():
-            payload = json.loads(repo["payload"])
+        for repo, payload in self._lesson_repos(lesson):
+            if repo.get("origin") == "automatica":
+                body.append(f"- **Versão GitHub automática:** `{_escape_md(repo.get('version',''))}` "
+                            f"— confiança **{_escape_md(repo.get('confidence','baixa'))}** "
+                            f"— commit `{repo['sha'][:10]}`.")
+                if repo.get("confidence") == "baixa":
+                    body.append("> versão estimada; confira")
             matched = match_lesson_to_repository(text, analysis, payload, cap=5)
             if not matched:
                 continue
-            project_ref = f"{slug(repo['name'])}-{repo['sha'][:7]}"
+            project_ref = f"{_project_ref(repo)}"
             body.append(f"### [[{project_ref}|{_escape_md(repo['name'])}]]")
             body.append("*Conexão sugerida por conceito mencionado + código encontrado; não prova autoria nem que foi programado nesta aula.*")
             for e in matched:
@@ -969,8 +1141,24 @@ class Publisher:
                                 ".sql": "sql"}.get(ext, "text")
                     body.extend(["", f"```{language}", snippet.replace("```", "` ` `"), "```", ""])
             project_matches.append((repo, payload))
+        warning = self.lesson_repo_index.warning(lesson)
+        if warning:
+            body.append("> " + warning)
         if not project_matches:
-            body.append("*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
+            verified = any(row["status"] == "EXPLICADA_PELO_CODIGO"
+                           and row["source_digest"] == src["digest"]
+                           for row in self.db.uncertainties_for_source(src["id"]))
+            if verified:
+                body.append("*Dúvidas relacionadas a identificadores concretos da versão congelada "
+                            "estão documentadas acima. Não houve outra relação literal "
+                            "de conceito identificada nesta seção.*")
+            else:
+                body.append("*Associação temporariamente pendente; não significa ausência de código.*"
+                            if "pendente por limite" in warning else
+                            "*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
+        total, frozen, _ = self.lesson_repo_index._status.get(lesson, (0, [], []))
+        if total<0 or total>len(frozen):
+            body.append("**Código GitHub pendente:** congele a versão desta aula antes de relacionar código às notas.")
         body += ["", "## Comparação revisada por IA (com referências)"]
         validated_any=False
         for repo, payload in project_matches:
@@ -992,38 +1180,44 @@ class Publisher:
                             f"**[{item['status']}]**")
         if not validated_any:
             body.append('*Ainda sem comparação pela IA; relações acima são pistas verificadas de texto e código.*')
+        body = self._keep_previous_code(body, rel, lesson,
+                                        "## Relações com códigos e projetos",
+                                        "## Termos suspeitos da transcrição")
+        # Preserve offline ASR-only review hints separately from verified
+        # frozen-code matches; old lessons remain reviewable without code.
+        if not any(repo.get("frozen") for repo, _ in self._lesson_repos(lesson)):
+            raw_hints = suspected_technical_transcription(text)
+            if raw_hints:
+                body += ["", "## Hipóteses da transcrição sem conferência de código", "",
+                         "> O áudio não foi conferido. Estas são apenas grafias "
+                         "suspeitas do TXT; nenhum identificador específico "
+                         "de código foi verificado nesta aula.", ""]
+                for stamp, heard, suggestion in raw_hints:
+                    if is_generic_code_term(heard) or is_generic_code_term(suggestion):
+                        continue
+                    body.append("- **" + _escape_md(stamp) + "** — transcrito: "
+                                + chr(96) + _escape_md(heard) + chr(96)
+                                + "; hipótese a revisar: "
+                                + chr(96) + _escape_md(suggestion) + chr(96) + ".")
         body += ["", "## Termos suspeitos da transcrição", ""]
-        suggested=[]
-        for repo, payload in project_matches:
-            for hint in potential_transcript_corrections(text, payload):
-                key=(hint['heard'].lower(),hint['candidate'])
-                if key in suggested:
-                    continue
-                suggested.append(key)
-                body.append(f"- **HIPÓTESE, não correção automática:** `{_escape_md(hint['heard'])}` pode corresponder a "
-                            f"`{hint['candidate']}`, encontrado em {_code_ref(repo, hint['path'], hint['line'])} "
-                            f"({repo['name']}); confira o vídeo antes de confirmar.")
-        suspected = suspected_technical_transcription(text)
-        if suspected:
-            body += [
-                "",
-                "> **Grafias suspeitas na transcrição original — somente hipóteses.** "
-                "O áudio não foi conferido. Nenhuma palavra foi substituída "
-                "e nenhuma explicação foi confirmada automaticamente.",
-                "",
-            ]
-            for stamp, observed, candidate in suspected:
-                body.append(
-                    f"- **{_escape_md(stamp)}** — transcrito: "
-                    f"`{_escape_md(observed)}`; possível termo a verificar: "
-                    f"`{_escape_md(candidate)}`. Revise a gravação antes de aceitar.")
-        if not suggested and not suspected:
-            body.append("*Nenhuma correção fundamentada encontrada.*")
+        # Do not duplicate the clue or propose broad conceptual rewordings.
+        # Every grounded correction lives in Dúvidas técnicas above.
+        if any(matched for _question, matched in
+               (question_entries if analysis else [])):
+            body.append("*Possíveis erros de grafia com identificador específico "
+                        "no código: ver Dúvidas técnicas e passagens inaudíveis acima.*")
+        else:
+            body.append("*Nenhuma correção específica fundamentada no código "
+                        "congelado desta aula.*")
         self.write(rel, "\n".join(body).strip() + "\n")
         return rel, concepts, modules
 
     def rebuild(self):
         """Deriva notas e revisão incremental das fontes originais cadastradas."""
+        self._lesson_repo_memo.clear()
+        self._frozen_question_memo.clear()
+        self._concept_aliases.clear()
+        self.lesson_repo_index.begin_run()
         # Fail closed before *any* Markdown write if a cached transcript no
         # longer agrees with the SQLite catalog. User notes stay untouched.
         from .content import file_hash
@@ -1035,7 +1229,7 @@ class Publisher:
                 self.db.update_status(source["id"], "NEEDS_REVIEW")
                 raise ValueError("Fonte do cofre alterada ou ausente: " +
                                  source["label"] + ". Reimporte o original.")
-        refresh_uncertainties(self.db)
+        refresh_uncertainties(self.db, self.lesson_repo_index)
         self._prepare_concept_targets()
         self._atlas = make_atlas(self.db, concept_targets=self._concept_targets)
         concept_map = defaultdict(list)
@@ -1071,7 +1265,11 @@ class Publisher:
             for concept in concepts:
                 name = concept.get("nome", "").strip()
                 if name:
-                    concept_map[concept_slug(name)].append((name,src,note,concept))
+                    canonical = self._corrected_concept(src, name, concept, original)
+                    stored_concept = ({**concept, "nome_original":name}
+                                      if canonical != name else concept)
+                    concept_map[concept_slug(canonical)].append(
+                        (canonical,src,note,stored_concept))
         # Classroom can contain names as explicitly user-provided text, even if there is
         # no transcript or code. It is a separate kind of evidence and must be labeled.
         lesson_to_note = {s['lesson']: n for s, n in lesson_links if s['lesson']}
@@ -1111,13 +1309,16 @@ class Publisher:
         for lesson in sorted({s['lesson'] for s in self.db.sources() if s['lesson']} - transcripts_by_lesson):
             self._other_lesson_note(lesson, [s for s in self.db.sources() if s['lesson'] == lesson])
 
-        repo_rows = self.db.repositories()
-        repo_info = []
-        for repo in repo_rows:
-            import json
-            payload = json.loads(repo["payload"])
-            repo_info.append((repo,payload))
-            rel = f"03-Meus-Projetos/{slug(repo['name'])}-{repo['sha'][:7]}.md"
+        repo_info = [(dict(repo), json.loads(repo["payload"]))
+                     for repo in self.db.repositories()]
+        known_projects = {_project_ref(repo) for repo, _ in repo_info}
+        for lesson in all_lessons:
+            for repo, payload in self._lesson_repos(lesson):
+                if repo["frozen"] and _project_ref(repo) not in known_projects:
+                    known_projects.add(_project_ref(repo))
+                    repo_info.append((repo, payload))
+        for repo, payload in repo_info:
+            rel = f"03-Meus-Projetos/{_project_ref(repo)}.md"
             body = [_frontmatter(tipo="projeto", sha=repo["sha"], estado=repo["status"]),
                     f"# Projeto — {repo['name']}", "", f"- Repositório: {repo['url']}",
                     f"- Commit analisado: `{repo['sha']}`", "",
@@ -1174,6 +1375,9 @@ class Publisher:
             body += ["", "## Conexões com aulas", ""]
             linked = False
             for src, note in lesson_links:
+                if not any(_project_ref(candidate) == _project_ref(repo)
+                           for candidate, _ in self._lesson_repos(src["lesson"] or "")):
+                    continue
                 raw=(self.vault/src["stored_path"]).read_text(encoding="utf-8-sig",errors="replace")
                 analysis=self.db.analysis(src["id"],src["digest"])
                 links=match_lesson_to_repository(raw,analysis,payload,cap=4)
@@ -1221,6 +1425,11 @@ class Publisher:
                 if warning:
                     body.append("- **Nome possivelmente distorcido pela transcrição:** "
                                 + _escape_md(warning))
+                if concept.get("nome_original"):
+                    body.append("- **Nome original mantido no TXT:** "
+                                + _escape_md(concept["nome_original"])
+                                + "; **nome provável no código:** "
+                                + chr(96) + _escape_md(name) + chr(96) + ".")
                 if groups:
                     for (stamp, sentence, form, anchor), nearby in groups:
                         target_note, is_proposal = self._published_anchor_target(
@@ -1270,7 +1479,7 @@ class Publisher:
                            if norm(e["concept"]) == norm(name)]
                 if matches:
                     first = matches[0]
-                    body.append(f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{_escape_md(repo['name'])}]]: "
+                    body.append(f"- [[{_project_ref(repo)}|{_escape_md(repo['name'])}]]: "
                                 f"{_code_ref(repo, first['path'], first['line'])} — "
                                 "código existente, sem atribuição automática de autoria.")
             if body[-1] == "## Projetos relacionados":
@@ -1355,7 +1564,7 @@ class Publisher:
                 if not docs:
                     continue
                 project_found = True
-                body.append(f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{_escape_md(repo['name'])}]] — "
+                body.append(f"- [[{_project_ref(repo)}|{_escape_md(repo['name'])}]] — "
                             + ", ".join(f"`{_escape_md(d['path'])}`" for d in docs[:4])
                             + "; documentação existente no repositório, não necessariamente conteúdo da aula")
             if not project_found:
@@ -1388,6 +1597,9 @@ class Publisher:
         for repo,payload in repo_info:
             matches=[]
             for src,note in lesson_links:
+                if not any(_project_ref(candidate) == _project_ref(repo)
+                           for candidate, _ in self._lesson_repos(src["lesson"] or "")):
+                    continue
                 raw=(self.vault/src["stored_path"]).read_text(encoding="utf-8-sig",errors="replace")
                 analysis=self.db.analysis(src["id"],src["digest"])
                 ev=match_lesson_to_repository(raw,analysis,payload,cap=3)
@@ -1397,7 +1609,7 @@ class Publisher:
                 context.append(f"- **{repo['name']}:** " + "; ".join(
                     f"[[{Path(n).stem}|{src['lesson'] or src['label']}]] aborda "
                     + ", ".join(f"`{e['concept']}`" for e in ev) for src,n,ev in matches[:5])
-                    + f"; trechos observados em [[{slug(repo['name'])}-{repo['sha'][:7]}|{repo['name']}]]. "
+                    + f"; trechos observados em [[{_project_ref(repo)}|{repo['name']}]]. "
                     + "*Associação candidata, não prova de quem implementou ou quando.*")
         context += ["", "## Pessoas mencionadas nas fontes", ""]
         context += [f"- [[{k}|{_escape_md(v[0][0])}]] — {len(v)} fonte(s); contexto/identidade a conferir" for k,v in sorted(person_map.items())]
@@ -1421,7 +1633,7 @@ class Publisher:
             index.append(f"- [[00-contexto-{slug(lesson)}|{lesson}]] — contexto sem transcrição")
         index += [f"- [[{Path(note).stem}|{src['label']}]] — gravação e transcrição" for src,note in lesson_links]
         index += ["", "## Projetos"]
-        index += [f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{repo['name']}]] — {repo['url']}" for repo,_ in repo_info]
+        index += [f"- [[{_project_ref(repo)}|{repo['name']}]] — {repo['url']}" for repo,_ in repo_info]
         index += ["", "> A aplicação não altera conteúdo de `05-Anotacoes-Pessoais`."]
         self.write("00-Inicio/Dashboard.md", "\n".join(index)+"\n")
         states = defaultdict(int)

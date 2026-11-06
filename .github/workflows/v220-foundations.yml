@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feat/v2.2.0-automation-foundations
+      - feat/github-por-aula
   workflow_dispatch:
 
 permissions:
@@ -40,3 +41,4 @@ jobs:
           node --check knowledge_bridge/ui/app.js
           node --check knowledge_bridge/ui/library.js
           node --check knowledge_bridge/ui/teacher.js
+          node --check knowledge_bridge/ui/lesson_code.js

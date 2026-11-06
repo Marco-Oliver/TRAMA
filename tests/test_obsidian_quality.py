@@ -164,13 +164,65 @@ class QualityTests(unittest.TestCase):
                            "line":19, "snippet":"19: obs.subscribe()", "line_text":"obs.subscribe()"}],
              "documentation": [], "history": []},
             "PUBLISHED")
-        self.app.publisher.rebuild()
+        from knowledge_bridge.lesson_code_config import save_lessons
+        save_lessons(self.vault, {"Aula-001":{"professor":[{
+            "id":"repo","rotulo":"Repositório do professor",
+            "repo":"https://github.com/academia/projeto",
+            "ref_tipo":"commit","ref":"a"*40,"pasta":""}],"dupla":[]}})
+        self.app.store.freeze_github_ref("Aula-001","professor","repo","current",
+            "https://github.com/academia/projeto","commit","a"*40,"","a"*40)
+        # A frozen lesson must index *actual bytes* from that immutable Git
+        # tree; the global HEAD payload above is not a valid substitute.
+        import hashlib
+        from unittest.mock import patch
+        from knowledge_bridge.github_mapping import GithubMapping
+        from knowledge_bridge.github_code import GithubCodeReader
+        contents = ("\n" * 18 + "obs.subscribe();\n").encode("utf-8")
+        blob = hashlib.sha1(b"blob " + str(len(contents)).encode()
+                            + b"\x00" + contents, usedforsecurity=False).hexdigest()
+        frozen_sha = "a" * 40
+
+        def get(client, repo, endpoint):
+            self.assertEqual(repo, "https://github.com/academia/projeto")
+            if endpoint == "":
+                return {"private": False}
+            if endpoint == f"git/trees/{frozen_sha}?recursive=1":
+                return {"truncated": False, "tree": [{
+                    "type": "blob", "mode": "100644", "path": "src/app.ts",
+                    "size": len(contents), "sha": blob}]}
+            raise AssertionError("Unexpected branch/HEAD lookup: " + endpoint)
+
+        with patch.object(GithubMapping, "_get", get), \
+             patch.object(GithubCodeReader, "_raw",
+                          lambda reader, repo, sha, path, private: contents):
+            self.app.publisher.rebuild()
         lecture = self.lesson_note().read_text(encoding="utf-8")
-        project = next((self.vault / "03-Meus-Projetos").glob("*.md")).read_text(encoding="utf-8")
+        project = next(p for p in (self.vault / "03-Meus-Projetos").glob("*.md")
+                       if "-f" in p.stem).read_text(encoding="utf-8")
         self.assertIn("/blob/" + "a"*40 + "/src/app.ts#L19", lecture)
         self.assertIn("obs.subscribe()", lecture)
         self.assertIn("```typescript", lecture)
         self.assertIn("/blob/" + "a"*40 + "/src/app.ts#L19", project)
+
+    def test_mapped_lesson_without_frozen_sha_hides_global_branch_code(self):
+        from knowledge_bridge.lesson_code_config import save_lessons
+        source=self.source("Aula-001-V01.txt",
+                           "[0:04] O subscribe observa eventos de programação.")
+        self.analysis(source,"O subscribe é apresentado.",
+                      [{"nome":"subscribe","explicacao":"Observa eventos","tempo":"0:04"}])
+        self.app.store.save_repo("https://github.com/academia/projeto","exemplo","a"*40,
+            {"files":[],"technologies":["TypeScript"],
+             "evidence":[{"concept":"subscribe","path":"src/app.ts","line":19,
+                          "snippet":"19: obs.subscribe()","line_text":"obs.subscribe()"}],
+             "documentation":[],"history":[]},"INDEXED")
+        save_lessons(self.vault, {"Aula-001":{"professor":[{
+            "id":"repo","rotulo":"Repositório do professor",
+            "repo":"https://github.com/academia/projeto",
+            "ref_tipo":"branch","ref":"main","pasta":""}],"dupla":[]}})
+        self.app.publisher.rebuild()
+        lecture=self.lesson_note().read_text(encoding="utf-8")
+        self.assertNotIn("/blob/"+"a"*40,lecture)
+        self.assertIn("congele a versão desta aula",lecture)
 
     def test_duplicate_proposal_is_not_recreated_if_earlier_one_was_edited(self):
         self.source("Aula-001-V01.txt",

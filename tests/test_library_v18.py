@@ -90,7 +90,7 @@ class ReadableLibraryV18Tests(unittest.TestCase):
         self.assertIn('data-lib-action="organize"',html)
         self.assertIn('organize_library',html)
         self.assertIn('libRenderMarkdown(n.content',html)
-        self.assertIn('TRAMA v2.0',html)
+        self.assertIn('TRAMA v2.2.0',html)
         self.assertNotIn('class="win-controls"',html)
 
 class LocalAuditV18Tests(unittest.TestCase):

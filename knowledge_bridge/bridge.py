@@ -34,6 +34,26 @@ from .paths import DATA_HOME, SETTINGS_FILE, CONFIG_FILE, PREVIEW_BUNDLE
 
 ALLOWED_ATTACHMENTS={'.txt','.md','.mp4','.mkv','.mov','.webm','.png','.jpg','.jpeg','.webp','.pdf','.docx'}
 
+_GRAPH_INDEX_STEMS = {"minha-biblioteca", "meu_contexto", "mapa-da-evolucao", "bem-vindo", "indice-de-duvidas"}
+
+def _graph_kind(note) -> str:
+    """Classificação só para cor e filtro do gráfico; não altera notas."""
+    tipo = str(note.metadata.get("tipo", "")).casefold()
+    stem = note.stem.casefold()
+    # render_uncertainties() writes these notes without a 'tipo' frontmatter.
+    if "duvida" in tipo or note.relative.casefold().startswith("01-meu-conhecimento/duvidas/"):
+        return "duvida"
+    if (tipo in ("visao_geral", "indice", "mapa") or stem.startswith("00-")
+            or stem in _GRAPH_INDEX_STEMS or note.section == "00-Inicio"):
+        return "indice"
+    if note.section == "01-Meu-Conhecimento":
+        return "conceito"
+    if note.section == "02-Minhas-Aulas":
+        return "aula"
+    if note.section == "03-Meus-Projetos":
+        return "projeto"
+    return "outro"
+
 class Bridge:
     def __init__(self):
         self._window=None
@@ -45,6 +65,7 @@ class Bridge:
         self._verified_installer=None  # path + sha256 only after verified download
         self._teacher_lock=threading.Lock()
         self._teacher_history=[]
+        self._mapping_preview=None  # Candidate refs are never persisted without user confirmation.
         self._teacher_vault=None
         self._teacher_requests=0
         # Fila em memória: nada é enviado nem escrito no Obsidian até Processar tudo.
@@ -315,7 +336,8 @@ class Bridge:
         idx=self._index()
         if not idx:return {'nodes':[],'edges':[]}
         nodes,edges=idx.graph(cap=450)
-        return {'nodes':[{'id':n.relative,'title':n.title,'section':n.section} for n in nodes],
+        return {'nodes':[{'id':n.relative,'title':n.title,'section':n.section,
+                          'kind':_graph_kind(n)} for n in nodes],
                 'edges':edges}
 
     def audit_note(self, note_id):
@@ -1052,8 +1074,20 @@ class Bridge:
                        if src["lesson"]==lesson and src["status"]!="PUBLISHED"]
             if remaining:
                 return self._processing_feedback(remaining,logs)
-            return {'ok':True,'message':'Análise da aula concluída; notas do Obsidian atualizadas.',
-                    'logs':logs[-8:]}
+            from .store import Store
+            db=Store(vault)
+            try:
+                count,code_locks=db.github_lesson_refs(lesson)
+            finally:
+                db.close()
+            needs_freeze=count<0 or count>len(code_locks)
+            message='Análise da aula concluída; notas do Obsidian atualizadas.'
+            if needs_freeze:
+                message+=' Código GitHub pendente: congele a versão desta aula.'
+            return {'ok':True,'message':message,
+                    'code_shas':[{'role':row['role'],'repository_id':row['repository_id'],
+                                  'sha':row['commit_sha']} for row in code_locks],
+                    'code_pending_freeze':needs_freeze,'logs':logs[-8:]}
         except Exception:
             return {'ok':False,'message':'Não foi possível reanalisar a aula. As transcrições originais foram preservadas.'}
         finally:
@@ -1061,6 +1095,389 @@ class Bridge:
                 if app is not None:app.close()
             finally:
                 self._write_lock.release()
+
+    def lesson_code_config(self, lesson=""):
+        """Read-only registration status, with raw invalid record for explicit local review."""
+        from .lesson_code_config import read_config, lesson_dates
+        vault=self._vault()
+        if vault is None:
+            return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        result=read_config(vault)
+        data=result["aulas"]
+        return {"ok":not result["fatal"],"fatal":result["fatal"],"erros":result["erros"],
+                "aulas":data if not lesson else {lesson:data[lesson]} if lesson in data else {},
+                "invalid":{lesson:result["invalid"][lesson]} if lesson and lesson in result.get("invalid",{}) else {},
+                "datas":lesson_dates(vault),
+                "github_token_configurado":bool(os.environ.get("TRAMA_GITHUB_TOKEN") or self._key_vault.github_configured()),
+                "github_token_fonte":("ambiente" if os.environ.get("TRAMA_GITHUB_TOKEN") else
+                                       "dpapi" if self._key_vault.github_configured() else "nenhuma")}
+
+    def lesson_code_changes(self, lesson, data):
+        """Read-only preview of which frozen SHA slots an edit would invalidate."""
+        from .github_lesson_state import preview_invalidations
+        vault=self._vault()
+        if vault is None:
+            return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        try:
+            return {"ok":True,"invalidated":preview_invalidations(vault,lesson,data)}
+        except (ValueError,TypeError,OSError,sqlite3.Error) as exc:
+            return {"ok":False,"message":str(exc)[:350]}
+
+    def save_lesson_code(self, lesson, data, confirmed=False, replace_invalid=False,
+                         expected_digest="", confirm_unfreeze=False):
+        from .github_lesson_state import persist_codes
+        vault=self._vault()
+        if not vault:return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        if confirmed is not True:return {"ok":False,"message":"Confirme o cadastro GitHub desta aula."}
+        if not self._write_lock.acquire(blocking=False):
+            return {"ok":False,"message":"Já existe uma gravação ou processamento em andamento."}
+        try:
+            replacements=({lesson:expected_digest} if replace_invalid is True and
+                          isinstance(expected_digest,str) and len(expected_digest)==64 else None)
+            saved=persist_codes(vault,updates={lesson:data},replacements=replacements,
+                                confirm_unfreeze=confirm_unfreeze)
+            return {**saved,"message":"Associações GitHub da aula salvas no cofre."}
+        except (ValueError,TypeError,OSError,sqlite3.Error) as exc:
+            return {"ok":False,"message":str(exc)[:700]}
+        finally:
+            self._write_lock.release()
+
+    def save_github_token(self, token, confirmed=False):
+        if confirmed is not True:
+            return {"ok":False,"message":"Confirme o armazenamento seguro do token GitHub."}
+        if not isinstance(token,str):
+            return {"ok":False,"message":"Token GitHub inválido."}
+        vault=self._vault()
+        if vault and self._key_vault.path.resolve().is_relative_to(vault.resolve()):
+            return {"ok":False,"message":"O armazenamento de credenciais deve ficar fora do cofre."}
+        try:
+            self._key_vault.save("github",token)
+            return {"ok":True,"message":"Token GitHub protegido por DPAPI neste Windows."}
+        except (OSError,ValueError,RuntimeError) as exc:
+            return {"ok":False,"message":str(exc)[:140]}
+
+    def remove_github_token(self, confirmed=False):
+        if confirmed is not True:
+            return {"ok":False,"message":"Confirme a remoção do token GitHub."}
+        try:
+            self._key_vault.remove("github")
+            return {"ok":True,"message":"Token GitHub seguro apagado; variável de ambiente, se houver, permanece."}
+        except (OSError,ValueError,RuntimeError) as exc:
+            return {"ok":False,"message":str(exc)[:140]}
+
+    def remove_lesson_code(self, lesson, confirmed=False, expected_digest=""):
+        from .github_lesson_state import persist_codes
+        if confirmed is not True:
+            return {"ok":False,"message":"Confirme explicitamente a remoção do cadastro GitHub."}
+        vault=self._vault()
+        if vault is None:
+            return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        if not self._write_lock.acquire(blocking=False):
+            return {"ok":False,"message":"Há uma operação em andamento."}
+        try:
+            return persist_codes(vault,removal=lesson,expected_digest=expected_digest)
+        except (ValueError,TypeError,OSError,sqlite3.Error) as exc:
+            return {"ok":False,"message":str(exc)[:350]}
+        finally:
+            self._write_lock.release()
+
+    def freeze_lesson_code(self, lesson, role, repository_id, confirmed=False, previous=False):
+        """Freeze a version only on explicit user consent; reprocessing never repins."""
+        from .lesson_code_config import read_config, LESSON_RE
+        from .github_mapping import GithubMapping, MappingError
+        from .store import Store
+        if confirmed is not True:
+            return {"ok":False,"message":"Confirme o congelamento do SHA para esta aula."}
+        if (not isinstance(lesson,str) or not LESSON_RE.fullmatch(lesson)
+                or role not in ("professor","dupla") or not isinstance(repository_id,str)
+                or type(previous) is not bool):
+            return {"ok":False,"message":"Aula ou repositório inválido."}
+        vault=self._vault()
+        if vault is None:
+            return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        if not self._write_lock.acquire(blocking=False):
+            return {"ok":False,"message":"Há uma operação em andamento."}
+        db=None
+        try:
+            config=read_config(vault)
+            if config["fatal"] or lesson not in config["aulas"]:
+                return {"ok":False,"message":"Cadastro GitHub desta aula inválido ou não encontrado."}
+            entry=next((row for row in config["aulas"][lesson].get(role,[])
+                        if row["id"]==repository_id),None)
+            if entry is None:
+                return {"ok":False,"message":"Repositório não está cadastrado nesta aula."}
+            spec=entry.get("anterior") if previous else entry
+            if not spec:
+                return {"ok":False,"message":"Nenhuma referência anterior foi cadastrada."}
+            slot="previous" if previous else "current"
+            db=Store(vault)
+            previous_lock=db.github_ref(lesson,role,repository_id,slot)
+            client=GithubMapping()
+            if previous_lock and previous_lock["private"] is not None:
+                private=bool(previous_lock["private"])
+            else:
+                metadata=client._get(entry["repo"],"")
+                if not isinstance(metadata,dict) or type(metadata.get("private")) is not bool:
+                    raise MappingError("GitHub não confirmou se o repositório é privado.")
+                private=metadata["private"]
+            sha=(previous_lock["commit_sha"] if previous_lock else
+                 client.resolve_sha(entry["repo"],spec["ref_tipo"],spec["ref"]))
+            locked=db.freeze_github_ref(lesson,role,repository_id,slot,
+                entry["repo"],spec["ref_tipo"],spec["ref"],spec.get("pasta",""),sha,private=private)
+            return {"ok":True,"sha":locked["sha"],"created":locked["created"],
+                    "private":locked["private"],"slot":slot,
+                    "message":"SHA e privacidade congelados no SQLite; reprocessamentos manterão esta referência."}
+        except (ValueError,TypeError,OSError,sqlite3.Error,MappingError) as exc:
+            return {"ok":False,"message":str(exc)[:350]}
+        finally:
+            if db is not None:db.close()
+            self._write_lock.release()
+
+    def unfreeze_lesson_code(self, lesson, role, repository_id, slot, confirmed=False):
+        """Destructive operation only on explicit consent; does not touch JSON or notes."""
+        from .store import Store
+        if confirmed is not True:
+            return {"ok": False, "message": "Confirme o descongelamento desta referência GitHub."}
+        vault = self._vault()
+        if vault is None:
+            return {"ok": False, "message": "Selecione o cofre do Obsidian."}
+        if not self._write_lock.acquire(blocking=False):
+            return {"ok": False, "message": "Há uma operação em andamento."}
+        db = None
+        try:
+            db = Store(vault)
+            removed = db.unfreeze_github_ref(lesson, role, repository_id, slot)
+            return {"ok": removed,
+                    "message": ("SHA descongelado; a próxima versão precisará ser congelada explicitamente."
+                                if removed else "Não existe SHA congelado para essa referência.")}
+        except (ValueError, TypeError, OSError, sqlite3.Error) as exc:
+            return {"ok": False, "message": str(exc)[:300]}
+        finally:
+            if db is not None:
+                db.close()
+            self._write_lock.release()
+
+    def frozen_lesson_code(self, lesson):
+        """Read-only snapshots for the UI; never resolves a branch automatically."""
+        from .lesson_code_config import read_config, LESSON_RE
+        from .store import Store
+        vault=self._vault()
+        if vault is None or not isinstance(lesson,str) or not LESSON_RE.fullmatch(lesson):
+            return {"ok":False,"message":"Cofre ou aula inválido."}
+        config=read_config(vault)
+        if config["fatal"] or lesson not in config["aulas"]:
+            return {"ok":False,"message":"Nenhum cadastro GitHub válido nesta aula."}
+        db=Store(vault)
+        try:
+            rows=db.conn.execute("""SELECT role,repository_id,slot,repo_url,ref_kind,
+                         ref_name,folder,commit_sha,private,frozen_at FROM github_lesson_refs
+                         WHERE lesson=? ORDER BY role,repository_id,slot""",(lesson,))
+            return {"ok":True,"refs":[dict(row) for row in rows]}
+        finally:
+            db.close()
+
+    def _lesson_code_binding(self, lesson, role, repository_id, slot="current"):
+        """Only resolve code access from a registered, immutable SQLite commit."""
+        from .github_cache import GithubCache
+        from .github_code import GithubCodeReader
+        from .lesson_code_config import read_config, LESSON_RE, ID_RE
+        if (not isinstance(lesson, str) or not LESSON_RE.fullmatch(lesson)
+                or role not in ("professor", "dupla")
+                or not isinstance(repository_id, str) or not ID_RE.fullmatch(repository_id)
+                or slot not in ("current", "previous")):
+            raise ValueError("Aula, repositório ou versão inválida.")
+        vault=self._vault()
+        if vault is None:
+            raise ValueError("Selecione o cofre do Obsidian.")
+        config=read_config(vault)
+        if config["fatal"]:
+            raise ValueError("Cadastro GitHub inválido; revise antes de consultar código.")
+        entry=next((item for item in config["aulas"].get(lesson,{}).get(role,[])
+                    if item["id"]==repository_id),None)
+        if entry is None:
+            raise ValueError("Repositório não cadastrado nesta aula.")
+        spec=entry.get("anterior") if slot=="previous" else entry
+        if spec is None:
+            raise ValueError("Cadastre a referência anterior e congele a versão desta aula.")
+        db_path=vault/".base-conhecimento"/"estado.sqlite3"
+        if not db_path.is_file() or db_path.is_symlink():
+            raise ValueError("congele a versão desta aula")
+        try:
+            with closing(sqlite3.connect(db_path.as_uri()+"?mode=ro",uri=True,timeout=3)) as conn:
+                conn.row_factory=sqlite3.Row
+                row=conn.execute(
+                    "SELECT * FROM github_lesson_refs WHERE lesson=? AND role=? "
+                    "AND repository_id=? AND slot=?",
+                    (lesson,role,repository_id,slot)).fetchone()
+                locked=dict(row) if row else None
+        except sqlite3.Error:
+            locked=None
+        if locked is None:
+            raise ValueError("congele a versão desta aula")
+        expected=(entry["repo"],spec["ref_tipo"],spec["ref"],spec.get("pasta",""))
+        current=tuple(locked[k] for k in ("repo_url","ref_kind","ref_name","folder"))
+        if current!=expected:
+            raise ValueError("Cadastro e SHA divergentes; congele a versão desta aula.")
+        reader=GithubCodeReader(cache=GithubCache(vault=vault))
+        if locked["private"] is not None:
+            reader._privacy[locked["repo_url"]]=bool(locked["private"])
+        return reader, locked["repo_url"], locked["commit_sha"], locked["folder"]
+
+    def _code_response(self, action):
+        from .github_mapping import MappingError
+        try:
+            return {"ok":True, **action()}
+        except (MappingError, ValueError, TypeError) as exc:
+            return {"ok":False, "message":str(exc)[:300]}
+        except (OSError,sqlite3.Error,RuntimeError):
+            return {"ok":False, "message":"Falha ao consultar código GitHub; nenhum SHA foi alterado."}
+
+    def lesson_code_files(self, lesson, role, repository_id, slot="current", folder=""):
+        def action():
+            reader,repo,sha,root=self._lesson_code_binding(lesson,role,repository_id,slot)
+            selected=folder or root
+            if root and selected!=root and not selected.startswith(root+"/"):
+                raise ValueError("A pasta solicitada não pertence ao cadastro congelado.")
+            return reader.list_files(repo,sha,selected)
+        return self._code_response(action)
+
+    def lesson_code_read_file(self, lesson, role, repository_id, path, slot="current"):
+        def action():
+            reader,repo,sha,root=self._lesson_code_binding(lesson,role,repository_id,slot)
+            if not isinstance(path,str) or (root and not path.startswith(root+"/")):
+                raise ValueError("Arquivo fora da pasta congelada desta aula.")
+            return reader.read_file(repo,sha,path)
+        return self._code_response(action)
+
+    @staticmethod
+    def _limit_code_diffs(result):
+        """Bound WebView payloads without misreporting partial patches as complete."""
+        rows=result.get("files",[])
+        compact=[]
+        shortened=False
+        for file in rows[:25]:
+            row=dict(file)
+            patch=row.get("patch","")
+            if isinstance(patch,str) and len(patch)>12000:
+                row["patch"]=patch[:12000]
+                shortened=True
+            compact.append(row)
+        return {**result,"files":compact,
+                "truncated":bool(result.get("truncated") or len(rows)>25 or shortened)}
+
+    def lesson_code_compare(self, lesson, role, repository_id):
+        """Compare previous and current frozen revisions, never moving branches."""
+        def action():
+            reader,repo,head,folder=self._lesson_code_binding(lesson,role,repository_id,"current")
+            _,old_repo,base,old_folder=self._lesson_code_binding(lesson,role,repository_id,"previous")
+            if repo!=old_repo:
+                raise ValueError("Repositórios diferentes não podem ser comparados.")
+            return self._limit_code_diffs(
+                reader.compare_commits(repo,base,head,folder if folder==old_folder else ""))
+        return self._code_response(action)
+
+    def lesson_code_diff_folders(self, lesson, role, repository_id, before, after, slot="current"):
+        """Local-only diff between folders inside exactly one frozen commit."""
+        def action():
+            reader,repo,sha,_=self._lesson_code_binding(lesson,role,repository_id,slot)
+            return self._limit_code_diffs(reader.diff_folders(repo,sha,before,after))
+        return self._code_response(action)
+
+    def preview_lesson_mappings(self, repo, dates=None, branch=""):
+        """REST suggestions only. No file/database writes and no Git checkout."""
+        from .github_mapping import preview_mapping, MappingError
+        vault=self._vault()
+        if vault is None:return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        if not isinstance(repo,str) or len(repo)>300:
+            return {"ok":False,"message":"Informe uma URL GitHub válida."}
+        if dates is not None and (not isinstance(dates,dict) or len(dates)>500 or
+                                  any(not isinstance(k,str) or not isinstance(v,str)
+                                      or len(v)>10 for k,v in dates.items())):
+            return {"ok":False,"message":"Datas inválidas para o mapeamento."}
+        if not self._write_lock.acquire(blocking=False):
+            return {"ok":False,"message":"Há um processamento em andamento."}
+        try:
+            self._mapping_preview=None
+            result=preview_mapping(vault,repo,dates,branch)
+            self._mapping_preview=result
+            return {"ok":True,**result}
+        except (MappingError,ValueError,OSError) as exc:
+            return {"ok":False,"message":str(exc)[:350]}
+        finally:
+            self._write_lock.release()
+
+    def suggest_lesson_mappings(self, dates):
+        """Recalculate preview suggestions in Python; no network or persistent writes."""
+        from .github_mapping import GithubMapping
+        from datetime import date
+        preview=self._mapping_preview
+        if not preview:
+            return {"ok":False,"message":"Consulte o repositório antes de alterar datas."}
+        lessons={row["aula"] for row in preview["aulas"]}
+        if not isinstance(dates,dict) or not 1<=len(dates)<=500:
+            return {"ok":False,"message":"Informe as aulas e datas para sugerir."}
+        for name, value in dates.items():
+            if name not in lessons or not isinstance(value,str) or len(value)>10:
+                return {"ok":False,"message":"Aula ou data não pertence ao mapeamento."}
+            if value:
+                try:date.fromisoformat(value)
+                except ValueError:return {"ok":False,"message":f"{name}: data inválida."}
+        return {"ok":True,"aulas":GithubMapping.suggestions(preview,preview["aulas"],dates)}
+
+    def apply_lesson_mappings(self, selections, confirmed=False):
+        """Only accept selections contained in the most recent read-only preview."""
+        from .lesson_code_config import read_config, save_lessons, LESSON_RE
+        import hashlib
+        if confirmed is not True:return {"ok":False,"message":"Confirme as sugestões selecionadas."}
+        vault=self._vault()
+        if vault is None:return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        if not isinstance(selections,list) or not 1<=len(selections)<=500:
+            return {"ok":False,"message":"Selecione de 1 a 500 associações."}
+        if not self._write_lock.acquire(blocking=False):
+            return {"ok":False,"message":"Há um processamento em andamento."}
+        try:
+            preview=self._mapping_preview
+            if not preview:return {"ok":False,"message":"Consulte as sugestões antes de confirmar."}
+            candidates={item["id"]:item for item in preview["candidatos"]}
+            lessons={item["aula"] for item in preview["aulas"]}
+            current=read_config(vault)
+            if current["fatal"]:
+                return {"ok":False,"message":"Corrija o JSON inválido antes de salvar."}
+            repo=preview["repo"]
+            name=repo.split("/")[-1]
+            source_key=repo+("\n"+preview["branch"] if preview.get("branch") else "")
+            mapping_id="map-"+hashlib.sha256(source_key.encode()).hexdigest()[:16]
+            updates={}
+            used=set()
+            for row in selections:
+                if not isinstance(row,dict):
+                    raise ValueError("Seleção inválida.")
+                lesson=row.get("aula")
+                ident=row.get("candidato_id")
+                if (not isinstance(lesson,str) or not LESSON_RE.fullmatch(lesson) or
+                        lesson not in lessons or lesson in used or ident not in candidates):
+                    raise ValueError(f"Seleção inválida ou repetida: {lesson}")
+                used.add(lesson)
+                chosen=candidates[ident]
+                if lesson in current["document"]["aulas"] and lesson not in current["aulas"]:
+                    raise ValueError(f"{lesson}: cadastro existente inválido; corrija antes do mapeamento.")
+                linked=current["aulas"].get(lesson) or {"professor":[],"dupla":[]}
+                teachers=[item for item in linked.get("professor",[]) if item.get("id")!=mapping_id]
+                item={"id":mapping_id,"rotulo":"Professor — "+name[:70],
+                      "repo":repo,"ref_tipo":chosen["ref_tipo"],
+                      "ref":chosen["ref"],"pasta":chosen["pasta"]}
+                if row.get("confirmar_anterior") is True and chosen.get("sugestao_anterior"):
+                    item["anterior"]=chosen["sugestao_anterior"]
+                teachers.append(item)
+                updates[lesson]={"professor":teachers,"dupla":linked.get("dupla",[])}
+            from .github_lesson_state import persist_codes
+            saved=persist_codes(vault,updates=updates,confirm_unfreeze=True)
+            self._mapping_preview=None
+            return {**saved,"message":f"{len(updates)} aula(s) confirmada(s); sugestões não selecionadas não foram gravadas."}
+        except (ValueError,OSError,TypeError) as exc:
+            return {"ok":False,"message":str(exc)[:700]}
+        finally:
+            self._write_lock.release()
 
     def add_repo(self,url):
         if not self._vault():return {'ok':False,'message':'Configure o cofre primeiro.'}
@@ -1070,7 +1487,10 @@ class Bridge:
         try:
             app=Application(self._vault(),CONFIG_FILE,log=lambda _s:None)
             app.add_repo(url.strip())
-            return {'ok':True}
+            automatic=app.assign_github_versions()
+            app.publisher.rebuild()
+            return {'ok':True,'automatic_versions':automatic.get('mapped',0),
+                    'pending':automatic.get('pending',[])}
         except Exception:
             return {'ok':False,'message':'Não foi possível adicionar o repositório. Confira o endereço e tente novamente.'}
         finally:
@@ -1078,6 +1498,28 @@ class Bridge:
                 if app is not None:app.close()
             finally:
                 self._write_lock.release()
+
+    def recalculate_github_versions(self, repo, confirmed=False):
+        """Re-evaluate automatic locks only, with explicit confirmation."""
+        if confirmed is not True:
+            return {'ok':False,'message':'Confirme o recálculo das versões automáticas.'}
+        if not isinstance(repo,str) or len(repo)>300:
+            return {'ok':False,'message':'URL do GitHub inválida.'}
+        vault=self._vault()
+        if not vault:
+            return {'ok':False,'message':'Selecione o cofre do Obsidian.'}
+        if not self._write_lock.acquire(blocking=False):
+            return {'ok':False,'message':'Outro processamento está em andamento.'}
+        app=None
+        try:
+            app=self._make_application(vault,log=lambda _s:None)
+            result=app.recalculate_github_versions(repo)
+            return {'ok':True,**result}
+        except (ValueError,OSError,RuntimeError) as exc:
+            return {'ok':False,'message':str(exc)[:250]}
+        finally:
+            if app is not None:app.close()
+            self._write_lock.release()
 
     def toggle_favorite(self, note_id):
         idx=self._index()
@@ -1459,8 +1901,61 @@ class PublicApi:
     def process_lesson(self, lesson, confirmed=False, force=False):
         return self._bridge.process_lesson(lesson, confirmed, force)
 
+    def lesson_code_config(self, lesson=""):
+        return self._bridge.lesson_code_config(lesson)
+
+    def save_lesson_code(self, lesson, data, confirmed=False, replace_invalid=False,
+                         expected_digest="", confirm_unfreeze=False):
+        return self._bridge.save_lesson_code(lesson,data,confirmed,replace_invalid,
+                                             expected_digest,confirm_unfreeze)
+
+    def lesson_code_changes(self, lesson, data):
+        return self._bridge.lesson_code_changes(lesson,data)
+
+    def save_github_token(self, token, confirmed=False):
+        return self._bridge.save_github_token(token,confirmed)
+
+    def remove_github_token(self, confirmed=False):
+        return self._bridge.remove_github_token(confirmed)
+
+    def remove_lesson_code(self, lesson, confirmed=False, expected_digest=""):
+        return self._bridge.remove_lesson_code(lesson,confirmed,expected_digest)
+
+    def freeze_lesson_code(self, lesson, role, repository_id, confirmed=False, previous=False):
+        return self._bridge.freeze_lesson_code(lesson,role,repository_id,confirmed,previous)
+
+    def frozen_lesson_code(self, lesson):
+        return self._bridge.frozen_lesson_code(lesson)
+
+    def unfreeze_lesson_code(self, lesson, role, repository_id, slot, confirmed=False):
+        return self._bridge.unfreeze_lesson_code(lesson,role,repository_id,slot,confirmed)
+
+    def lesson_code_files(self, lesson, role, repository_id, slot="current", folder=""):
+        return self._bridge.lesson_code_files(lesson,role,repository_id,slot,folder)
+
+    def lesson_code_read_file(self, lesson, role, repository_id, path, slot="current"):
+        return self._bridge.lesson_code_read_file(lesson,role,repository_id,path,slot)
+
+    def lesson_code_compare(self, lesson, role, repository_id):
+        return self._bridge.lesson_code_compare(lesson,role,repository_id)
+
+    def lesson_code_diff_folders(self, lesson, role, repository_id, before, after, slot="current"):
+        return self._bridge.lesson_code_diff_folders(lesson,role,repository_id,before,after,slot)
+
+    def preview_lesson_mappings(self, repo, dates=None, branch=""):
+        return self._bridge.preview_lesson_mappings(repo,dates,branch)
+
+    def suggest_lesson_mappings(self, dates):
+        return self._bridge.suggest_lesson_mappings(dates)
+
+    def apply_lesson_mappings(self, selections, confirmed=False):
+        return self._bridge.apply_lesson_mappings(selections,confirmed)
+
     def add_repo(self, url):
         return self._bridge.add_repo(url)
+
+    def recalculate_github_versions(self, repo, confirmed=False):
+        return self._bridge.recalculate_github_versions(repo,confirmed)
 
     def toggle_favorite(self, note_id):
         return self._bridge.toggle_favorite(note_id)
@@ -1543,7 +2038,8 @@ def load_local_ui():
     base=Path(__file__).resolve().parent/'ui'
     html=(base/'index.html').read_text(encoding='utf-8')
     substitutions=(('style.css','style.css'),('library.css','library.css'),
-                   ('classic.css','classic.css'),('faithful.css','faithful.css'))
+                   ('classic.css','classic.css'),('faithful.css','faithful.css'),
+                   ('graph.css','graph.css'))
     # The packaged window requires inline local assets. Keep a strict CSP
     # with exact SHA-256 hashes of the bundled CSS and JS, instead of removing
     # the policy and allowing any injected script to execute.
@@ -1556,7 +2052,7 @@ def load_local_ui():
         css=(base/filename).read_text(encoding='utf-8')
         styles.append(content_hash(css))
         html=html.replace(f'<link rel="stylesheet" href="{href}">','<style>'+css+'</style>')
-    for script in ('library.js','app.js','teacher.js'):
+    for script in ('library.js','graph.js','app.js','lesson_code.js','teacher.js'):
         js=(base/script).read_text(encoding='utf-8')
         scripts.append(content_hash(js))
         html=html.replace(f'<script src="{script}"></script>','<script>'+js+'</script>')

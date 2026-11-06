@@ -1,0 +1,25 @@
+/* TRAMA — Grafo de conexões. Usar junto com graph.js. Sem estilos inline (CSP). */
+.tg-root{position:relative;display:flex;flex-direction:column;width:100%;height:min(78vh,760px);
+  border:1px solid #dfe6df;border-radius:12px;overflow:hidden;background:#fbfcfa}
+.tg-root.tg-dark{background:#1e2124;border-color:#33393d}
+.tg-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;
+  border-bottom:1px solid #e4e9e4;background:#fff}
+.tg-dark .tg-toolbar{background:#25292c;border-color:#33393d}
+.tg-search{flex:1 1 220px;min-width:160px;height:34px;padding:0 12px;border:1px solid #cdd6cd;
+  border-radius:8px;font:inherit;font-size:.95rem;background:#fff;color:#1f2a24}
+.tg-dark .tg-search{background:#1e2124;border-color:#3b4246;color:#e8ece9}
+.tg-legend{display:flex;flex-wrap:wrap;gap:6px}
+.tg-chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;border-radius:16px;
+  border:1px solid #cfd8cf;background:#f4f7f4;color:#33443a;font:inherit;font-size:.9rem;font-weight:600;cursor:pointer}
+.tg-chip:hover{border-color:#8fb39c}
+.tg-kind:not(.on){opacity:.45;text-decoration:line-through}
+.tg-dark .tg-chip{background:#2c3236;border-color:#40484d;color:#dfe5e1}
+.tg-dot{width:10px;height:10px;border-radius:50%;flex:none}
+.tg-dot-aula{background:#4f8fd0}.tg-dot-conceito{background:#3fa774}.tg-dot-duvida{background:#e0a43a}
+.tg-dot-projeto{background:#c0794f}.tg-dot-indice{background:#8a7bb8}.tg-dot-outro{background:#8c9a93}
+.tg-canvas{flex:1;min-height:0;width:100%;display:block;cursor:grab;touch-action:none}
+.tg-canvas.tg-pointer{cursor:pointer}
+.tg-canvas:active{cursor:grabbing}
+.tg-tip{position:absolute;left:0;top:0;pointer-events:none;max-width:320px;padding:7px 10px;border-radius:8px;
+  background:#1f2a24;color:#fff;font-size:.85rem;line-height:1.35;box-shadow:0 6px 18px #0003}
+.tg-tip.hidden{display:none}

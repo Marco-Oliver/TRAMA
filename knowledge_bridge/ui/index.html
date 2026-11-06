@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="library.css">
 <link rel="stylesheet" href="classic.css">
 <link rel="stylesheet" href="faithful.css">
+<link rel="stylesheet" href="graph.css">
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" class="svg-sprite" aria-hidden="true">
@@ -49,13 +50,14 @@
       <button class="nav-item" title="Conhecimento" aria-label="Conhecimento" data-view="knowledge"><svg class="ui-svg nav-ic"><use href="#ic-network"/></svg> Conhecimento</button>
       <button class="nav-item" title="Projetos" aria-label="Projetos" data-view="projects"><svg class="ui-svg nav-ic"><use href="#ic-folder"/></svg> Projetos</button>
       <button class="nav-item" title="Biblioteca" aria-label="Biblioteca" data-view="library"><svg class="ui-svg nav-ic"><use href="#ic-book"/></svg> Biblioteca</button>
+      <button class="nav-item" title="Grafo" aria-label="Grafo de conexões" data-view="graph"><svg class="ui-svg nav-ic"><use href="#ic-network"/></svg> Grafo</button>
       <button class="nav-item" title="IA Professor" aria-label="IA Professor" data-view="teacher"><svg class="ui-svg nav-ic"><use href="#ic-star"/></svg> IA Professor</button>
       <div class="nav-split"></div>
       <button class="nav-item" title="Ajustes" aria-label="Ajustes" data-view="settings"><svg class="ui-svg nav-ic"><use href="#ic-gear"/></svg> Ajustes</button>
 
     </nav>
     <section class="list-panel" id="list-panel">
-      <div class="list-heading"><h2 id="list-title">Minhas Aulas</h2><button type="button" id="btn-context" title="Registrar informações e links da aula manualmente" aria-label="Registrar contexto da aula">Contexto</button><button id="btn-list-add" title="Importar arquivo ou projeto">+</button></div>
+      <div class="list-heading"><h2 id="list-title">Minhas Aulas</h2><button type="button" id="btn-lesson-code" title="Associar repositórios GitHub à aula">Git avançado</button><button type="button" id="btn-context" title="Registrar informações e links da aula manualmente" aria-label="Registrar contexto da aula">Contexto</button><button id="btn-list-add" title="Importar arquivo ou projeto">+</button></div>
       <div class="list-filters" aria-label="Filtrar lista"><button type="button" data-list-filter="all" class="active">Todas</button><button type="button" data-list-filter="recent">Recentes</button><button type="button" data-list-filter="favorites">Favoritas</button></div>
       <div class="local-search"><span>⌕</span><input id="list-search" placeholder="Buscar aulas..."></div>
       <div class="items-scroll" id="items"></div>
@@ -69,7 +71,7 @@
     <section class="library-workspace hidden" id="library-workspace" aria-label="Biblioteca do Obsidian"></section>
     <section class="overlay-screen hidden" id="overlay-screen"></section>
   </div>
-  <footer class="statusbar"><span class="status-counts" id="status-counts">Biblioteca</span><span class="status-center" id="status-message">Pronto para organizar seus materiais</span><span class="status-version">TRAMA v2.0.1 <span class="status-divider">│</span> Obsidian conectado</span></footer>
+  <footer class="statusbar"><span class="status-counts" id="status-counts">Biblioteca</span><span class="status-center" id="status-message">Pronto para organizar seus materiais</span><span class="status-version">TRAMA v2.2.0 <span class="status-divider">│</span> Obsidian conectado</span></footer>
 </div>
 <dialog id="auto-dialog" class="context-dialog auto-dialog" aria-labelledby="auto-title">
   <div class="dialog-header"><h2 id="auto-title">Preparar importação em lote</h2><button type="button" id="auto-close" aria-label="Fechar">×</button></div>
@@ -90,7 +92,7 @@ https://academiadoprogramador-fullstack.github.io/docs/inicio/"></textarea>
   <label for="auto-repos">Repositórios GitHub relacionados</label>
   <textarea id="auto-repos" rows="2" maxlength="10000" spellcheck="false"
     placeholder="https://github.com/academiadoprogramador-fullstack/projeto-exemplo.git"></textarea>
-  <small>Um repositório por linha. O TRAMA procura evidências de código para relacionar com as aulas, sem executar projetos.</small>
+  <small>Um repositório por linha. Cole o link e adicione os TXT: versões, SHAs e associações são automáticos. O botão Git avançado é opcional.</small>
   <label class="auto-consent" id="auto-consent-row"><input type="checkbox" id="auto-consent"/>
   Autorizo enviar os materiais à API gratuita configurada <strong>somente ao clicar em Processar tudo.</strong></label>
   <p id="auto-consent-info" class="trama-consent-info hidden">Envio autorizado nos Ajustes. O processamento só acontece quando você clicar em Processar tudo.</p>
@@ -100,13 +102,14 @@ https://academiadoprogramador-fullstack.github.io/docs/inicio/"></textarea>
 <dialog id="repo-dialog" class="context-dialog trama-action-dialog" aria-labelledby="repo-title">
   <form id="repo-form" novalidate>
     <div class="dialog-header"><h2 id="repo-title">Adicionar repositório GitHub</h2><button type="button" id="repo-close" aria-label="Fechar">×</button></div>
-    <p>O TRAMA consulta código e histórico de um repositório público ou de uma pasta Git local, sem modificar o projeto.</p>
+    <p>Cole o link GitHub. O TRAMA detecta versões e relaciona automaticamente os TXT, sem configuração aula por aula. Pasta Git local mantém o fluxo tradicional.</p>
     <label for="repo-url">Link do GitHub ou caminho da pasta Git</label>
     <input id="repo-url" name="repo-url" type="text" maxlength="1000" spellcheck="false" autocomplete="off"
       placeholder="https://github.com/usuario/repositorio.git" required/>
     <p id="repo-feedback" class="trama-inline-feedback" role="status" aria-live="polite">Cole o link e confirme a importação.</p>
     <div class="dialog-actions">
       <button type="button" id="repo-cancel">Cancelar</button>
+      <button type="button" id="repo-recalculate" title="Recalcular somente associações automáticas; ajustes manuais permanecem">Recalcular versões</button>
       <button type="submit" id="repo-submit" class="trama-primary">Importar repositório</button>
     </div>
   </form>
@@ -153,8 +156,71 @@ Alexandre Rech — professor"></textarea></label>
   <div class="dialog-actions"><span id="context-feedback" role="status"></span><button type="button" id="context-attach">Vincular prints / PDFs</button><button type="button" id="context-dismiss">Cancelar</button><button type="submit" id="context-save">Salvar no Obsidian</button></div>
 </form>
 </dialog>
+<dialog id="lesson-code-dialog" class="context-dialog lesson-code-dialog" aria-labelledby="lesson-code-title">
+ <form id="lesson-code-form" novalidate>
+  <div class="dialog-header"><h2 id="lesson-code-title">Código GitHub por aula</h2><button type="button" id="lesson-code-close" aria-label="Fechar">×</button></div>
+  <p>Opção avançada: ajuste manualmente uma aula. Normalmente, basta importar o repositório e os TXT; o TRAMA escolhe as versões sozinho. Um ajuste manual sempre vence o automático.</p>
+  <div class="context-fields"><label>Número da aula <input id="lesson-code-number" type="number" min="1" max="9999" required></label><button type="button" id="lesson-code-load">Carregar esta aula</button></div>
+  <p id="lesson-code-token" role="status"></p>
+  <div class="context-fields">
+   <label>Token GitHub opcional (somente no Windows, armazenado com DPAPI)
+    <input id="lesson-code-github-key" type="password" maxlength="400" autocomplete="off" spellcheck="false" placeholder="Cole seu token; ele não será exibido novamente">
+   </label>
+   <button type="button" id="lesson-code-save-token">Salvar token protegido</button>
+   <button type="button" id="lesson-code-remove-token">Remover token protegido</button>
+  </div>
+  <section id="lesson-code-invalid" class="lesson-code-invalid" hidden aria-label="Registro inválido já armazenado">
+   <h3>Registro atual inválido — atenção à substituição</h3>
+   <p>O cadastro abaixo foi preservado exatamente como está no JSON. Leia-o antes de substituir: será exigida confirmação específica.</p>
+   <pre id="lesson-code-invalid-raw"></pre>
+  </section>
+  <h3>Repositórios do professor</h3><div id="code-teachers"></div>
+  <button type="button" id="lesson-code-add-teacher">+ Repositório do professor</button>
+  <h3>Repositórios da dupla</h3><div id="code-students"></div>
+  <button type="button" id="lesson-code-add-student">+ Repositório da dupla</button>
+  <section id="lesson-code-inspector" aria-label="Consulta de código por SHA congelado">
+    <h3>Explorar código congelado</h3>
+    <p>Somente as revisões fixadas para esta aula podem ser consultadas. Sem SHA, congele a versão desta aula primeiro.</p>
+    <div class="context-fields">
+     <label>Repositório cadastrado <select id="lesson-code-inspect-repo"></select></label>
+     <label>Arquivo relativo ao repositório <input id="lesson-code-inspect-file" maxlength="300" placeholder="V3/src/Program.cs"></label>
+     <label>Pasta anterior (mesmo SHA) <input id="lesson-code-inspect-before" maxlength="300" value="V2"></label>
+     <label>Pasta atual (mesmo SHA) <input id="lesson-code-inspect-after" maxlength="300" value="V3"></label>
+    </div>
+    <div class="dialog-actions">
+     <button type="button" id="lesson-code-inspect-list">Listar arquivos</button>
+     <button type="button" id="lesson-code-inspect-read">Ler arquivo</button>
+     <button type="button" id="lesson-code-inspect-compare">Comparar commits</button>
+     <button type="button" id="lesson-code-inspect-diff">Diff de pastas</button>
+    </div>
+    <pre id="lesson-code-inspect-output" role="status" aria-live="polite"></pre>
+  </section>
+  <div class="dialog-actions"><span id="lesson-code-feedback" role="status" aria-live="polite"></span>
+   <button type="button" id="lesson-code-map-open">Assistente de mapeamento em lote</button>
+   <button type="button" id="lesson-code-remove" disabled>Remover cadastro GitHub da aula</button>
+   <button type="button" id="lesson-code-cancel">Cancelar</button>
+   <button type="submit">Salvar cadastro</button></div>
+ </form>
+</dialog>
+<dialog id="lesson-map-dialog" class="context-dialog lesson-map-dialog" aria-labelledby="lesson-map-title">
+ <div class="lesson-map-body">
+  <div class="dialog-header"><h2 id="lesson-map-title">Assistente de mapeamento GitHub</h2><button type="button" id="lesson-map-close" aria-label="Fechar">×</button></div>
+  <p>Consulta commits nos períodos das aulas cadastradas, com paginação limitada e uma única árvore Git. Sugestões por data são aproximadas; a data do post Classroom não comprova a data da gravação. Nenhum vínculo será gravado sem confirmação.</p>
+  <p><strong>Aulas ainda não importadas não aparecem aqui.</strong> Importe seus TXT ou cadastre contexto antes de mapear.</p>
+  <label>Repositório do professor <input id="lesson-map-repo" maxlength="300" placeholder="https://github.com/professor/projeto"></label>
+  <label>Branch para consultar (opcional) <input id="lesson-map-branch" maxlength="180" placeholder="Ex.: v7 ou main — vazio usa branch padrão"></label>
+  <button type="button" id="lesson-map-search">Consultar e sugerir</button>
+  <p id="lesson-map-quota" role="status">Sem token há poucas requisições por hora. Recomendamos TRAMA_GITHUB_TOKEN.</p>
+  <div id="lesson-map-results" role="group" aria-label="Seleção de aulas e versões"></div>
+  <div class="dialog-actions"><span id="lesson-map-feedback" role="status" aria-live="polite"></span>
+   <button type="button" id="lesson-map-dismiss">Fechar</button>
+   <button type="button" id="lesson-map-save">Confirmar selecionadas</button></div>
+ </div>
+</dialog>
 <div class="toast hidden" id="toast" role="status"></div>
 <script src="library.js"></script>
+<script src="graph.js"></script>
 <script src="app.js"></script>
+<script src="lesson_code.js"></script>
 <script src="teacher.js"></script>
 </body></html>

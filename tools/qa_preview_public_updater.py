@@ -39,8 +39,8 @@ def run():
         assert not list(Path(temp).glob("*.part"))
         print(f"PASS: public API + EXE download + SHA-256: {tag}, {target.stat().st_size} bytes")
     stable = check_release(REPO)
-    assert stable.get("ok") and stable.get("version") == "v2.1.0" and not stable.get("available"), stable
-    assert VERSION == "2.1.0", VERSION
+    assert stable.get("ok") and stable.get("version") == "v2.2.0" and not stable.get("available"), stable
+    assert VERSION == "2.2.0", VERSION
     print("PASS: stable release lookup unaffected by experimental prereleases.")
 
 

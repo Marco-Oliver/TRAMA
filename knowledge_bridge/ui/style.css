@@ -266,3 +266,37 @@ button:not(:disabled):hover{filter:brightness(.98)}
  border:1px solid #d3bf8d;border-left:4px solid #a37a35;
  background:#fff8e9;color:#654822;border-radius:6px;
  font-size:13px;line-height:1.6;overflow-wrap:anywhere;}
+
+
+/* GitHub por aula: editor compacto, consistente com os diálogos do TRAMA. */
+.lesson-code-dialog{width:min(790px,96vw)}
+.lesson-code-dialog form{max-height:87vh;overflow:auto}
+.lesson-code-dialog h3{margin:16px 0 8px;font-size:13px;color:#285747}
+.code-repo-row{border:1px solid #bac9bd;background:#f0f5f0;border-radius:5px;margin:10px 0;padding:9px 12px}
+.code-repo-row legend{font-weight:700;padding:0 5px;color:#265340}
+.code-repo-row .context-fields{margin:3px 0 8px}
+.code-repo-row input,.code-repo-row select{max-width:100%;min-width:0}
+.code-remove-row{font-size:11px;border:1px solid #c5b4ac;background:#fff9f5;color:#834c33;padding:4px 9px;border-radius:4px}
+.lesson-map-dialog{width:min(1000px,97vw);max-height:94vh}
+.lesson-map-body{padding:16px 20px;max-height:87vh;overflow:auto}
+.lesson-map-body>label{display:block;font-size:12px;font-weight:600}
+.lesson-map-body>label input{display:block;width:100%;padding:8px;margin:5px 0}
+#lesson-map-quota,#lesson-code-token{background:#eaf1eb;padding:8px 10px;border:1px solid #cadbcc;border-radius:4px;font-size:12px}
+#lesson-map-results{max-height:44vh;overflow:auto;border:1px solid #cad7cb;border-radius:4px;margin:10px 0}
+.lesson-map-row{display:grid;grid-template-columns:108px 150px minmax(150px,1fr) 150px;align-items:center;gap:7px;padding:7px 9px;border-bottom:1px solid #d7e2d9;font-size:12px}
+.lesson-map-row:nth-child(even){background:#f0f4ef}
+.lesson-map-row select{width:100%;min-width:0}
+.lesson-map-row input[type=date]{max-width:150px}
+.lesson-map-row small{grid-column:1/-1;color:#64786c;font-size:11px}
+.lesson-map-previous{font-size:11px}
+#lesson-code-feedback,#lesson-map-feedback{white-space:normal;overflow-wrap:anywhere}
+@media(max-width:700px){.lesson-map-row{grid-template-columns:100px minmax(120px,1fr)}
+.lesson-map-row select,.lesson-map-previous{grid-column:1/-1}}
+
+/* Etapa 1 auditada: registro inválido sempre visível antes do consentimento. */
+.lesson-code-invalid{margin:10px 0;padding:10px 12px;background:#fff4eb;border:1px solid #cc8869;border-radius:4px}
+.lesson-code-invalid h3{margin:0 0 7px;color:#94442d}
+.lesson-code-invalid pre{white-space:pre-wrap;overflow:auto;max-height:210px;max-width:100%;font:11px Consolas,monospace;background:#fff9f4;padding:10px;border:1px solid #e1baaa}
+#trama-confirm-description{white-space:pre-wrap;max-height:min(45vh,350px);overflow:auto;overflow-wrap:anywhere}
+#lesson-map-branch{margin-bottom:9px}
+.lesson-map-body>label+label{margin-top:9px}
