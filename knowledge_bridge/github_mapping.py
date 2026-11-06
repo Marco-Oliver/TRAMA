@@ -5,7 +5,7 @@ um indício da data de gravação. Não transformar sugestões em vínculos sem 
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import json
 import os
 import re
@@ -82,6 +82,8 @@ class GithubMapping:
                 raw = exc.headers.get(header) if exc.headers else None
                 if raw is not None and raw.isdigit():
                     self.rate[key] = int(raw)
+            if exc.code in (301, 302, 307, 308):
+                raise MappingError("O repositório mudou de nome/endereço (redirecionamento HTTP); atualize o link do GitHub manualmente.") from None
             if exc.code in (401, 404):
                 raise MappingError("Repositório não encontrado ou sem permissão. Para repos privados configure TRAMA_GITHUB_TOKEN.") from None
             if exc.code in (403, 429):
@@ -90,56 +92,162 @@ class GithubMapping:
         except (error.URLError, TimeoutError, OSError, UnicodeError, json.JSONDecodeError):
             raise MappingError("Não foi possível consultar a API REST do GitHub.") from None
 
-    def catalogue(self, repo):
-        """Up to 300 recent commits in three pages, tags and ONE recursive tree.
+    @staticmethod
+    def _date_windows(lessons, overrides=None):
+        """Windows covering ±30 days of each known lecture date, oldest first."""
+        overrides = overrides or {}
+        spans = []
+        for item in lessons or []:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("aula")
+            value = overrides.get(name, item.get("data", ""))
+            try:
+                day = date.fromisoformat(value)
+            except (TypeError, ValueError):
+                continue
+            spans.append((day - timedelta(days=30), day + timedelta(days=30)))
+        spans.sort()
+        merged = []
+        for first, last in spans:
+            if merged and first <= merged[-1][1] + timedelta(days=1):
+                merged[-1] = (merged[-1][0], max(merged[-1][1], last))
+            else:
+                merged.append((first, last))
+        windows = []
+        for first, last in merged:
+            while first <= last:
+                end = min(first + timedelta(days=44), last)
+                windows.append((first, end))
+                first = end + timedelta(days=1)
+        return windows
 
-        Pagination is capped and stops early near the unauthenticated rate limit.
-        Older classes beyond this window remain unguessed and can be mapped manually.
+    def catalogue(self, repo, lessons=None, overrides=None, branch=""):
+        """Read snapshots with bounded REST calls and date-window pagination.
+
+        Git commit dates are metadata, not proof of lesson dates. Tree inspection
+        always uses the branch tip (not a historical window's first commit).
         """
         if not _safe_repo(repo):
             raise MappingError("URL de repositório inválida.")
-        first = self._get(repo, "commits?per_page=100")
-        if not isinstance(first, list):
-            raise MappingError("Formato inesperado da API de commits.")
-        commits = list(first)
-        batch = first
+        if not isinstance(branch, str) or len(branch) > 180 or (branch and
+                (not re.fullmatch(r"[A-Za-z0-9_./-]+", branch) or ".." in branch or
+                 branch.startswith(("-", "/")) or branch.endswith("/") or "@{" in branch)):
+            raise MappingError("Branch inválida. Informe o nome da branch, sem URL ou parâmetros.")
+        sha_filter = ("&sha=" + parse.quote(branch, safe="")) if branch else ""
+        windows = self._date_windows(lessons, overrides)
         history_partial = False
-        for page in (2, 3):
-            if len(batch) < 100:
-                break
-            remaining = self.rate.get("restantes")
-            if isinstance(remaining, int) and remaining <= 5:
-                history_partial = True
-                break
-            try:
-                batch = self._get(repo, f"commits?per_page=100&page={page}")
-            except MappingError:
-                history_partial = True
-                break
-            if not isinstance(batch, list):
-                history_partial = True
-                break
-            commits.extend(batch)
-        history_partial = history_partial or len(commits) >= 300
-        tags = self._get(repo, "tags?per_page=100")
-        if not isinstance(tags, list):
-            raise MappingError("Formato inesperado da API de tags.")
+        commits = []
+        seen = set()
+        newest_sha = ""
+
+        def add(batch):
+            for entry in batch:
+                if not isinstance(entry, dict):
+                    continue
+                sha = entry.get("sha", "")
+                if isinstance(sha, str) and re.fullmatch(r"[0-9a-fA-F]{40}", sha) and sha not in seen:
+                    seen.add(sha)
+                    commits.append(entry)
+
+        if windows:
+            # A separate tip lookup matters: the newest commit inside an old
+            # lesson interval is NOT necessarily the branch's current HEAD.
+            tip = self._get(repo, "commits?per_page=1" + sha_filter)
+            if not isinstance(tip, list) or not tip:
+                raise MappingError("Branch sem commits acessíveis. Confirme o nome.")
+            newest_sha = tip[0].get("sha", "")
+            if not isinstance(newest_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", newest_sha):
+                raise MappingError("A referência não retornou um SHA válido.")
+            # Keep the tip as a manual option even when outside lesson dates.
+            add(tip)
+            page_count = 0
+            max_pages = 18
+            for start, end in windows:
+                if page_count >= max_pages:
+                    history_partial = True
+                    break
+                for page in range(1, 4):
+                    remaining = self.rate.get("restantes")
+                    if isinstance(remaining, int) and remaining <= 5:
+                        history_partial = True
+                        break
+                    start_time = start.isoformat() + "T00:00:00Z"
+                    end_time = end.isoformat() + "T23:59:59Z"
+                    endpoint = ("commits?per_page=100" + sha_filter +
+                                "&since=" + parse.quote(start_time, safe="") +
+                                "&until=" + parse.quote(end_time, safe="") +
+                                "&page=" + str(page))
+                    try:
+                        batch = self._get(repo, endpoint)
+                    except MappingError:
+                        history_partial = True
+                        break
+                    if not isinstance(batch, list):
+                        history_partial = True
+                        break
+                    page_count += 1
+                    add(batch)
+                    if len(batch) < 100:
+                        break
+                    if page == 3 or page_count >= max_pages:
+                        history_partial = True
+                if history_partial and (page_count >= max_pages or
+                         (isinstance(self.rate.get("restantes"), int) and
+                          self.rate["restantes"] <= 5)):
+                    break
+        else:
+            # No lesson date: retain a bounded recent-history fallback.
+            first = self._get(repo, "commits?per_page=100" + sha_filter)
+            if not isinstance(first, list):
+                raise MappingError("Formato inesperado da API de commits.")
+            add(first)
+            if not commits:
+                raise MappingError("O repositório não tem commits acessíveis.")
+            newest_sha = commits[0]["sha"]
+            batch = first
+            for page in (2, 3):
+                if len(batch) < 100:
+                    break
+                remaining = self.rate.get("restantes")
+                if isinstance(remaining, int) and remaining <= 5:
+                    history_partial = True
+                    break
+                try:
+                    batch = self._get(repo, "commits?per_page=100" + sha_filter +
+                                            "&page=" + str(page))
+                except MappingError:
+                    history_partial = True
+                    break
+                if not isinstance(batch, list):
+                    history_partial = True
+                    break
+                add(batch)
+            history_partial = history_partial or len(first) >= 100 and len(batch) >= 100
+
+        if not commits:
+            raise MappingError("Nenhum commit acessível no período selecionado.")
+
+        # Preserve calls for the tree when unauthenticated quota is low.
+        remaining = self.rate.get("restantes")
+        if isinstance(remaining, int) and remaining <= 2:
+            tags = []
+            history_partial = True
+        else:
+            tags = self._get(repo, "tags?per_page=100")
+            if not isinstance(tags, list):
+                raise MappingError("Formato inesperado da API de tags.")
+
         candidates = []
         dates = {}
-        version_dates = {}  # Inferred from commit SUBJECT, not proof that a folder was created then.
-        for item in commits[:300]:
-            if not isinstance(item, dict):
-                continue
-            sha = item.get("sha", "")
-            if not re.fullmatch(r"[a-fA-F0-9]{40}", str(sha)):
-                continue
+        version_dates = {}
+        for item in commits:
+            sha = item["sha"]
             meta = item.get("commit") or {}
             info = meta.get("committer") or meta.get("author") or {}
             when = _date(info.get("date"))
             subject = str(meta.get("message", "")).splitlines()[0][:130]
             dates[sha] = when
-            # A commit mentioning V3 might refer to a folder V3, but is only
-            # a weak clue. Preserve provenance in candidate labels.
             if when:
                 for version in re.findall(r"(?i)(?<![A-Za-z0-9])V[0-9]{1,3}(?![A-Za-z0-9])", subject):
                     version_dates.setdefault(version.casefold(), when)
@@ -147,24 +255,26 @@ class GithubMapping:
                                "ref_tipo": "commit", "ref": sha, "pasta": "",
                                "data": when, "rotulo": f"Commit {sha[:9]} — {subject}",
                                "fonte_data": "git_commit", "sugestao_anterior": None})
-        if not dates:
-            raise MappingError("O repositório não tem commits acessíveis.")
-        newest_sha = next(iter(dates))
         for tag in tags[:100]:
             name = tag.get("name") if isinstance(tag, dict) else ""
             sha = (tag.get("commit") or {}).get("sha", "") if isinstance(tag, dict) else ""
             if not isinstance(name, str) or not 1 <= len(name) <= 160:
                 continue
-            # Annotated tags can point to tag objects; date remains unknown.
             when = dates.get(sha, "")
             candidates.append({"id": _candidate_id("tag", name), "tipo": "tag",
                                "ref_tipo": "tag", "ref": name, "pasta": "",
                                "data": when, "rotulo": f"Tag {name}",
                                "fonte_data": "git_commit" if when else "sem_data_verificada",
                                "sugestao_anterior": None})
-        tree = self._get(repo, f"git/trees/{newest_sha}?recursive=1")
-        if not isinstance(tree, dict) or not isinstance(tree.get("tree"), list):
-            raise MappingError("Não foi possível obter a árvore Git da revisão.")
+
+        remaining = self.rate.get("restantes")
+        if isinstance(remaining, int) and remaining <= 0:
+            tree = {"tree": [], "truncated": True}
+            history_partial = True
+        else:
+            tree = self._get(repo, f"git/trees/{newest_sha}?recursive=1")
+            if not isinstance(tree, dict) or not isinstance(tree.get("tree"), list):
+                raise MappingError("Não foi possível obter a árvore Git da revisão.")
         dirs = set()
         for entry in tree["tree"][:80000]:
             if not isinstance(entry, dict) or entry.get("type") != "tree":
@@ -172,7 +282,6 @@ class GithubMapping:
             path = entry.get("path", "")
             if isinstance(path, str) and path and _version(path.rsplit("/", 1)[-1]):
                 dirs.add(path)
-        # Git Trees doesn't provide folder creation dates. Never invent them.
         for folder in sorted(dirs)[:200]:
             hint = version_dates.get(folder.rsplit("/", 1)[-1].casefold(), "")
             candidates.append({"id": _candidate_id("pasta", newest_sha, folder),
@@ -192,10 +301,10 @@ class GithubMapping:
             if older in by_path:
                 candidate["sugestao_anterior"] = {"ref_tipo": "commit", "ref": newest_sha,
                                                    "pasta": older}
-        return {"candidatos": candidates[:650], "truncado": bool(tree.get("truncated")),
+        return {"candidatos": candidates, "truncado": bool(tree.get("truncated")),
                 "historico_parcial": history_partial,
-                "limite_amostra": {"commits": 300, "tags": 100},
-                "taxa": self.rate, "autenticado": bool(self.token)}
+                "limite_amostra": {"commits": 1801 if windows else 300, "tags": 100},
+                "taxa": self.rate, "autenticado": bool(self.token), "branch": branch}
 
     @staticmethod
     def suggestions(catalogue, lessons, overrides=None):
@@ -223,7 +332,7 @@ class GithubMapping:
                         continue
                     dated.append((abs(delta), 0 if delta >= 0 else 1,
                                   {'pasta': 0, 'tag': 1, 'commit': 2}.get(c.get('tipo'), 3), c))
-                dated.sort(key=lambda item: (item[0], item[1]))
+                dated.sort(key=lambda item: (item[0], item[1], item[2]))
             best = dated[0][3]["id"] if dated and dated[0][0] <= 30 else ""
             results.append({"aula": name, "data": day,
                             "origem_data": "informada_usuario" if name in overrides else lesson.get("origem_data", ""),
@@ -233,8 +342,8 @@ class GithubMapping:
         return results
 
 
-def preview_mapping(vault, repo, overrides=None):
-    catalogue = GithubMapping().catalogue(repo)
+def preview_mapping(vault, repo, overrides=None, branch=""):
     lessons = lesson_dates(vault)
+    catalogue = GithubMapping().catalogue(repo, lessons=lessons, overrides=overrides, branch=branch)
     return {**catalogue, "aulas": GithubMapping.suggestions(catalogue, lessons, overrides),
             "repo": repo.rstrip("/").removesuffix(".git")}
