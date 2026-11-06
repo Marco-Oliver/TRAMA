@@ -6,10 +6,31 @@
  const editor=el('lesson-code-dialog'), mapper=el('lesson-map-dialog');
  if(!editor||!mapper)return;
  let preview=null;
+ let loadedInvalid=null;
  const show=d=>typeof d.showModal==='function'?d.showModal():d.setAttribute('open','');
  const hide=d=>d.open&&typeof d.close==='function'?d.close():d.removeAttribute('open');
  const feedback=(id,msg)=>{el(id).textContent=msg;};
  const selectedLesson=()=>/^Aula-\d{3,4}$/.test(app?.note?.lesson||'')?app.note.lesson:'Aula-001';
+ function updateStudentSelect(node, wanted=null){
+   const select=node.querySelector('select[data-code="professor_id"]');
+   if(!select)return;
+   const original=wanted===null?select.value:wanted;
+   select.replaceChildren();
+   const empty=document.createElement('option');
+   empty.value='';empty.textContent='Selecione um repositório do professor';select.append(empty);
+   for(const teacher of el('code-teachers').children){
+     const id=teacher.querySelector('[data-code="id"]')?.value.trim()||'';
+     const label=teacher.querySelector('[data-code="rotulo"]')?.value.trim()||id;
+     if(!id)continue;
+     const opt=document.createElement('option');opt.value=id;
+     opt.textContent=label+' ('+id+')';select.append(opt);
+   }
+   // Never silently attach a student to a different teacher.
+   select.value=[...select.options].some(opt=>opt.value===original)?original:'';
+ }
+ function refreshTeacherOptions(){
+   for(const student of el('code-students').children)updateStudentSelect(student);
+ }
  function row(role,entry={}){
    const list=el(role==='professor'?'code-teachers':'code-students');
    const n=list.children.length+1, node=document.createElement('fieldset');
@@ -28,13 +49,19 @@
      select('Referência',entry.ref_tipo||'branch')+
      field('ref','Branch, tag ou SHA',entry.ref||'main')+
      field('pasta','Pasta (opcional)',entry.pasta||'')+
-     (role==='dupla'?field('professor_id','ID correspondente do professor',entry.professor_id||''):
+     (role==='dupla'?'<label>Repositório correspondente do professor<select data-code="professor_id" required></select></label>':
       select('Tipo anterior (opcional)',entry.anterior?.ref_tipo||'',true)+
       field('anterior_ref','Anterior: referência',entry.anterior?.ref||'')+
       field('anterior_pasta','Anterior: pasta',entry.anterior?.pasta||''))+
      '</div><button type="button" class="code-remove-row">Remover repositório</button>';
-   node.querySelector('.code-remove-row').addEventListener('click',()=>node.remove());
+   node.querySelector('.code-remove-row').addEventListener('click',()=>{node.remove();refreshTeacherOptions();});
    list.append(node);
+   if(role==='dupla')updateStudentSelect(node,entry.professor_id||'');
+   else{
+     node.querySelectorAll('[data-code="id"],[data-code="rotulo"]').forEach(input=>
+       input.addEventListener('input',refreshTeacherOptions));
+     refreshTeacherOptions();
+   }
  }
  function collect(role){
    return [...el(role==='professor'?'code-teachers':'code-students').children].map(node=>{
@@ -54,10 +81,13 @@
      feedback('lesson-code-feedback','Número da aula inválido.');return;
    }
    const lesson='Aula-'+String(nr).padStart(3,'0');
-   const result=await call('lesson_code_config');
+   const result=await call('lesson_code_config',lesson);
    if(!result){feedback('lesson-code-feedback','Não foi possível carregar o cadastro.');return;}
    if(result.fatal){feedback('lesson-code-feedback',(result.erros||[]).join('; '));return;}
    loadedLesson=lesson;
+   loadedInvalid=result.invalid?.[lesson]||null;
+   el('lesson-code-invalid').hidden=!loadedInvalid;
+   el('lesson-code-invalid-raw').textContent=loadedInvalid?JSON.stringify(loadedInvalid.raw,null,2):'';
    el('code-teachers').replaceChildren();el('code-students').replaceChildren();
    const current=result?.aulas?.[lesson]||{professor:[],dupla:[]};
    for(const item of current.professor||[])row('professor',item);
@@ -82,19 +112,29 @@
    const lesson='Aula-'+String(nr).padStart(3,'0');
    if(lesson!==loadedLesson){feedback('lesson-code-feedback','Clique em Carregar esta aula antes de salvar outro número.');return;}
    const data={professor:collect('professor'),dupla:collect('dupla')};
-   if(!await askTramaConfirm('Salvar repositórios',
-       'Gravar '+data.professor.length+' repositório(s) do professor e '+data.dupla.length+
-       ' da dupla para '+lesson+'?','Salvar'))return;
-   const out=await call('save_lesson_code',lesson,data,true);
+   if(!data.professor.length&&!data.dupla.length){
+     feedback('lesson-code-feedback','Cadastro vazio bloqueado. Adicione um repositório; remover cadastro exige ação específica.');return;
+   }
+   let title='Salvar repositórios',message='Gravar '+data.professor.length+
+     ' repositório(s) do professor e '+data.dupla.length+' da dupla para '+lesson+'?',accept='Salvar';
+   if(loadedInvalid){
+     title='ATENÇÃO — substituir registro inválido de '+lesson;
+     const original=JSON.stringify(loadedInvalid.raw,null,2);
+     message='Registro atual (também exibido integralmente no formulário):\n'+
+       (original.length>12000?original.slice(0,12000)+'\n[Exibição resumida aqui: confira o restante no formulário]':original)+
+       '\n\nSubstituir este registro inválido pelo cadastro novo? A alteração não será reversível pelo formulário.';
+     accept='Substituir cadastro inválido';
+   }
+   if(!await askTramaConfirm(title,message,accept))return;
+   const out=await call('save_lesson_code',lesson,data,true,
+                       !!loadedInvalid,loadedInvalid?.digest||'');
    feedback('lesson-code-feedback',out?.message||'Falha ao salvar.');
-   if(out?.ok)notify('Cadastro GitHub salvo.');
- }
- function nearest(day, candidates){
-   const value=Date.parse(day+'T12:00:00Z');
-   if(!day||!Number.isFinite(value))return '';
-   const ordered=candidates.filter(x=>x.data).map(c=>[Math.abs(Date.parse(c.data+'T12:00:00Z')-value),c])
-     .filter(x=>Number.isFinite(x[0])).sort((a,b)=>a[0]-b[0]);
-   return ordered.length&&ordered[0][0]<=30*86400000?ordered[0][1].id:'';
+   if(out?.ok){
+     notify('Cadastro GitHub salvo.');
+     loadedInvalid=null;
+     el('lesson-code-invalid').hidden=true;
+     el('lesson-code-invalid-raw').textContent='';
+   }
  }
  function displayPreview(data){
    preview=data;const rate=data.taxa||{};
@@ -129,6 +169,15 @@
        const c=candidates.find(x=>x.id===lesson.candidato_id);
        if(c){const o=document.createElement('option');o.value=c.id;o.textContent=c.rotulo;selection.append(o);}
      }
+     const ensureOption = id => {
+       if(!id||[...selection.options].some(option=>option.value===id))return;
+       const candidate=candidates.find(c=>c.id===id);
+       if(!candidate)return;
+       const option=document.createElement('option');option.value=id;
+       option.textContent=candidate.rotulo+' ('+(candidate.data||'sem data')+')';
+       selection.append(option);
+     };
+     ensureOption(lesson.candidato_id);
      selection.value=lesson.candidato_id||'';
      const older=document.createElement('label');older.className='lesson-map-previous';
      const olderCheck=document.createElement('input');olderCheck.type='checkbox';olderCheck.dataset.mapPrevious='1';
@@ -142,8 +191,22 @@
        if(c?.sugestao_anterior)older.lastChild.textContent=' Confirmar anterior sugerida: '+c.sugestao_anterior.pasta;
      };
      selection.addEventListener('change',()=>{checkbox.checked=false;updateOlder();});
-     day.addEventListener('change',()=>{
-       selection.value=nearest(day.value,candidates);checkbox.checked=false;updateOlder();
+     day.addEventListener('change',async()=>{
+       const requested=day.value;checkbox.checked=false;olderCheck.checked=false;
+       // The Python backend owns date direction and folder/tag/commit priority.
+       const recalculated=await call('suggest_lesson_mappings',{[lesson.aula]:requested});
+       if(day.value!==requested)return; // Ignore stale replies when users edit quickly.
+       if(!recalculated?.ok){
+         feedback('lesson-map-feedback',recalculated?.message||'Falha ao atualizar a sugestão.');
+         return;
+       }
+       const suggestion=(recalculated.aulas||[]).find(item=>item.aula===lesson.aula);
+       if(!suggestion)return;
+       ensureOption(suggestion.candidato_id);
+       selection.value=suggestion.candidato_id||'';
+       updateOlder();
+       description.textContent=(lesson.origem_data==='contexto_classroom'?
+         'Data do post no Classroom; não comprova data da gravação. ':'')+suggestion.motivo;
      });
      updateOlder();line.append(label,day,selection,older,description);root.append(line);
    }
@@ -151,7 +214,8 @@
  }
  async function previewMappings(){
    feedback('lesson-map-feedback','Consultando commits, tags e árvore do GitHub...');
-   const result=await call('preview_lesson_mappings',el('lesson-map-repo').value.trim());
+   preview=null;el('lesson-map-results').replaceChildren();
+   const result=await call('preview_lesson_mappings',el('lesson-map-repo').value.trim(),null,el('lesson-map-branch').value.trim());
    if(!result?.ok){feedback('lesson-map-feedback',result?.message||'Não foi possível consultar GitHub.');return;}
    displayPreview(result);
  }
