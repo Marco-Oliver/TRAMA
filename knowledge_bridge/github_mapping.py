@@ -131,6 +131,22 @@ class GithubMapping:
                 first = end + timedelta(days=1)
         return windows
 
+    def resolve_sha(self, repo, ref_kind, ref):
+        """Resolve branch/tag/commit once, only when the user confirms freezing."""
+        if (ref_kind not in ("branch","tag","commit") or not isinstance(ref,str)
+                or not re.fullmatch(r"[A-Za-z0-9_./-]{1,180}",ref)
+                or ".." in ref or ref.startswith(("-", "/"))):
+            raise MappingError("Referência Git inválida para congelamento.")
+        if ref_kind == "commit" and not re.fullmatch(r"[a-fA-F0-9]{40}",ref):
+            raise MappingError("SHA do commit deve ter 40 caracteres.")
+        resolved = self._get(repo, "commits?per_page=1&sha=" + parse.quote(ref, safe=""))
+        if not isinstance(resolved,list) or not resolved:
+            raise MappingError("GitHub não encontrou a referência selecionada.")
+        sha = resolved[0].get("sha") if isinstance(resolved[0],dict) else ""
+        if not isinstance(sha,str) or not re.fullmatch(r"[a-fA-F0-9]{40}",sha):
+            raise MappingError("GitHub não retornou um SHA de commit válido.")
+        return sha.lower()
+
     def catalogue(self, repo, lessons=None, overrides=None, branch=""):
         """Read snapshots with bounded REST calls and date-window pagination.
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -58,6 +59,13 @@ CREATE TABLE IF NOT EXISTS uncertainty_events (
 CREATE TABLE IF NOT EXISTS review_source_index (
  source_id TEXT PRIMARY KEY, digest TEXT NOT NULL, payload TEXT NOT NULL,
  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS github_lesson_refs (
+ lesson TEXT NOT NULL, role TEXT NOT NULL, repository_id TEXT NOT NULL,
+ slot TEXT NOT NULL, repo_url TEXT NOT NULL, ref_kind TEXT NOT NULL,
+ ref_name TEXT NOT NULL, folder TEXT NOT NULL, commit_sha TEXT NOT NULL,
+ frozen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+ PRIMARY KEY(lesson, role, repository_id, slot)
 );
 CREATE INDEX IF NOT EXISTS idx_uncertainties_source ON uncertainties(source_id);
 CREATE INDEX IF NOT EXISTS idx_uncertainty_events_lookup ON uncertainty_events(uncertainty_id, id);
@@ -160,6 +168,41 @@ class Store:
 
     def repositories(self):
         return self.conn.execute("SELECT * FROM repositories ORDER BY name").fetchall()
+
+    def github_ref(self, lesson: str, role: str, repository_id: str, slot="current"):
+        row = self.conn.execute(
+            "SELECT * FROM github_lesson_refs WHERE lesson=? AND role=? AND repository_id=? AND slot=?",
+            (lesson, role, repository_id, slot)).fetchone()
+        return dict(row) if row else None
+
+    def freeze_github_ref(self, lesson: str, role: str, repository_id: str, slot: str,
+                          repo_url: str, ref_kind: str, ref_name: str,
+                          folder: str, commit_sha: str):
+        """First frozen SHA wins; never overwrite on reprocess or moving branches."""
+        if (role not in ("professor", "dupla") or slot not in ("current", "previous")
+                or not re.fullmatch(r"Aula-\\d{3,4}", lesson or "")
+                or not re.fullmatch(r"[a-fA-F0-9]{40}", commit_sha or "")):
+            raise ValueError("Identificador ou SHA de congelamento inválido.")
+        expected = (repo_url, ref_kind, ref_name, folder)
+        old = self.github_ref(lesson, role, repository_id, slot)
+        if old:
+            if tuple(old[key] for key in ("repo_url","ref_kind","ref_name","folder")) != expected:
+                raise ValueError("Referência já congelada para este cadastro; alteração exige revisão explícita.")
+            return {"sha": old["commit_sha"], "created": False}
+        with self.conn:
+            self.conn.execute("""INSERT OR IGNORE INTO github_lesson_refs
+                (lesson,role,repository_id,slot,repo_url,ref_kind,ref_name,folder,commit_sha)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (lesson,role,repository_id,slot,repo_url,ref_kind,ref_name,folder,commit_sha.lower()))
+        saved = self.github_ref(lesson, role, repository_id, slot)
+        if (not saved or tuple(saved[key] for key in ("repo_url","ref_kind","ref_name","folder")) != expected
+                or saved["commit_sha"] != commit_sha.lower()):
+            raise ValueError("Referência congelada por outro processo; nenhuma atualização automática aplicada.")
+        return {"sha":saved["commit_sha"],"created":True}
+
+    def clear_github_lesson(self, lesson: str):
+        with self.conn:
+            self.conn.execute("DELETE FROM github_lesson_refs WHERE lesson=?", (lesson,))
 
     def uncertainties(self):
         return self.conn.execute(

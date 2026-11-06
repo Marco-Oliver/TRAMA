@@ -1142,6 +1142,7 @@ class Bridge:
 
     def remove_lesson_code(self, lesson, confirmed=False, expected_digest=""):
         from .lesson_code_config import delete_lesson
+        from .store import Store
         if confirmed is not True:
             return {"ok":False,"message":"Confirme explicitamente a remoção do cadastro GitHub."}
         vault=self._vault()
@@ -1150,11 +1151,78 @@ class Bridge:
         if not self._write_lock.acquire(blocking=False):
             return {"ok":False,"message":"Há uma operação em andamento."}
         try:
-            return delete_lesson(vault, lesson, expected_digest)
-        except (ValueError,TypeError,OSError) as exc:
+            result=delete_lesson(vault, lesson, expected_digest)
+            if result.get("ok"):
+                db=Store(vault)
+                try:db.clear_github_lesson(lesson)
+                finally:db.close()
+            return result
+        except (ValueError,TypeError,OSError,sqlite3.Error) as exc:
             return {"ok":False,"message":str(exc)[:350]}
         finally:
             self._write_lock.release()
+
+    def freeze_lesson_code(self, lesson, role, repository_id, confirmed=False, previous=False):
+        """Freeze a version only on explicit user consent; reprocessing never repins."""
+        from .lesson_code_config import read_config, LESSON_RE
+        from .github_mapping import GithubMapping, MappingError
+        from .store import Store
+        if confirmed is not True:
+            return {"ok":False,"message":"Confirme o congelamento do SHA para esta aula."}
+        if (not isinstance(lesson,str) or not LESSON_RE.fullmatch(lesson)
+                or role not in ("professor","dupla") or not isinstance(repository_id,str)
+                or type(previous) is not bool):
+            return {"ok":False,"message":"Aula ou repositório inválido."}
+        vault=self._vault()
+        if vault is None:
+            return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        if not self._write_lock.acquire(blocking=False):
+            return {"ok":False,"message":"Há uma operação em andamento."}
+        db=None
+        try:
+            config=read_config(vault)
+            if config["fatal"] or lesson not in config["aulas"]:
+                return {"ok":False,"message":"Cadastro GitHub desta aula inválido ou não encontrado."}
+            entry=next((row for row in config["aulas"][lesson].get(role,[])
+                        if row["id"]==repository_id),None)
+            if entry is None:
+                return {"ok":False,"message":"Repositório não está cadastrado nesta aula."}
+            spec=entry.get("anterior") if previous else entry
+            if not spec:
+                return {"ok":False,"message":"Nenhuma referência anterior foi cadastrada."}
+            slot="previous" if previous else "current"
+            db=Store(vault)
+            previous_lock=db.github_ref(lesson,role,repository_id,slot)
+            sha=(previous_lock["commit_sha"] if previous_lock else
+                 GithubMapping().resolve_sha(entry["repo"],spec["ref_tipo"],spec["ref"]))
+            locked=db.freeze_github_ref(lesson,role,repository_id,slot,
+                entry["repo"],spec["ref_tipo"],spec["ref"],spec.get("pasta",""),sha)
+            return {"ok":True,"sha":locked["sha"],"created":locked["created"],
+                    "slot":slot,"message":"SHA congelado no SQLite; reprocessamentos manterão esta referência."}
+        except (ValueError,TypeError,OSError,sqlite3.Error,MappingError) as exc:
+            return {"ok":False,"message":str(exc)[:350]}
+        finally:
+            if db is not None:db.close()
+            self._write_lock.release()
+
+    def frozen_lesson_code(self, lesson):
+        """Read-only snapshots for the UI; never resolves a branch automatically."""
+        from .lesson_code_config import read_config, LESSON_RE
+        from .store import Store
+        vault=self._vault()
+        if vault is None or not isinstance(lesson,str) or not LESSON_RE.fullmatch(lesson):
+            return {"ok":False,"message":"Cofre ou aula inválido."}
+        config=read_config(vault)
+        if config["fatal"] or lesson not in config["aulas"]:
+            return {"ok":False,"message":"Nenhum cadastro GitHub válido nesta aula."}
+        db=Store(vault)
+        try:
+            rows=db.conn.execute("""SELECT role,repository_id,slot,repo_url,ref_kind,
+                         ref_name,folder,commit_sha,frozen_at FROM github_lesson_refs
+                         WHERE lesson=? ORDER BY role,repository_id,slot""",(lesson,))
+            return {"ok":True,"refs":[dict(row) for row in rows]}
+        finally:
+            db.close()
 
     def preview_lesson_mappings(self, repo, dates=None, branch=""):
         """REST suggestions only. No file/database writes and no Git checkout."""
@@ -1662,6 +1730,12 @@ class PublicApi:
 
     def remove_lesson_code(self, lesson, confirmed=False, expected_digest=""):
         return self._bridge.remove_lesson_code(lesson,confirmed,expected_digest)
+
+    def freeze_lesson_code(self, lesson, role, repository_id, confirmed=False, previous=False):
+        return self._bridge.freeze_lesson_code(lesson,role,repository_id,confirmed,previous)
+
+    def frozen_lesson_code(self, lesson):
+        return self._bridge.frozen_lesson_code(lesson)
 
     def preview_lesson_mappings(self, repo, dates=None, branch=""):
         return self._bridge.preview_lesson_mappings(repo,dates,branch)

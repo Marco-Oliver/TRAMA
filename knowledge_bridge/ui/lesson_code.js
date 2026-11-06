@@ -53,8 +53,25 @@
       select('Tipo anterior (opcional)',entry.anterior?.ref_tipo||'',true)+
       field('anterior_ref','Anterior: referência',entry.anterior?.ref||'')+
       field('anterior_pasta','Anterior: pasta',entry.anterior?.pasta||''))+
-     '</div><button type="button" class="code-remove-row">Remover repositório</button>';
+     '</div><button type="button" class="code-remove-row">Remover repositório</button>'+
+     '<button type="button" class="code-freeze-row">Congelar SHA</button>'+
+     (role==='professor'?'<button type="button" class="code-freeze-previous">Congelar anterior</button>':'')+
+     '<small class="code-freeze-status" role="status"></small>';
    node.querySelector('.code-remove-row').addEventListener('click',()=>{node.remove();refreshTeacherOptions();});
+   const freeze=async previous=>{
+     if(!loadedLesson){feedback('lesson-code-feedback','Carregue e salve a aula antes de congelar.');return;}
+     const ident=node.querySelector('[data-code="id"]')?.value.trim()||'';
+     if(!ident){feedback('lesson-code-feedback','Identificador obrigatório para congelar SHA.');return;}
+     if(!await askTramaConfirm('Congelar revisão GitHub',
+       'Fixar no SQLite o commit '+(previous?'anterior':'atual')+' do cadastro salvo de '+loadedLesson+
+       '? Reprocessar não atualizará esse SHA automaticamente.','Congelar SHA'))return;
+     const result=await call('freeze_lesson_code',loadedLesson,role,ident,true,previous);
+     feedback('lesson-code-feedback',result?.message||'Falha ao congelar SHA.');
+     if(result?.ok)node.querySelector('.code-freeze-status').textContent=
+       (previous?'Anterior':'Atual')+' fixado: '+result.sha.slice(0,12);
+   };
+   node.querySelector('.code-freeze-row').addEventListener('click',()=>freeze(false));
+   node.querySelector('.code-freeze-previous')?.addEventListener('click',()=>freeze(true));
    list.append(node);
    if(role==='dupla')updateStudentSelect(node,entry.professor_id||'');
    else{
