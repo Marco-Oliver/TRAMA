@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feat/v2.2.0-automation-foundations
+      - feat/github-por-aula
   workflow_dispatch:
 
 permissions:

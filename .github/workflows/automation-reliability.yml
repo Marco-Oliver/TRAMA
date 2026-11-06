@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feat/automacao-confiavel-20261031
+      - feat/github-por-aula
   workflow_dispatch:
 permissions:
   contents: read
