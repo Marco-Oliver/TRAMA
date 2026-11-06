@@ -304,7 +304,34 @@ class Application:
         clean["qualidade_pendente"]=review
         return clean
 
+    def assign_github_versions(self, recalculate=False):
+        """Local TXT-to-version matching, no AI configuration needed."""
+        from .github_auto_versions import GithubAutoMapper
+        mapper = GithubAutoMapper(self.store, log=self.log)
+        return mapper.assign(recalculate=recalculate)
+
+    def recalculate_github_versions(self, repo_url):
+        """User-requested recalculation; never modifies manual assignments."""
+        from .github_auto_versions import GithubAutoMapper, role_for
+        role = role_for(repo_url)
+        repo = repo_url.rstrip("/").removesuffix(".git")
+        row = next((x for x in self.store.auto_repositories()
+                    if x["repo_url"] == repo), None)
+        if not row:
+            raise ValueError("Repositório automático não cadastrado.")
+        mapper = GithubAutoMapper(self.store, log=self.log)
+        self.store.save_auto_repository(repo, role, bool(row["private"]), "pending")
+        versions = mapper.discover(repo)
+        if versions is None:
+            return {"mapped":0,"pending":mapper.pending,"versions":[]}
+        result = mapper.assign(recalculate=True)
+        self.publisher.rebuild()
+        return {**result,"versions":[v["name"] for v in versions]}
+
     def process(self, lesson_filter: str | None = None, force: bool = False):
+        automatic = self.assign_github_versions()
+        for warning in automatic.get("pending",[]):
+            self.log("Versões automáticas: " + str(warning)[:200])
         sources = self.store.sources("transcript")
         if lesson_filter is not None:
             sources = [s for s in sources if s["lesson"] == lesson_filter]
@@ -591,6 +618,18 @@ class Application:
                 raise ValueError("Informe pasta Git local ou URL HTTPS pública de repositório GitHub.")
             owner, name = source.removesuffix("/").removesuffix(".git").split("/")[-2:]
             source_id = f"https://github.com/{owner}/{name}"
+            from .github_auto_versions import GithubAutoMapper
+            mapper = GithubAutoMapper(self.store,log=self.log)
+            versions = mapper.discover(source_id)
+            if versions is None:
+                # Rate limit/offline: preserve registration and TXT, retry on
+                # the next import/process after the GitHub reset.
+                return True
+            if versions:
+                # No clone or checkout. Versions are immutable Git REST SHAs,
+                # indexed lazily once per version and reused across lessons.
+                return True
+            # No identifiable versions: retain the previous global HEAD index.
             checkout_dir = self.store.vault / ".base-conhecimento" / "repos" / f"{slug(owner)}-{slug(name)}"
             checkout_dir.parent.mkdir(parents=True,exist_ok=True)
             if not checkout_dir.exists():

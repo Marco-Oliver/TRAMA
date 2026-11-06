@@ -20,7 +20,7 @@ def _invalidations(db, updates: dict, original: dict) -> list[dict]:
     for lesson, values in updates.items():
         rows = db.conn.execute(
             "SELECT lesson,role,repository_id,slot,repo_url,ref_kind,ref_name,folder,commit_sha "
-            "FROM github_lesson_refs WHERE lesson=? ORDER BY role,repository_id,slot",
+            "FROM github_lesson_refs WHERE lesson=? AND origem!='automatica' ORDER BY role,repository_id,slot",
             (lesson,)).fetchall()
         for row in rows:
             key = (row["role"], row["repository_id"], row["slot"])
@@ -106,6 +106,11 @@ def persist_codes(vault: Path, updates: dict | None = None, *,
                     "DELETE FROM github_lesson_refs "
                     "WHERE lesson=? AND role=? AND repository_id=? AND slot=?",
                     (row["lesson"], row["role"], row["repository_id"], row["slot"]))
+            # Manual JSON edits always supersede tentative automatic locks,
+            # without asking users to confirm deletion of automatic guesses.
+            for lesson in updates:
+                db.conn.execute("DELETE FROM github_lesson_refs WHERE lesson=? AND origem='automatica'",(lesson,))
+                db.conn.execute("DELETE FROM github_auto_decisions WHERE lesson=?",(lesson,))
             outcome = save_lessons(vault, updates, replacements=replacements)
         if not outcome.get("ok"):
             db.conn.rollback()

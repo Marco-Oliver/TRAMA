@@ -29,6 +29,7 @@ class LessonRepositoryIndex:
         self._config = None
         self._global = None
         self._status = {}
+        self._auto_none = set()
         self._rate_error = None
         self._no_token_bulk = False
 
@@ -43,6 +44,9 @@ class LessonRepositoryIndex:
         self._global = [({**dict(repo), "frozen": False, "folder": ""},
                          json.loads(repo["payload"])) for repo in self.store.repositories()]
         self._status.clear()
+        self._auto_none = {lesson for row in self.store.auto_repositories()
+            for lesson, decision in self.store.automatic_decisions(row["repo_url"]).items()
+            if decision["decision"] == "none"}
         self.errors.clear()
         self.failed_lessons.clear()
         self.notices.clear()
@@ -141,8 +145,11 @@ class LessonRepositoryIndex:
         count, frozen = self.store.github_lesson_refs(lesson, config=self._config)
         self.errors.pop(lesson, None)
         if count == 0:
-            self._status[lesson] = (count, frozen, self._global)
-            return self._global
+            # Explicitly excluded revision lessons do not acquire fake links
+            # merely because a moving global HEAD happens to contain a term.
+            chosen = [] if lesson in self._auto_none else self._global
+            self._status[lesson] = (count, frozen, chosen)
+            return chosen
         if count < 0:
             self.errors[lesson] = "Cadastro GitHub inválido; relações de código bloqueadas."
             self._status[lesson] = (count, frozen, [])
@@ -180,6 +187,8 @@ class LessonRepositoryIndex:
                 "url": url, "sha": row["commit_sha"],
                 "name": url.rstrip("/").removesuffix(".git").rsplit("/", 1)[-1],
                 "status": "FROZEN", "folder": row["folder"], "frozen": True,
+                "origin": row["origem"], "confidence": row["confianca"],
+                "version": row["ref_name"],
             }, payload))
         self._status[lesson] = (count, frozen, result)
         return result
@@ -189,7 +198,9 @@ class LessonRepositoryIndex:
             self.for_lesson(lesson)
         count, frozen, _ = self._status[lesson]
         if count == 0:
-            return "versão não congelada: relação pode não corresponder ao código desta aula"
+            return ("Aula sem relação verificável com as versões do código."
+                    if lesson in self._auto_none else
+                    "versão não congelada: relação pode não corresponder ao código desta aula")
         messages = []
         if count < 0:
             messages.append("Cadastro GitHub inválido; código não vinculado.")
@@ -199,4 +210,11 @@ class LessonRepositoryIndex:
             messages.append("Código GitHub pendente: congele a versão desta aula.")
         if lesson in self.notices:
             messages.append(self.notices[lesson])
+        for row in frozen:
+            if row.get("origem") == "automatica":
+                messages.append("Versão " + str(row["ref_name"]) +
+                                " associada automaticamente; confiança " +
+                                str(row["confianca"]) + ".")
+                if row["confianca"] == "baixa":
+                    messages.append("versão estimada; confira")
         return " ".join(messages)

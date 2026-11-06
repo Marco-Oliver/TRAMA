@@ -329,6 +329,11 @@ class AutoOrganizer:
             synthetic={'id':src_id,'stored_path':'(URLs informadas pelo usuário)'}
             try:self._save_extracted(synthetic,lesson,data,reason='Links fornecidos no lote')
             except (ValueError,OSError) as exc:outcome['pending'].append(f'{lesson}: {exc}')
+        # Version association does not require an AI provider or user-by-user
+        # Git mapping; operate after all TXT and repository links are imported.
+        automatic = self.app.assign_github_versions()
+        outcome['automatic_versions'] = automatic.get('mapped', 0)
+        outcome['pending'].extend(automatic.get('pending', []))
         if self.app.store.sources('transcript') and self.app.ai.active():
             # process() já reutiliza transcrições anteriores e compara repositórios.
             self.app.process();outcome['processed']=True

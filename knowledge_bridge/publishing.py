@@ -1015,6 +1015,12 @@ class Publisher:
         body += ["", "## Relações com códigos e projetos", ""]
         project_matches = []
         for repo, payload in self._lesson_repos(lesson):
+            if repo.get("origin") == "automatica":
+                body.append(f"- **Versão GitHub automática:** `{_escape_md(repo.get('version',''))}` "
+                            f"— confiança **{_escape_md(repo.get('confidence','baixa'))}** "
+                            f"— commit `{repo['sha'][:10]}`.")
+                if repo.get("confidence") == "baixa":
+                    body.append("> versão estimada; confira")
             matched = match_lesson_to_repository(text, analysis, payload, cap=5)
             if not matched:
                 continue

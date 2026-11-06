@@ -581,6 +581,18 @@ function bind(){document.querySelectorAll('.nav-item').forEach(el=>el.addEventLi
  $('btn-settings').addEventListener('click',()=>setView('settings'));
  $('btn-context').addEventListener('click',openClassroomContext);
  $('repo-form').addEventListener('submit',submitRepo);
+ $('repo-recalculate').addEventListener('click',async()=>{
+   const repo=$('repo-url').value.trim();
+   if(!repo){$('repo-feedback').textContent='Informe o repositório para recalcular.';return;}
+   if(!await askTramaConfirm('Recalcular versões automáticas',
+      'Reavaliar versões de todas as aulas deste repositório? Ajustes manuais serão preservados.','Recalcular'))return;
+   $('repo-feedback').textContent='Recalculando versões por conteúdo, fala e ordem...';
+   const result=await call('recalculate_github_versions',repo,true);
+   $('repo-feedback').textContent=result?.ok?
+      'Recálculo finalizado: '+(result.mapped||0)+' aula(s). '+(result.pending||[]).join(' '):
+      (result?.message||'Não foi possível recalcular.');
+   if(result?.ok){await refresh();}
+ });
  $('repo-close').addEventListener('click',closeRepoDialog);
  $('repo-cancel').addEventListener('click',closeRepoDialog);
  $('auto-close').addEventListener('click',closeAutoImport);

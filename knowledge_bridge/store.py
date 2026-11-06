@@ -65,8 +65,21 @@ CREATE TABLE IF NOT EXISTS github_lesson_refs (
  slot TEXT NOT NULL, repo_url TEXT NOT NULL, ref_kind TEXT NOT NULL,
  ref_name TEXT NOT NULL, folder TEXT NOT NULL, commit_sha TEXT NOT NULL,
  private INTEGER CHECK(private IN (0,1)),
+ origem TEXT NOT NULL DEFAULT 'manual',
+ confianca TEXT NOT NULL DEFAULT 'alta',
  frozen_at TEXT DEFAULT CURRENT_TIMESTAMP,
  PRIMARY KEY(lesson, role, repository_id, slot)
+);
+CREATE TABLE IF NOT EXISTS github_auto_repositories (
+ repo_url TEXT PRIMARY KEY, role TEXT NOT NULL, private INTEGER,
+ status TEXT NOT NULL, versions_json TEXT NOT NULL DEFAULT '[]',
+ message TEXT NOT NULL DEFAULT '', updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS github_auto_decisions (
+ repo_url TEXT NOT NULL, lesson TEXT NOT NULL,
+ version_sha TEXT NOT NULL DEFAULT '', confianca TEXT NOT NULL DEFAULT '',
+ decision TEXT NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+ PRIMARY KEY(repo_url, lesson)
 );
 CREATE INDEX IF NOT EXISTS idx_uncertainties_source ON uncertainties(source_id);
 CREATE INDEX IF NOT EXISTS idx_uncertainty_events_lookup ON uncertainty_events(uncertainty_id, id);
@@ -86,6 +99,10 @@ class Store:
         columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(github_lesson_refs)")}
         if "private" not in columns:
             self.conn.execute("ALTER TABLE github_lesson_refs ADD COLUMN private INTEGER CHECK(private IN (0,1))")
+        if "origem" not in columns:
+            self.conn.execute("ALTER TABLE github_lesson_refs ADD COLUMN origem TEXT NOT NULL DEFAULT 'manual'")
+        if "confianca" not in columns:
+            self.conn.execute("ALTER TABLE github_lesson_refs ADD COLUMN confianca TEXT NOT NULL DEFAULT 'alta'")
         self.conn.commit()
 
     def close(self):
@@ -192,7 +209,12 @@ class Store:
             return -1, []  # Never expose stale code when this lesson's JSON is corrupt.
         record=config["aulas"].get(lesson)
         if not record:
-            return 0, []
+            # Automatic registrations live in SQLite; manual JSON remains
+            # optional, advanced and authoritative when it exists.
+            automatic = [dict(row) for row in self.conn.execute(
+                "SELECT * FROM github_lesson_refs WHERE lesson=? AND origem='automatica' AND slot='current' ORDER BY repo_url",
+                (lesson,)).fetchall()]
+            return len(automatic), automatic
         locked=[]
         total=0
         for role in ("professor","dupla"):
@@ -272,6 +294,79 @@ class Store:
     def clear_github_lesson(self, lesson: str):
         with self.conn:
             self.conn.execute("DELETE FROM github_lesson_refs WHERE lesson=?", (lesson,))
+
+
+    def auto_repositories(self):
+        return [dict(row) for row in self.conn.execute(
+            "SELECT * FROM github_auto_repositories ORDER BY repo_url").fetchall()]
+
+    def save_auto_repository(self, repo_url, role, private, status, versions=None, message=""):
+        if role not in ("professor", "dupla") or type(private) is not bool:
+            raise ValueError("Repositório automático inválido.")
+        # On rate limit, preserve last usable version catalogue.
+        previous = self.conn.execute(
+            "SELECT versions_json FROM github_auto_repositories WHERE repo_url=?", (repo_url,)).fetchone()
+        stored = json.dumps(versions,ensure_ascii=False) if versions is not None else (
+            previous["versions_json"] if previous else "[]")
+        with self.conn:
+            self.conn.execute("""INSERT INTO github_auto_repositories
+              (repo_url,role,private,status,versions_json,message)
+              VALUES(?,?,?,?,?,?) ON CONFLICT(repo_url) DO UPDATE SET
+              role=excluded.role,private=excluded.private,status=excluded.status,
+              versions_json=excluded.versions_json,message=excluded.message,
+              updated_at=CURRENT_TIMESTAMP""",
+              (repo_url,role,int(private),status,stored,str(message)[:500]))
+
+    def automatic_decisions(self, repo_url):
+        return {r["lesson"]:dict(r) for r in self.conn.execute(
+            "SELECT * FROM github_auto_decisions WHERE repo_url=?", (repo_url,))}
+
+    def set_auto_decision(self, repo_url, lesson, role, private, version, confidence,
+                          recalculate=False):
+        """Never alter a manual SHA. No-code decisions remain stable across runs."""
+        from .lesson_code_config import read_config
+        config = read_config(self.vault)
+        if config["fatal"] or lesson in config.get("invalid",{}) or lesson in config["aulas"]:
+            return False
+        manual = self.conn.execute(
+            "SELECT 1 FROM github_lesson_refs WHERE lesson=? AND origem!='automatica' LIMIT 1",
+            (lesson,)).fetchone()
+        if manual:
+            return False
+        existing = self.conn.execute(
+            "SELECT 1 FROM github_auto_decisions WHERE repo_url=? AND lesson=?",
+            (repo_url,lesson)).fetchone()
+        if existing and not recalculate:
+            return False
+        ident = "auto-" + __import__("hashlib").sha256(repo_url.encode()).hexdigest()[:22]
+        with self.conn:
+            self.conn.execute(
+                "DELETE FROM github_lesson_refs WHERE lesson=? AND repo_url=? AND origem='automatica'",
+                (lesson,repo_url))
+            sha = version["sha"] if version is not None else ""
+            self.conn.execute("""INSERT INTO github_auto_decisions
+               (repo_url,lesson,version_sha,confianca,decision)
+               VALUES(?,?,?,?,?) ON CONFLICT(repo_url,lesson) DO UPDATE SET
+               version_sha=excluded.version_sha,confianca=excluded.confianca,
+               decision=excluded.decision,updated_at=CURRENT_TIMESTAMP""",
+               (repo_url,lesson,sha,confidence,"version" if version else "none"))
+            if version is not None:
+                self.conn.execute("""INSERT INTO github_lesson_refs
+                   (lesson,role,repository_id,slot,repo_url,ref_kind,ref_name,
+                    folder,commit_sha,private,origem,confianca)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   (lesson,role,ident,"current",repo_url,version["kind"],
+                    version["name"],version.get("folder",""),sha,int(private),
+                    "automatica",confidence))
+        return True
+
+    def clear_auto_decisions(self, repo_url):
+        """Explicit recalculation: only automatic decisions and locks."""
+        with self.conn:
+            self.conn.execute(
+                "DELETE FROM github_lesson_refs WHERE repo_url=? AND origem='automatica'",(repo_url,))
+            self.conn.execute(
+                "DELETE FROM github_auto_decisions WHERE repo_url=?",(repo_url,))
 
     def uncertainties(self):
         return self.conn.execute(

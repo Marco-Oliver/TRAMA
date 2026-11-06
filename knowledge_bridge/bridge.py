@@ -1487,7 +1487,10 @@ class Bridge:
         try:
             app=Application(self._vault(),CONFIG_FILE,log=lambda _s:None)
             app.add_repo(url.strip())
-            return {'ok':True}
+            automatic=app.assign_github_versions()
+            app.publisher.rebuild()
+            return {'ok':True,'automatic_versions':automatic.get('mapped',0),
+                    'pending':automatic.get('pending',[])}
         except Exception:
             return {'ok':False,'message':'Não foi possível adicionar o repositório. Confira o endereço e tente novamente.'}
         finally:
@@ -1495,6 +1498,28 @@ class Bridge:
                 if app is not None:app.close()
             finally:
                 self._write_lock.release()
+
+    def recalculate_github_versions(self, repo, confirmed=False):
+        """Re-evaluate automatic locks only, with explicit confirmation."""
+        if confirmed is not True:
+            return {'ok':False,'message':'Confirme o recálculo das versões automáticas.'}
+        if not isinstance(repo,str) or len(repo)>300:
+            return {'ok':False,'message':'URL do GitHub inválida.'}
+        vault=self._vault()
+        if not vault:
+            return {'ok':False,'message':'Selecione o cofre do Obsidian.'}
+        if not self._write_lock.acquire(blocking=False):
+            return {'ok':False,'message':'Outro processamento está em andamento.'}
+        app=None
+        try:
+            app=self._make_application(vault,log=lambda _s:None)
+            result=app.recalculate_github_versions(repo)
+            return {'ok':True,**result}
+        except (ValueError,OSError,RuntimeError) as exc:
+            return {'ok':False,'message':str(exc)[:250]}
+        finally:
+            if app is not None:app.close()
+            self._write_lock.release()
 
     def toggle_favorite(self, note_id):
         idx=self._index()
@@ -1928,6 +1953,9 @@ class PublicApi:
 
     def add_repo(self, url):
         return self._bridge.add_repo(url)
+
+    def recalculate_github_versions(self, repo, confirmed=False):
+        return self._bridge.recalculate_github_versions(repo,confirmed)
 
     def toggle_favorite(self, note_id):
         return self._bridge.toggle_favorite(note_id)
