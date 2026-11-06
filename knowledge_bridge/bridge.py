@@ -1100,8 +1100,20 @@ class Bridge:
                 "github_token_fonte":("ambiente" if os.environ.get("TRAMA_GITHUB_TOKEN") else
                                        "dpapi" if self._key_vault.github_configured() else "nenhuma")}
 
-    def save_lesson_code(self, lesson, data, confirmed=False, replace_invalid=False, expected_digest=""):
-        from .lesson_code_config import save_lessons
+    def lesson_code_changes(self, lesson, data):
+        """Read-only preview of which frozen SHA slots an edit would invalidate."""
+        from .github_lesson_state import preview_invalidations
+        vault=self._vault()
+        if vault is None:
+            return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        try:
+            return {"ok":True,"invalidated":preview_invalidations(vault,lesson,data)}
+        except (ValueError,TypeError,OSError,sqlite3.Error) as exc:
+            return {"ok":False,"message":str(exc)[:350]}
+
+    def save_lesson_code(self, lesson, data, confirmed=False, replace_invalid=False,
+                         expected_digest="", confirm_unfreeze=False):
+        from .github_lesson_state import persist_codes
         vault=self._vault()
         if not vault:return {"ok":False,"message":"Selecione o cofre do Obsidian."}
         if confirmed is not True:return {"ok":False,"message":"Confirme o cadastro GitHub desta aula."}
@@ -1110,9 +1122,10 @@ class Bridge:
         try:
             replacements=({lesson:expected_digest} if replace_invalid is True and
                           isinstance(expected_digest,str) and len(expected_digest)==64 else None)
-            saved=save_lessons(vault,{lesson:data},replacements=replacements)
+            saved=persist_codes(vault,updates={lesson:data},replacements=replacements,
+                                confirm_unfreeze=confirm_unfreeze)
             return {**saved,"message":"Associações GitHub da aula salvas no cofre."}
-        except (ValueError,TypeError,OSError) as exc:
+        except (ValueError,TypeError,OSError,sqlite3.Error) as exc:
             return {"ok":False,"message":str(exc)[:700]}
         finally:
             self._write_lock.release()
@@ -1141,8 +1154,7 @@ class Bridge:
             return {"ok":False,"message":str(exc)[:140]}
 
     def remove_lesson_code(self, lesson, confirmed=False, expected_digest=""):
-        from .lesson_code_config import delete_lesson
-        from .store import Store
+        from .github_lesson_state import persist_codes
         if confirmed is not True:
             return {"ok":False,"message":"Confirme explicitamente a remoção do cadastro GitHub."}
         vault=self._vault()
@@ -1151,12 +1163,7 @@ class Bridge:
         if not self._write_lock.acquire(blocking=False):
             return {"ok":False,"message":"Há uma operação em andamento."}
         try:
-            result=delete_lesson(vault, lesson, expected_digest)
-            if result.get("ok"):
-                db=Store(vault)
-                try:db.clear_github_lesson(lesson)
-                finally:db.close()
-            return result
+            return persist_codes(vault,removal=lesson,expected_digest=expected_digest)
         except (ValueError,TypeError,OSError,sqlite3.Error) as exc:
             return {"ok":False,"message":str(exc)[:350]}
         finally:
@@ -1335,7 +1342,8 @@ class Bridge:
                     item["anterior"]=chosen["sugestao_anterior"]
                 teachers.append(item)
                 updates[lesson]={"professor":teachers,"dupla":linked.get("dupla",[])}
-            saved=save_lessons(vault,updates)
+            from .github_lesson_state import persist_codes
+            saved=persist_codes(vault,updates=updates,confirm_unfreeze=True)
             self._mapping_preview=None
             return {**saved,"message":f"{len(updates)} aula(s) confirmada(s); sugestões não selecionadas não foram gravadas."}
         except (ValueError,OSError,TypeError) as exc:
@@ -1743,8 +1751,13 @@ class PublicApi:
     def lesson_code_config(self, lesson=""):
         return self._bridge.lesson_code_config(lesson)
 
-    def save_lesson_code(self, lesson, data, confirmed=False, replace_invalid=False, expected_digest=""):
-        return self._bridge.save_lesson_code(lesson,data,confirmed,replace_invalid,expected_digest)
+    def save_lesson_code(self, lesson, data, confirmed=False, replace_invalid=False,
+                         expected_digest="", confirm_unfreeze=False):
+        return self._bridge.save_lesson_code(lesson,data,confirmed,replace_invalid,
+                                             expected_digest,confirm_unfreeze)
+
+    def lesson_code_changes(self, lesson, data):
+        return self._bridge.lesson_code_changes(lesson,data)
 
     def save_github_token(self, token, confirmed=False):
         return self._bridge.save_github_token(token,confirmed)

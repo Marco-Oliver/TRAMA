@@ -161,9 +161,16 @@
        '\n\nSubstituir este registro inválido pelo cadastro novo? A alteração não será reversível pelo formulário.';
      accept='Substituir cadastro inválido';
    }
+   const changes=await call('lesson_code_changes',lesson,data);
+   if(!changes?.ok){feedback('lesson-code-feedback',changes?.message||'Cadastro inválido.');return;}
+   const invalidated=changes.invalidated||[];
+   if(invalidated.length){
+     message+='\n\nATENÇÃO: '+invalidated.length+
+       ' SHA(s) congelado(s) serão descongelados porque o repositório, referência ou pasta mudou ou foi removido.';
+   }
    if(!await askTramaConfirm(title,message,accept))return;
    const out=await call('save_lesson_code',lesson,data,true,
-                       !!loadedInvalid,loadedInvalid?.digest||'');
+                       !!loadedInvalid,loadedInvalid?.digest||'',invalidated.length>0);
    feedback('lesson-code-feedback',out?.message||'Falha ao salvar.');
    if(out?.ok){
      notify('Cadastro GitHub salvo.');
@@ -306,7 +313,7 @@
    });
    if(!selected.length){feedback('lesson-map-feedback','Marque ao menos uma aula e escolha a referência.');return;}
    if(!await askTramaConfirm('Confirmar mapeamento',
-        'Gravar somente '+selected.length+' aula(s) no aulas-github.json?','Confirmar'))return;
+        'Gravar '+selected.length+' aula(s) no aulas-github.json? Se um cadastro existente mudar, os SHAs congelados afetados serão descongelados.','Confirmar'))return;
    const answer=await call('apply_lesson_mappings',selected,true);
    feedback('lesson-map-feedback',answer?.message||'Falha ao salvar.');
    if(answer?.ok){notify('Mapeamento salvo com confirmação.');preview=null;}
