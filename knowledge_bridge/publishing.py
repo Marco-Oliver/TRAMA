@@ -17,7 +17,8 @@ from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, 
 from .store import Store
 from .memory_atlas import make_atlas, render_atlas, lesson_order, norm, note_for, literal_technical_mention
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections, is_generic_code_term
-from .learning_review import refresh_uncertainties, render_uncertainties
+from .learning_review import refresh_uncertainties, render_uncertainties, code_evidence_lines
+from .frozen_code_resolution import match_frozen_question
 from .github_lesson_index import LessonRepositoryIndex
 
 
@@ -241,6 +242,8 @@ class Publisher:
         self._concept_targets = {}
         self.lesson_repo_index = LessonRepositoryIndex(store)
         self._lesson_repo_memo = {}
+        self._frozen_question_memo = {}
+        self._concept_aliases = {}
         for folder in ["00-Inicio", "01-Meu-Conhecimento", "02-Minhas-Aulas", "03-Meus-Projetos",
                        "05-Anotacoes-Pessoais", "90-Sistema", "99-Anexos/Videos", "99-Anexos/Transcricoes-Originais",
                        "99-Anexos/Materiais-Originais", "99-Anexos/Contexto-Classroom"]:
@@ -292,9 +295,30 @@ class Publisher:
             "", "> **TRAMA (offline):** " + warning,
         ]
 
-    def _concept_target(self, name: str) -> str:
-        """Filename of a known concept group, independent of its comparison key."""
-        return self._concept_targets.get(concept_slug(name), concept_file_slug(name))
+    def _code_guess(self, lesson: str, question: str):
+        """Local, SHA-only evidence, never HEAD or another lesson's version."""
+        key = (lesson, question.casefold().strip())
+        if key not in self._frozen_question_memo:
+            selected = [row for row in self._lesson_repos(lesson)
+                        if row[0].get("frozen")]
+            self._frozen_question_memo[key] = match_frozen_question(question, selected)
+        return self._frozen_question_memo[key]
+
+    def _corrected_concept(self, src, name: str):
+        """Group a mistaken label only when the canonical page already exists."""
+        match = self._code_guess(src["lesson"] or "", name)
+        if not match or match["candidate"].casefold() == name.casefold():
+            return name
+        canonical = match["candidate"]
+        if concept_slug(canonical) in self._concept_targets:
+            self._concept_aliases[(src["id"], name.casefold())] = canonical
+            return canonical
+        return name
+
+    def _concept_target(self, name: str, source_id: str = "") -> str:
+        """Keep the spoken label in text; optionally link its verified alias."""
+        corrected = self._concept_aliases.get((source_id, name.casefold()), name)
+        return self._concept_targets.get(concept_slug(corrected), concept_file_slug(corrected))
 
     @staticmethod
     def _asr_concept_warning(concept: dict) -> str:
@@ -784,7 +808,8 @@ class Publisher:
         for c in concepts:
             name = c.get("nome", "").strip()
             if name:
-                concept_links.append(f"[[{self._concept_target(name)}|{_escape_md(name)}]]")
+                self._corrected_concept(src, name)
+                concept_links.append(f"[[{self._concept_target(name, src['id'])}|{_escape_md(name)}]]")
         raw = self.vault / src["stored_path"]
         text = raw.read_text(encoding="utf-8-sig",errors="replace")
         # Uma apresentação ou encontro administrativo não vira falsamente um
@@ -835,6 +860,12 @@ class Publisher:
                     if warning:
                         body.append("  - **Nome possivelmente distorcido pela transcrição:** "
                                     + _escape_md(warning))
+                    matched = self._code_guess(lesson, name)
+                    if matched and matched["candidate"].casefold() != name.casefold():
+                        body.append("  - **Nome provável no código:** "
+                                    + chr(96) + _escape_md(matched["candidate"]) + chr(96)
+                                    + " (nome original mantido; conferir a gravação).")
+                        body.extend(code_evidence_lines(matched))
             # Reconcile legacy cached analyses locally, without another API
             # call: a spoken abbreviation can back a mention even when the
             # whole expanded model label was not said. Do NOT auto-create a
@@ -857,6 +888,13 @@ class Publisher:
                 for label,found in observed:
                     body.append("- `"+_escape_md(label)+"` — forma observada: `"+
                                 _escape_md(found)+"`; conferir o contexto na transcrição.")
+                    match=self._code_guess(lesson,label)
+                    if match and match["candidate"].casefold()!=label.casefold():
+                        body.append("  - **Nome provável no código:** "
+                                    + chr(96) + _escape_md(match["candidate"]) + chr(96)
+                                    + " (não renomeado automaticamente).")
+                        body.extend(code_evidence_lines(match))
+                        self._corrected_concept(src,label)
             if unsupported:
                 body += ["", "## Termos sugeridos pela IA para conferir", "",
                          "> Não foi encontrada menção literal nem abreviação verificável "
@@ -886,8 +924,18 @@ class Publisher:
                              for x in analysis.get("exemplos_reconstruidos_a_conferir", [])[:10]]
             if analysis.get("duvidas"):
                 body += ["", "## Dúvidas técnicas e passagens inaudíveis", "",
-                         "> Uma hipótese de transcrição não comprova erro nem aprendizado."] + [
-                             f"- {_escape_md(x)}" for x in analysis.get("duvidas",[])]
+                         "> Uma hipótese de transcrição não comprova erro nem aprendizado."]
+                current = {row["question"].casefold():row for row in
+                           self.db.uncertainties_for_source(src["id"])
+                           if row["source_digest"]==src["digest"]}
+                for question in analysis.get("duvidas",[]):
+                    row = current.get(str(question).strip().casefold())
+                    state = row["status"] if row is not None else "PENDENTE"
+                    body.append(f"- {_escape_md(question)} — **Estado:** `{state}`")
+                    if row is not None and state == "EXPLICADA_PELO_CODIGO":
+                        for evidence in json.loads(row["evidence_json"]):
+                            if evidence.get("kind") == "codigo_congelado":
+                                body.extend(code_evidence_lines(evidence))
             if analysis.get("nomes_a_conferir"):
                 body += ["", "## Nomes e apelidos para conferir", "",
                          "> Nomes próprios ou apelidos podem estar corretos; não são dúvidas de programação."] + [
@@ -1077,44 +1125,40 @@ class Publisher:
                                         "## Relações com códigos e projetos",
                                         "## Termos suspeitos da transcrição")
         body += ["", "## Termos suspeitos da transcrição", ""]
-        suggested=[]
-        for repo, payload in project_matches:
-            for hint in potential_transcript_corrections(text, payload):
-                if (is_generic_code_term(hint.get('heard')) or
-                        is_generic_code_term(hint.get('candidate'))):
-                    continue
-                key=(hint['heard'].lower(),hint['candidate'])
-                if key in suggested:
-                    continue
-                suggested.append(key)
-                body.append(f"- **HIPÓTESE, não correção automática:** `{_escape_md(hint['heard'])}` pode corresponder a "
-                            f"`{hint['candidate']}`, encontrado em {_code_ref(repo, hint['path'], hint['line'])} "
-                            f"({repo['name']}); confira o vídeo antes de confirmar.")
-        suspected = suspected_technical_transcription(text)
-        if suspected:
-            body += [
-                "",
-                "> **Grafias suspeitas na transcrição original — somente hipóteses.** "
-                "O áudio não foi conferido. Nenhuma palavra foi substituída "
-                "e nenhuma explicação foi confirmada automaticamente.",
-                "",
-            ]
-            for stamp, observed, candidate in suspected:
-                if (is_generic_code_term(observed) or
-                        is_generic_code_term(candidate)):
-                    continue
-                body.append(
-                    f"- **{_escape_md(stamp)}** — transcrito: "
-                    f"`{_escape_md(observed)}`; possível termo a verificar: "
-                    f"`{_escape_md(candidate)}`. Revise a gravação antes de aceitar.")
-        if not suggested and not suspected:
-            body.append("*Nenhuma correção fundamentada encontrada.*")
+        # Only surface phonetic *errors* grounded in specific identifiers
+        # on this lesson's immutable SHA. Broad concept aliases such as
+        # Entity Framework -> DbContext are not transcription corrections.
+        candidates = [x for x in (analysis or {}).get("duvidas",[]) if isinstance(x,str)]
+        candidates += [x.get("nome","") for x in
+                       (analysis or {}).get("conceitos_a_conferir",[])
+                       if isinstance(x,dict)]
+        candidates += [x.get("nome","") for x in concepts if isinstance(x,dict)]
+        candidates += [heard for _stamp,heard,_candidate in
+                       suspected_technical_transcription(text)]
+        suggested=set()
+        for observed in candidates:
+            if not isinstance(observed,str) or is_generic_code_term(observed):
+                continue
+            matched=self._code_guess(lesson,observed)
+            if not matched or matched["candidate"].casefold()==observed.casefold():
+                continue
+            key=(observed.casefold(),matched["candidate"],matched["path"])
+            if key in suggested:
+                continue
+            suggested.add(key)
+            body.append("- **Possível erro de transcrição:** "
+                        + chr(96) + _escape_md(observed) + chr(96))
+            body.extend(code_evidence_lines(matched))
+        if not suggested:
+            body.append("*Nenhuma correção fundamentada no código desta versão.*")
         self.write(rel, "\n".join(body).strip() + "\n")
         return rel, concepts, modules
 
     def rebuild(self):
         """Deriva notas e revisão incremental das fontes originais cadastradas."""
         self._lesson_repo_memo.clear()
+        self._frozen_question_memo.clear()
+        self._concept_aliases.clear()
         self.lesson_repo_index.begin_run()
         # Fail closed before *any* Markdown write if a cached transcript no
         # longer agrees with the SQLite catalog. User notes stay untouched.
@@ -1127,7 +1171,7 @@ class Publisher:
                 self.db.update_status(source["id"], "NEEDS_REVIEW")
                 raise ValueError("Fonte do cofre alterada ou ausente: " +
                                  source["label"] + ". Reimporte o original.")
-        refresh_uncertainties(self.db)
+        refresh_uncertainties(self.db, self.lesson_repo_index)
         self._prepare_concept_targets()
         self._atlas = make_atlas(self.db, concept_targets=self._concept_targets)
         concept_map = defaultdict(list)
@@ -1163,7 +1207,11 @@ class Publisher:
             for concept in concepts:
                 name = concept.get("nome", "").strip()
                 if name:
-                    concept_map[concept_slug(name)].append((name,src,note,concept))
+                    canonical = self._corrected_concept(src, name)
+                    stored_concept = ({**concept, "nome_original":name}
+                                      if canonical != name else concept)
+                    concept_map[concept_slug(canonical)].append(
+                        (canonical,src,note,stored_concept))
         # Classroom can contain names as explicitly user-provided text, even if there is
         # no transcript or code. It is a separate kind of evidence and must be labeled.
         lesson_to_note = {s['lesson']: n for s, n in lesson_links if s['lesson']}
@@ -1319,6 +1367,11 @@ class Publisher:
                 if warning:
                     body.append("- **Nome possivelmente distorcido pela transcrição:** "
                                 + _escape_md(warning))
+                if concept.get("nome_original"):
+                    body.append("- **Nome original mantido no TXT:** "
+                                + _escape_md(concept["nome_original"])
+                                + "; **nome provável no código:** "
+                                + chr(96) + _escape_md(name) + chr(96) + ".")
                 if groups:
                     for (stamp, sentence, form, anchor), nearby in groups:
                         target_note, is_proposal = self._published_anchor_target(

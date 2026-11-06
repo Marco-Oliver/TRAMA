@@ -30,6 +30,19 @@ jobs:
           TRAMA_GITHUB_REAL_SMOKE: '1'
           TRAMA_GITHUB_TOKEN: ''
         run: python -m unittest tests.test_github_real_smoke.GithubLiveRestSmoke -v
+      - name: Gerar nota V05 com código congelado (sem IA)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          TRAMA_TEST_NOTE_OUTPUT: qa-artifacts/Aula-131-V05.md
+        run: python -m unittest tests.test_github_frozen_doubts.FrozenV1DoubtsTests.test_v05_all_five_corrected_and_unrelated_question_not_matched -v
+      - name: Disponibilizar nota V05 gerada no teste
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: TRAMA-Aula-131-V05-v1-congelada
+          path: qa-artifacts/Aula-131-V05.md
+          if-no-files-found: error
+          retention-days: 14
       - name: Testes adversariais
         run: python qa_adversarial.py
       - name: Auditoria

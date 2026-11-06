@@ -10,7 +10,9 @@ import json
 import re
 from pathlib import Path
 
-from .code_intel import CONCEPTS
+from .code_intel import CONCEPTS, is_generic_code_term
+from .frozen_code_resolution import match_frozen_question
+from urllib.parse import quote
 from .content import timed_lines
 from .memory_atlas import lesson_order, norm
 
@@ -25,6 +27,8 @@ def _candidate(question: str) -> str:
     candidates = []
     for canonical, (_pattern, aliases) in CONCEPTS.items():
         for alias in (canonical, *aliases):
+            if is_generic_code_term(canonical) or is_generic_code_term(alias):
+                continue
             if _contains_term(question, alias):
                 candidates.append((len(norm(alias)), canonical))
     return max(candidates)[1] if candidates else ""
@@ -63,42 +67,42 @@ def _index_source_terms(raw: str) -> dict:
     return {"terms":sorted(terms),"anchors":anchors}
 
 
-def _later_evidence(question, candidate, original, later, repositories):
-    """Evidence always cites raw future transcript or real repository index."""
+def _later_evidence(question, candidate, original, later, lesson_index=None):
+    """Later lesson evidence can ONLY use that later lesson's frozen SHA."""
     result = []
-    if candidate:
-        terms = [candidate, *CONCEPTS.get(candidate, (None, []))[1]]
-        # Do not use only a doubtful phonetic spelling as independent evidence.
-        candidates = [t for t in terms if norm(t) == norm(candidate) or
-                      not _contains_term(original, t)]
-        for source, indexed in later:
-            present=set(indexed.get("terms",[]))
-            observed=[norm(t) for t in candidates if norm(t) in present]
-            if not observed:
-                continue
-            anchors=indexed.get("anchors",{})
-            first=next((anchors[t] for t in observed if t in anchors),None)
-            result.append({"kind": "aula_posterior", "source_id": source["id"],
-                           "lesson": source["lesson"], "label": source["label"],
-                           "digest": source["digest"],
-                           "timestamp": first[0] if first else "",
-                           "excerpt": first[1] if first else ""})
-            if len(result) >= 5:
-                break
-        for repository in repositories:
-            payload = repository["payload"]
-            for item in payload.get("evidence", []):
-                if norm(item.get("concept", "")) == norm(candidate):
-                    result.append({"kind": "codigo", "repo": repository["url"],
-                                   "sha": repository["sha"], "path": item["path"],
-                                   "line": item["line"], "concept": item["concept"]})
-                    break
-            if len(result) >= 8:
-                break
-    return result
+    if not candidate:
+        return result
+    terms = [candidate, *CONCEPTS.get(candidate, (None, []))[1]]
+    terms = [term for term in terms
+             if not is_generic_code_term(term) and
+             (norm(term) == norm(candidate) or not _contains_term(original, term))]
+    for source, indexed in later:
+        present = set(indexed.get("terms", []))
+        observed = [norm(term) for term in terms if norm(term) in present]
+        if not observed:
+            continue
+        anchors = indexed.get("anchors", {})
+        first = next((anchors[t] for t in observed if t in anchors), None)
+        result.append({
+            "kind":"aula_posterior","source_id":source["id"],
+            "lesson":source["lesson"],"label":source["label"],
+            "digest":source["digest"],
+            "timestamp":first[0] if first else "",
+            "excerpt":first[1] if first else "",
+        })
+        if lesson_index is not None:
+            frozen = [item for item in lesson_index.for_lesson(source["lesson"])
+                      if item[0].get("frozen")]
+            code = match_frozen_question(question, frozen)
+            if code is not None:
+                result.append({**code, "lesson":source["lesson"],
+                               "source_id":source["id"]})
+        if len(result) >= 6:
+            break
+    return result[:8]
 
 
-def refresh_uncertainties(store) -> dict:
+def refresh_uncertainties(store, lesson_index=None) -> dict:
     """Idempotent incremental reconciliation; never consumes API calls."""
     sources = sorted(store.sources("transcript"),
                      key=lambda s: (lesson_order(s["lesson"] or ""), s["video"] or "", s["label"]))
@@ -121,14 +125,6 @@ def refresh_uncertainties(store) -> dict:
         if stored.is_symlink() or not stored.is_file():
             continue
         loaded.append((source,index))
-    repositories = []
-    for repo in store.repositories():
-        try:
-            payload = json.loads(repo["payload"])
-            repositories.append({"url": repo["url"], "sha": repo["sha"], "payload": payload})
-        except (TypeError, ValueError):
-            continue
-
     active = set()
     for src, raw in loaded:
         analysis = store.analysis(src["id"], src["digest"])
@@ -143,9 +139,23 @@ def refresh_uncertainties(store) -> dict:
             later = [(s, index) for s, index in loaded
                      if src["lesson"] and s["lesson"] and
                      lesson_order(s["lesson"]) > lesson_order(src["lesson"])]
-            evidence = _later_evidence(question, candidate, question, later, repositories)
-            state = "NOVA_EVIDENCIA_PARA_REVISAR" if evidence else (
-                "HIPOTESE_SEM_CONFIRMACAO" if candidate else "PENDENTE")
+            evidence = []
+            if lesson_index is not None and src["lesson"]:
+                # Never use the global/HEAD index here, even for an
+                # unregistered lesson. Refuse non-frozen references.
+                frozen = [item for item in lesson_index.for_lesson(src["lesson"])
+                          if item[0].get("frozen")]
+                matched = match_frozen_question(question, frozen)
+                if matched is not None:
+                    evidence.append({**matched, "lesson":src["lesson"]})
+            if evidence:
+                state = "EXPLICADA_PELO_CODIGO"
+                candidate = evidence[0]["candidate"]
+            else:
+                evidence = _later_evidence(
+                    question, candidate, question, later, lesson_index)
+                state = "NOVA_EVIDENCIA_PARA_REVISAR" if evidence else (
+                    "HIPOTESE_SEM_CONFIRMACAO" if candidate else "PENDENTE")
             store.upsert_uncertainty(uid, src["id"], src["digest"], src["label"],
                                      question, candidate, state, evidence)
 
@@ -156,13 +166,40 @@ def refresh_uncertainties(store) -> dict:
                 item["id"], item["source_id"], item["source_digest"], item["label"],
                 item["question"], item["candidate"], "ARQUIVADA_FONTE_ALTERADA", [])
     return {"questions": len(active), "with_evidence": sum(
-        row["status"] == "NOVA_EVIDENCIA_PARA_REVISAR" for row in store.uncertainties())}
+        row["status"] in ("NOVA_EVIDENCIA_PARA_REVISAR", "EXPLICADA_PELO_CODIGO")
+        for row in store.uncertainties())}
 
 
 def _safe(text: object, limit: int = 350) -> str:
     """Display source text as one quoted line, not executable Markdown/HTML."""
     raw = str(text).replace("\n", " ").replace("\r", " ").strip()[:limit]
     return raw.replace("<", "&lt;").replace(">", "&gt;").replace("[[", "［［").replace("]]", "］］")
+
+
+def code_evidence_lines(item):
+    """Render 3 verified lines and immutable link, clearly as a hypothesis."""
+    if (item.get("kind") != "codigo_congelado"
+            or not re.fullmatch(r"[0-9a-f]{40}", str(item.get("sha", "")))):
+        return []
+    url = str(item.get("repo", "")).rstrip("/")
+    path = str(item.get("path", ""))
+    if not url.startswith("https://github.com/") or not path or ".." in path.split("/"):
+        return []
+    line = int(item.get("line", 0))
+    if line < 1:
+        return []
+    link = url + "/blob/" + item["sha"] + "/" + quote(path, safe="/") + "#L" + str(line)
+    result = [
+        "- **Provável no código:** " + chr(96) + _safe(item["candidate"], 90) + chr(96)
+        + " — [" + _safe(path, 160) + ":" + str(line) + "](" + link + ")"
+        + " — versão " + chr(96) + _safe(item.get("version") or item["sha"][:10], 60) + chr(96)
+        + " (**pista, não prova do áudio**).",
+        "  - **Trecho de 3 linhas do commit congelado:**",
+    ]
+    for raw in str(item.get("snippet", "")).splitlines()[:3]:
+        # Never interpolate source code as Markdown/HTML from untrusted repos.
+        result.append("    - " + chr(96) + _safe(raw.replace(chr(96), "'"), 210) + chr(96))
+    return result
 
 
 def render_uncertainties(store) -> tuple[str, list[tuple[str, str]]]:
@@ -194,6 +231,8 @@ def render_uncertainties(store) -> tuple[str, list[tuple[str, str]]]:
                 stamp = f" ({_safe(e['timestamp'],20)})" if e["timestamp"] else ""
                 body.append(f"- Outra aula: **{_safe(e['lesson'],50)}**{stamp}, "
                             f"transcrição `{_safe(e['label'],80)}` — {_safe(e['excerpt'],200)}.")
+            elif e["kind"] == "codigo_congelado":
+                body.extend(code_evidence_lines(e))
             else:
                 body.append(f"- Repositório: `{_safe(e['repo'],180)}`, "
                             f"commit `{_safe(e['sha'][:12])}`, "

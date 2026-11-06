@@ -58,6 +58,10 @@ MAX_FILE_BYTES = 100_000
 MAX_EVIDENCE = 160
 MAX_DOCS = 12
 MAX_SYMBOLS = 240
+MAX_CODE_IDENTIFIERS = 3000
+# Actual C#/TS/Python identifier tokens, not guesses from surrounding prose.
+# Values must occur literally on a verified source line at the frozen SHA.
+CODE_IDENTIFIER = re.compile(r"\b[A-Z][A-Za-z0-9_]{2,89}\b")
 SYMBOL_DECLARATION = re.compile(
     r"\b(?:class|interface|enum|struct|record|function|def)\s+"
     r"([A-Za-z_][A-Za-z0-9_]*)\b"
@@ -149,6 +153,7 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
     evidence_by_concept: dict[str, list[dict]] = {term: [] for term in CONCEPTS}
     docs: list[dict] = []
     symbols_by_file: list[list[dict]] = []
+    identifiers_by_file: list[list[dict]] = []
     techs: set[str] = set()
     type_for_ext = {".cs": "C#", ".ts": "TypeScript", ".tsx": "React/TSX", ".js": "JavaScript",
                     ".jsx": "React/JSX", ".py": "Python", ".sql": "SQL", ".html": "HTML", ".css": "CSS"}
@@ -193,6 +198,8 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
             continue
         hits_in_file: dict[str, int] = {}
         symbols_in_file: list[dict] = []
+        identifiers_in_file: list[dict] = []
+        seen_identifiers = set()
         for lineno, line in enumerate(lines, 1):
             # Literal declarations only; no guessed symbol from a comment or
             # an unverified model output. Four per file keeps the index small.
@@ -206,6 +213,32 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
                             "snippet":_snippet(lines,lineno),
                             "line_text":redact_sensitive(line.strip()[:200])
                         })
+            if (len(identifiers_in_file) < 90 and
+                    not line.lstrip().startswith(("//", "#", "*", "/*"))):
+                # Include methods/invocations/type interfaces even when they
+                # are not declarations; the stored path/line stays verifiable.
+                for found in CODE_IDENTIFIER.finditer(line[:300]):
+                    name = found.group()
+                    if (is_generic_code_term(name) or name in seen_identifiers
+                            or name in {"Guid", "String", "Int32", "Task", "True", "False",
+                                        "HttpPost", "AllowAnonymous", "Route", "ApiController"}):
+                        continue
+                    seen_identifiers.add(name)
+                    item = {
+                        "name":name,"path":rel,"line":lineno,
+                        "line_text":redact_sensitive(line.strip()[:200]),
+                        "snippet":_snippet(lines,lineno,before=1,after=1),
+                    }
+                    identifiers_in_file.append(item)
+                    # A class derived from/ending with DbContext is literal
+                    # evidence of that specific framework concept, not a
+                    # fabricated freestanding declaration of DbContext.
+                    if name.endswith("DbContext") and name != "DbContext" and "DbContext" not in seen_identifiers:
+                        seen_identifiers.add("DbContext")
+                        identifiers_in_file.append({**item,
+                            "name":"DbContext", "observed":name})
+                    if len(identifiers_in_file) >= 90:
+                        break
             for concept, (pattern, _) in CONCEPTS.items():
                 bucket=evidence_by_concept[concept]
                 if (len(bucket)>=MAX_EVIDENCE or
@@ -218,6 +251,8 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
                     hits_in_file[concept]=hits_in_file.get(concept,0)+1
         if symbols_in_file:
             symbols_by_file.append(symbols_in_file)
+        if identifiers_in_file:
+            identifiers_by_file.append(identifiers_in_file)
     evidence=[]
     for round_number in range(MAX_EVIDENCE):
         added=False
@@ -239,8 +274,18 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
                     break
         if len(symbols)>=MAX_SYMBOLS:
             break
+    identifiers=[]
+    # Round robin: one file cannot monopolize snapshot identity evidence.
+    for round_number in range(90):
+        for batch in identifiers_by_file:
+            if round_number < len(batch):
+                identifiers.append(batch[round_number])
+                if len(identifiers) >= MAX_CODE_IDENTIFIERS:
+                    break
+        if len(identifiers) >= MAX_CODE_IDENTIFIERS:
+            break
     return {"files": files, "total_files": len(files), "technologies": sorted(techs),
-            "evidence": evidence, "symbols":symbols,
+            "evidence": evidence, "symbols":symbols, "identifiers": identifiers,
             "documentation": docs, "history": (history or [])[:80],
             "collaboration": len({h.get('author_email','').casefold() for h in (history or []) if h.get('author_email')}) > 1}
 

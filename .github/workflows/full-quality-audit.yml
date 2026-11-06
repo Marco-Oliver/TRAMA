@@ -5,6 +5,7 @@ on:
       - fix/quality-personas-ui-security-20261031
       - fix/security-hardening-20261102
       - feat/grafo-conexoes
+      - feat/github-por-aula
   pull_request:
     branches:
       - feat/v2.2.0-automation-foundations
