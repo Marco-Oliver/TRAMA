@@ -181,6 +181,8 @@ class Store:
         config=read_config(self.vault)
         if config["fatal"]:
             return -1, []
+        if lesson in config.get("invalid", {}):
+            return -1, []  # Never expose stale code when this lesson's JSON is corrupt.
         record=config["aulas"].get(lesson)
         if not record:
             return 0, []

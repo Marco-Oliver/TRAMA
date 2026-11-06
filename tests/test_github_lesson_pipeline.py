@@ -1,5 +1,6 @@
 """Lesson reprocessing and optional AI code comparison honor frozen SHA only."""
 from __future__ import annotations
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -37,6 +38,19 @@ class ProcessingFrozenShaTests(unittest.TestCase):
             self.assertTrue(db.github_lesson_repo_allowed("Aula-131",REPO,A))
             self.assertFalse(db.github_lesson_repo_allowed("Aula-131",REPO,B))
             self.assertTrue(db.github_lesson_repo_allowed("Aula-999",REPO,B))
+        finally:
+            db.close()
+
+    def test_invalid_lesson_config_never_exposes_legacy_github_code(self):
+        config_path=self.vault/".base-conhecimento/aulas-github.json"
+        config_path.write_text(json.dumps({"schema":1,"aulas":{
+            "Aula-131":{"professor":[{"id":"invalid"}],"dupla":[]}}}),encoding="utf-8")
+        db=Store(self.vault)
+        try:
+            total,refs=db.github_lesson_refs("Aula-131")
+            self.assertEqual(total,-1)
+            self.assertEqual(refs,[])
+            self.assertFalse(db.github_lesson_repo_allowed("Aula-131",REPO,B))
         finally:
             db.close()
 
