@@ -292,3 +292,11 @@ button:not(:disabled):hover{filter:brightness(.98)}
 #lesson-code-feedback,#lesson-map-feedback{white-space:normal;overflow-wrap:anywhere}
 @media(max-width:700px){.lesson-map-row{grid-template-columns:100px minmax(120px,1fr)}
 .lesson-map-row select,.lesson-map-previous{grid-column:1/-1}}
+
+/* Etapa 1 auditada: registro inválido sempre visível antes do consentimento. */
+.lesson-code-invalid{margin:10px 0;padding:10px 12px;background:#fff4eb;border:1px solid #cc8869;border-radius:4px}
+.lesson-code-invalid h3{margin:0 0 7px;color:#94442d}
+.lesson-code-invalid pre{white-space:pre-wrap;overflow:auto;max-height:210px;max-width:100%;font:11px Consolas,monospace;background:#fff9f4;padding:10px;border:1px solid #e1baaa}
+#trama-confirm-description{white-space:pre-wrap;max-height:min(45vh,350px);overflow:auto;overflow-wrap:anywhere}
+#lesson-map-branch{margin-bottom:9px}
+.lesson-map-body>label+label{margin-top:9px}
