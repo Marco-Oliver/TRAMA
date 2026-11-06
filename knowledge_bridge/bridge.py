@@ -1085,7 +1085,7 @@ class Bridge:
                 self._write_lock.release()
 
     def lesson_code_config(self, lesson=""):
-        """Read-only registration status: return valid lessons and isolated errors."""
+        """Read-only registration status, with raw invalid record for explicit local review."""
         from .lesson_code_config import read_config, lesson_dates
         vault=self._vault()
         if vault is None:
@@ -1094,9 +1094,10 @@ class Bridge:
         data=result["aulas"]
         return {"ok":not result["fatal"],"fatal":result["fatal"],"erros":result["erros"],
                 "aulas":data if not lesson else {lesson:data[lesson]} if lesson in data else {},
+                "invalid":{lesson:result["invalid"][lesson]} if lesson and lesson in result.get("invalid",{}) else {},
                 "datas":lesson_dates(vault), "github_token_configurado":bool(os.environ.get("TRAMA_GITHUB_TOKEN"))}
 
-    def save_lesson_code(self, lesson, data, confirmed=False):
+    def save_lesson_code(self, lesson, data, confirmed=False, replace_invalid=False, expected_digest=""):
         from .lesson_code_config import save_lessons
         vault=self._vault()
         if not vault:return {"ok":False,"message":"Selecione o cofre do Obsidian."}
@@ -1104,14 +1105,16 @@ class Bridge:
         if not self._write_lock.acquire(blocking=False):
             return {"ok":False,"message":"Já existe uma gravação ou processamento em andamento."}
         try:
-            saved=save_lessons(vault,{lesson:data})
+            replacements=({lesson:expected_digest} if replace_invalid is True and
+                          isinstance(expected_digest,str) and len(expected_digest)==64 else None)
+            saved=save_lessons(vault,{lesson:data},replacements=replacements)
             return {**saved,"message":"Associações GitHub da aula salvas no cofre."}
         except (ValueError,TypeError,OSError) as exc:
             return {"ok":False,"message":str(exc)[:700]}
         finally:
             self._write_lock.release()
 
-    def preview_lesson_mappings(self, repo, dates=None):
+    def preview_lesson_mappings(self, repo, dates=None, branch=""):
         """REST suggestions only. No file/database writes and no Git checkout."""
         from .github_mapping import preview_mapping, MappingError
         vault=self._vault()
@@ -1126,13 +1129,31 @@ class Bridge:
             return {"ok":False,"message":"Há um processamento em andamento."}
         try:
             self._mapping_preview=None
-            result=preview_mapping(vault,repo,dates)
+            result=preview_mapping(vault,repo,dates,branch)
             self._mapping_preview=result
             return {"ok":True,**result}
         except (MappingError,ValueError,OSError) as exc:
             return {"ok":False,"message":str(exc)[:350]}
         finally:
             self._write_lock.release()
+
+    def suggest_lesson_mappings(self, dates):
+        """Recalculate preview suggestions in Python; no network or persistent writes."""
+        from .github_mapping import GithubMapping
+        from datetime import date
+        preview=self._mapping_preview
+        if not preview:
+            return {"ok":False,"message":"Consulte o repositório antes de alterar datas."}
+        lessons={row["aula"] for row in preview["aulas"]}
+        if not isinstance(dates,dict) or not 1<=len(dates)<=500:
+            return {"ok":False,"message":"Informe as aulas e datas para sugerir."}
+        for name, value in dates.items():
+            if name not in lessons or not isinstance(value,str) or len(value)>10:
+                return {"ok":False,"message":"Aula ou data não pertence ao mapeamento."}
+            if value:
+                try:date.fromisoformat(value)
+                except ValueError:return {"ok":False,"message":f"{name}: data inválida."}
+        return {"ok":True,"aulas":GithubMapping.suggestions(preview,preview["aulas"],dates)}
 
     def apply_lesson_mappings(self, selections, confirmed=False):
         """Only accept selections contained in the most recent read-only preview."""
@@ -1155,7 +1176,8 @@ class Bridge:
                 return {"ok":False,"message":"Corrija o JSON inválido antes de salvar."}
             repo=preview["repo"]
             name=repo.split("/")[-1]
-            mapping_id="map-"+hashlib.sha256(repo.encode()).hexdigest()[:16]
+            source_key=repo+("\n"+preview["branch"] if preview.get("branch") else "")
+            mapping_id="map-"+hashlib.sha256(source_key.encode()).hexdigest()[:16]
             updates={}
             used=set()
             for row in selections:
@@ -1587,11 +1609,14 @@ class PublicApi:
     def lesson_code_config(self, lesson=""):
         return self._bridge.lesson_code_config(lesson)
 
-    def save_lesson_code(self, lesson, data, confirmed=False):
-        return self._bridge.save_lesson_code(lesson,data,confirmed)
+    def save_lesson_code(self, lesson, data, confirmed=False, replace_invalid=False, expected_digest=""):
+        return self._bridge.save_lesson_code(lesson,data,confirmed,replace_invalid,expected_digest)
 
-    def preview_lesson_mappings(self, repo, dates=None):
-        return self._bridge.preview_lesson_mappings(repo,dates)
+    def preview_lesson_mappings(self, repo, dates=None, branch=""):
+        return self._bridge.preview_lesson_mappings(repo,dates,branch)
+
+    def suggest_lesson_mappings(self, dates):
+        return self._bridge.suggest_lesson_mappings(dates)
 
     def apply_lesson_mappings(self, selections, confirmed=False):
         return self._bridge.apply_lesson_mappings(selections,confirmed)
