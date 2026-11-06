@@ -68,6 +68,105 @@ SYMBOL_DECLARATION = re.compile(
 )
 
 
+
+# Frozen-ASR indexes may only admit identifiers from actual program syntax,
+# never from quoted strings/URLs, comments, namespace or import directives.
+ASR_IGNORED_LINE = re.compile(r"^\s*(?:using\b|import\b|from\s+\S+\s+import\b|namespace\b|#include\b)", re.I)
+ASR_MEMBER_CALL = re.compile(r"\.\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:<[^(){};]*>)?\s*\(")
+ASR_DIRECT_CALL = re.compile(r"\b(?:return|await|yield\s+return|throw|new)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+ASR_TYPED_PARAMETER = re.compile(
+    r"^\s*([A-Z][A-Za-z0-9_]*)\s*(?:<[^(){};]*>)?\s+[a-z_][A-Za-z0-9_]*\s*[,)]")
+ASR_PROPERTY = re.compile(
+    r"\b(?:public|private|protected|internal)\s+(?:(?:static|readonly|virtual|override|required|sealed|new)\s+)*"
+    r"(?:(?:[A-Za-z_][A-Za-z0-9_]*)(?:<[^{};]*>)?\s+)+"
+    r"([A-Za-z_][A-Za-z0-9_]*)\s*(?:\{|=>|;)")
+ASR_METHOD_DECL = re.compile(
+    r"\b(?:public|private|protected|internal|async|static|override)\b"
+    r"[^;{}=]{0,160}?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+ASR_TYPE_DECL = re.compile(
+    r"\b(?:class|interface|record|struct|enum|def|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+ASR_INHERITS = re.compile(r"\b(?:class|record|struct)\s+[A-Za-z_]\w*[^;{}]*?\s*:\s*([^{}]+)")
+ASR_BANNED_NAMES = frozenset({
+    "Guid", "String", "Int32", "Task", "True", "False",
+    "HttpPost", "AllowAnonymous", "Route", "ApiController",
+})
+
+
+def _asr_code_only(line: str, block_comment: bool = False) -> tuple[str, bool]:
+    """Strip comments and literals before identifier extraction, no execution.
+
+    Preserve original character offsets by replacing ignored material with
+    spaces; handle multiline block comments and C#/TS/Python quoted strings.
+    A URL inside a string cannot become an identifier.
+    """
+    if ASR_IGNORED_LINE.match(line):
+        return "", block_comment
+    out = list(line)
+    quote = ""
+    index = 0
+    while index < len(line):
+        char = line[index]
+        following = line[index:index + 2]
+        if block_comment:
+            out[index] = " "
+            if following == "*/":
+                out[index + 1] = " "
+                block_comment = False
+                index += 2
+                continue
+            index += 1
+            continue
+        if quote:
+            out[index] = " "
+            if char == "\\":
+                if index + 1 < len(line):
+                    out[index + 1] = " "
+                index += 2
+                continue
+            if char == quote:
+                if index + 1 < len(line) and line[index + 1] == quote and quote == '"':
+                    out[index + 1] = " "
+                    index += 2
+                    continue
+                quote = ""
+            index += 1
+            continue
+        if following == "/*":
+            out[index:index + 2] = [" ", " "]
+            block_comment = True
+            index += 2
+            continue
+        if following == "//" or (char == "#" and not line.lstrip().startswith("#[")):
+            out[index:] = [" "] * (len(line) - index)
+            break
+        if char in "'\"\`":
+            out[index] = " "
+            quote = char
+        index += 1
+    return "".join(out), block_comment
+
+
+def _asr_identifier_names(line: str) -> set[str]:
+    """Names from declarations, typed parameters and actual member calls."""
+    output = set()
+    for regex in (ASR_TYPE_DECL, ASR_MEMBER_CALL, ASR_DIRECT_CALL,
+                  ASR_TYPED_PARAMETER, ASR_PROPERTY, ASR_METHOD_DECL):
+        output.update(match.group(1) for match in regex.finditer(line))
+    inherited = ASR_INHERITS.search(line)
+    if inherited:
+        output.update(CODE_IDENTIFIER.findall(inherited.group(1)))
+    # A bare expression can invoke a method; do not treat strings or
+    # non-call attribute accesses as declared identifiers.
+    if re.match(r"^\s*[A-Za-z_]\w*\s*\(", line):
+        matched = re.match(r"^\s*([A-Za-z_]\w*)\s*\(", line)
+        if matched:
+            output.add(matched.group(1))
+    return {name for name in output
+            if re.match(r"^[A-Z][A-Za-z0-9_]{2,89}$", name)
+            and name not in ASR_BANNED_NAMES
+            and not is_generic_code_term(name)}
+
+
 def safe_repo_file(root: Path, rel: str) -> Path | None:
     """Deny secrets, symbolic links, escaped paths and arbitrarily large files."""
     if not rel or "\\" in rel or rel.startswith("-") or any(x in {".", ".."} for x in rel.split("/")):
@@ -200,7 +299,9 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
         symbols_in_file: list[dict] = []
         identifiers_in_file: list[dict] = []
         seen_identifiers = set()
+        in_asr_comment = False
         for lineno, line in enumerate(lines, 1):
+            asr_line, in_asr_comment = _asr_code_only(line, in_asr_comment)
             # Literal declarations only; no guessed symbol from a comment or
             # an unverified model output. Four per file keeps the index small.
             if len(symbols_in_file)<4 and not line.lstrip().startswith(("//", "#", "*", "/*")):
@@ -213,15 +314,10 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
                             "snippet":_snippet(lines,lineno),
                             "line_text":redact_sensitive(line.strip()[:200])
                         })
-            if (len(identifiers_in_file) < 90 and
-                    not line.lstrip().startswith(("//", "#", "*", "/*"))):
-                # Include methods/invocations/type interfaces even when they
-                # are not declarations; the stored path/line stays verifiable.
-                for found in CODE_IDENTIFIER.finditer(line[:300]):
-                    name = found.group()
-                    if (is_generic_code_term(name) or name in seen_identifiers
-                            or name in {"Guid", "String", "Int32", "Task", "True", "False",
-                                        "HttpPost", "AllowAnonymous", "Route", "ApiController"}):
+            if len(identifiers_in_file) < 90 and asr_line.strip():
+                possible = _asr_identifier_names(asr_line[:300])
+                for name in sorted(possible, key=lambda n:asr_line.find(n)):
+                    if name in seen_identifiers:
                         continue
                     seen_identifiers.add(name)
                     item = {
@@ -230,14 +326,9 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
                         "snippet":_snippet(lines,lineno,before=1,after=1),
                     }
                     identifiers_in_file.append(item)
-                    # A class derived from/ending with DbContext is literal
-                    # evidence of that specific framework concept, not a
-                    # fabricated freestanding declaration of DbContext.
                     if (name.endswith("DbContext") and name != "DbContext"
                             and "DbContext" not in seen_identifiers
-                            and re.search(r"\bclass\s+" + re.escape(name) + r"\b", line)):
-                        # A canonical DbContext alias needs an actual class
-                        # declaration, not an arbitrary parameter reference.
+                            and re.search(r"\bclass\s+" + re.escape(name) + r"\b", asr_line)):
                         seen_identifiers.add("DbContext")
                         identifiers_in_file.append({**item,
                             "name":"DbContext", "observed":name})

@@ -71,6 +71,21 @@ SOURCE = {
         9: "public sealed class DeliveryAppDbContext(",
         10: "    DbContextOptions<DeliveryAppDbContext> options,",
     }),
+    "src/Api/Erros/ProblemDetailsTypes.cs": source_with_lines(18, {
+        1: "namespace DeliveryApp.Api.Erros;",
+        2: "public static class ProblemDetailsTypes",
+        3: "{",
+        5: '    public const string About = "https://example.org/types/Reference";',
+        6: "}",
+    }),
+    "src/Api/Modulos/Clientes/AuthModel.cs": source_with_lines(22, {
+        1: "using Microsoft.IdentityModel.Tokens;",
+        2: "namespace DeliveryApp.Api.Modulos.Clientes;",
+        3: "public class AuthModel",
+        4: "{",
+        5: "    public bool EstaAutenticado { get; set; }",
+        6: "}",
+    }),
 }
 
 
@@ -128,7 +143,8 @@ class FrozenV1DoubtsTests(unittest.TestCase):
             "03:30 faind bai email\n"
             "03:45 user maneger\n"
             "04:00 valor generated never\n"
-            "05:11 observação que não corresponde a nenhum identificador\n",
+            "05:11 observação que não corresponde a nenhum identificador\n"
+            "06:00 Grafia de ‘brotce’ ou ‘brute force’?\n",
             encoding="utf-8",
         )
         self.app.add_file(txt)
@@ -140,6 +156,8 @@ class FrozenV1DoubtsTests(unittest.TestCase):
             "conceitos": [
                 {"nome":"DB Contact","explicacao":"Rótulo da transcrição; precisa de revisão."},
                 {"nome":"DbContext","explicacao":"Contexto de dados do Entity Framework."},
+                {"nome":"Autenticação","explicacao":"Conceito português correto."},
+                {"nome":"Geração de token","explicacao":"Conceito português correto."},
             ],
             "conceitos_a_conferir": [
                 {"nome":"DB Contact"}, {"nome":"Entity Framework"},
@@ -155,6 +173,7 @@ class FrozenV1DoubtsTests(unittest.TestCase):
                 "faind bai email",
                 "user maneger",
                 "valor generated never",
+                "Grafia de ‘brotce’ ou ‘brute force’?",
                 "observação que não corresponde a nenhum identificador",
             ],
         })
@@ -192,7 +211,6 @@ class FrozenV1DoubtsTests(unittest.TestCase):
             ("IEntityTypeConfiguration", CONFIG, 8),
             ("JwtProvider", JWT, 12),
             ("Created", CONTROLLER, 85),
-            ("DbContext", DB, 9),
             ("SignInManager", CONTROLLER, 18),
             ("RoleManager", CONTROLLER, 19),
             ("FindByEmailAsync", CONTROLLER, 107),
@@ -207,11 +225,11 @@ class FrozenV1DoubtsTests(unittest.TestCase):
                 self.assertIn(str(line) + ":", note)
         # One actual evidence block per phrase; no duplicates in other
         # sections, even for DB Contact -> DbContext.
-        self.assertEqual(note.count("**Provável no código:**"), 10)
+        self.assertEqual(note.count("**Provável no código:**"), 9)
         doubts = note.split("## Dúvidas técnicas e passagens inaudíveis",1)[1]
         doubts = doubts.split("\n## ",1)[0]
-        self.assertEqual(doubts.count("**Provável no código:**"), 10)
-        self.assertEqual(note.count("**Trecho de 3 linhas do commit congelado:**"), 10)
+        self.assertEqual(doubts.count("**Provável no código:**"), 9)
+        self.assertEqual(note.count("**Trecho de 3 linhas do commit congelado:**"), 9)
         self.assertIn("EXPLICADA_PELO_CODIGO", note)
         self.assertIn("Dúvidas relacionadas a identificadores concretos da versão congelada", note)
         self.assertNotIn("*Nenhum vínculo com código encontrado ainda.", note)
@@ -219,7 +237,7 @@ class FrozenV1DoubtsTests(unittest.TestCase):
         self.assertIn("ver dúvida técnica acima", followup)
         self.assertNotIn("**Provável no código:**", followup)
         self.assertNotIn("Nenhuma explicação posterior identificada", followup)
-        self.assertIn("nome provável no código", note.casefold())
+        self.assertNotIn("**Nome provável no código:**", note)
         self.assertIn("DB Contact", note)
         # Keep unescaped generic type parameters in real fenced C# excerpts.
         self.assertIn("IEntityTypeConfiguration<Cliente>", note)
@@ -229,6 +247,16 @@ class FrozenV1DoubtsTests(unittest.TestCase):
         knowledge = note.split("## Conhecimentos relacionados",1)[1].split("\n## ",1)[0]
         self.assertEqual(knowledge.count("[[dbcontext|DbContext]]"), 1)
         self.assertNotIn("[[dbcontext|DB Contact]]", knowledge)
+        self.assertIn("[[db-contact|DB Contact]]", knowledge)
+        self.assertIn("[[autenticacao|Autenticação]]", knowledge)
+        self.assertIn("[[geracao-de-token|Geração de token]]", knowledge)
+        self.assertNotIn("EstaAutenticado", doubts)
+        self.assertNotIn("Tokens", doubts)
+        self.assertNotIn("Reference", doubts)
+        self.assertNotIn("Autenticação — **Estado:**", note)
+        self.assertNotIn("Geração de token — **Estado:**", note)
+        self.assertNotIn("DB Contact — **Estado:**", note)
+        self.assertIn("Grafia de ‘brotce’ ou ‘brute force’? — **Estado:** `PENDENTE`", note)
         self.assertNotIn("/blob/" + MAIN, note)
         self.assertIn("PENDENTE", note)
 
@@ -251,8 +279,8 @@ class FrozenV1DoubtsTests(unittest.TestCase):
         # DB Contact should share the existing DbContext concept file.
         concepts = self.app.store.vault / "01-Meu-Conhecimento" / "Conceitos"
         self.assertTrue((concepts / "dbcontext.md").exists())
-        self.assertFalse((concepts / "db-contact.md").exists())
-        self.assertIn("DB Contact", (concepts / "dbcontext.md").read_text(encoding="utf-8"))
+        self.assertTrue((concepts / "db-contact.md").exists())
+        self.assertIn("DB Contact", (concepts / "db-contact.md").read_text(encoding="utf-8"))
         suspect = note.split("## Termos suspeitos da transcrição", 1)[1]
         self.assertNotIn("Entity Framework", suspect)
         self.assertNotIn("migrações", suspect)
@@ -266,6 +294,25 @@ class FrozenV1DoubtsTests(unittest.TestCase):
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(note, encoding="utf-8")
             print("V05_TEST_NOTE=" + output.as_posix(), flush=True)
+
+    def test_real_false_positives_are_not_code_evidence(self):
+        payload = index_repository(Path("."), list(SOURCE), read_source=lambda p: (
+            SOURCE[p].decode("utf-8"), len(SOURCE[p])))
+        names = {item["name"] for item in payload["identifiers"]}
+        self.assertNotIn("Reference", names)  # only inside a URL string
+        self.assertNotIn("Tokens", names)  # only in a using directive
+        repo = {"url":REPO, "sha":FROZEN, "frozen":True, "version":"v1"}
+        for question in (
+            "Grafia de ‘brotce’ ou ‘brute force’? A IA mencionou Reference",
+            "brute force", "brotce", "Autenticação", "Geração de token",
+        ):
+            with self.subTest(question=question):
+                self.assertIsNone(match_frozen_question(question, [(repo,payload)]))
+        # Quoted payload, not the narrative or accidental code word outside.
+        from knowledge_bridge.frozen_code_resolution import focus_question
+        self.assertEqual(focus_question(
+            "Grafia de ‘brotce’ ou ‘brute force’? Talvez Reference"),
+            "brotce brute force")
 
     def test_unrelated_phrases_never_match_even_with_code_present(self):
         payload = index_repository(Path("."), list(SOURCE), read_source=lambda p: (

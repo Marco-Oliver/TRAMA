@@ -11,7 +11,7 @@ from difflib import SequenceMatcher
 
 from .code_intel import is_generic_code_term
 
-MIN_TOKEN_SIMILARITY = 0.70
+MIN_TOKEN_SIMILARITY = 0.80
 MIN_SINGLE_TOKEN_SIMILARITY = 0.85
 CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 WORDS = re.compile(r"[a-z][a-z0-9]*|\d+")
@@ -41,8 +41,11 @@ def _ascii(value):
 def phonetic(token):
     """Symmetric, text-independent character rules for speech/code tokens."""
     result = _ascii(token)
+    # Generic grapheme/phoneme rules, applied symmetrically. No mapping
+    # depends on a complete ASR phrase or a specific GitHub identifier.
     for before, after in (
         ("ph", "f"), ("ck", "k"), ("q", "k"), ("z", "s"),
+        ("ign", "ain"), ("sy", "si"), ("nc", "n"),
         ("x", "s"), ("ai", "a"), ("ei", "e"), ("ou", "o"),
         ("oi", "o"), ("ow", "o"),
     ):
@@ -53,7 +56,23 @@ def phonetic(token):
     # comparable without any phrase/identifier-specific replacement.
     if len(result) >= 4 and result.endswith("e"):
         result = result[:-1]
+    result = re.sub(r"nd$", "n", result)
+    result = re.sub(r"m$", "n", result)
     return result
+
+
+QUOTED = re.compile(r'“([^”]{1,130})”|‘([^’]{1,130})’|"([^"]{1,130})"|\'([^\']{1,130})\'')
+
+
+def focus_question(value: str) -> str:
+    """A quoted ASR doubt must not borrow evidence from its AI explanation."""
+    quoted = [next((x for x in match.groups() if x is not None), "")
+              for match in QUOTED.finditer(value)]
+    return " ".join(quoted) if quoted else value
+
+
+def _consonants(value: str) -> str:
+    return re.sub(r"[aeiouy]", "", value)
 
 
 def tokens(value, *, identifier=False):
@@ -72,7 +91,22 @@ def _similarity(first, second):
     if min(len(first), len(second)) >= 4 and (
             first.startswith(second) or second.startswith(first)):
         return 0.92
-    return SequenceMatcher(None, first, second, autojunk=False).ratio()
+    literal = SequenceMatcher(None, first, second, autojunk=False).ratio()
+    # Consonant identity handles vowels distorted by PT-BR speech recognition
+    # (contact/context, valor/value); require a nontrivial consonant shape.
+    consonant_first = _consonants(first)
+    consonant_second = _consonants(second)
+    if min(len(consonant_first), len(consonant_second)) >= 2:
+        skeletal = SequenceMatcher(
+            None, consonant_first, consonant_second, autojunk=False).ratio()
+        if min(len(consonant_first), len(consonant_second)) >= 3:
+            return max(literal, skeletal)
+    # One-letter skeletons are only useful for short spoken stopwords
+    # such as a phonetic 'bai' / written 'by'; not for longer terms.
+    if (len(first) <= 3 and len(second) <= 3 and consonant_first
+            and consonant_first == consonant_second):
+        return max(literal, 0.80)
+    return literal
 
 
 def _ratio(spoken, expected):
@@ -112,7 +146,11 @@ def _ratio(spoken, expected):
         )
         if count < 2 and not unique_long:
             continue
-        score = (count / len(expected), count,
+        identifier_coverage = count / len(expected)
+        phrase_coverage = count / len(spoken)
+        if identifier_coverage < 0.75 or phrase_coverage < 0.50:
+            continue
+        score = (identifier_coverage, count,
                  sum(row[2] for row in matched) / count)
         if best is None or score > best:
             best = score
@@ -126,8 +164,9 @@ def match_frozen_question(question, repositories):
     """
     if not isinstance(question, str) or not question.strip():
         return None
-    spoken = tokens(question)
-    status201 = bool(re.search(r"\bstatus\s*2011?\b", _ascii(question)))
+    focused = focus_question(question)
+    spoken = tokens(focused)
+    status201 = bool(re.search(r"\bstatus\s*2011?\b", _ascii(focused)))
     matches = []
     for repo, payload in repositories:
         if (not repo.get("frozen") or

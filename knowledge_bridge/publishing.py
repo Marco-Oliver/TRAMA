@@ -304,8 +304,30 @@ class Publisher:
             self._frozen_question_memo[key] = match_frozen_question(question, selected)
         return self._frozen_question_memo[key]
 
-    def _corrected_concept(self, src, name: str):
-        """Group a mistaken label only when the canonical page already exists."""
+    @staticmethod
+    def _marked_distortion(concept: dict, raw: str) -> bool:
+        """Concepts are not doubts. Only explicitly flagged ASR names may be
+        compared to code, and even those are ignored when the original name
+        is already present literally in the TXT or is ordinary Portuguese.
+        """
+        if not isinstance(concept, dict):
+            return False
+        name = str(concept.get("nome", "")).strip()
+        if not name or not str(concept.get("suspeita_transcricao") or "").strip():
+            return False
+        # Ordinary Portuguese nouns are not ASR errors simply because an
+        # English symbol happens to be orthographically similar.
+        if re.search(r"\b\w+(?:ção|ções|mento|mentos|dade|dades)\b",
+                     name.casefold(), re.UNICODE):
+            return False
+        if literal_technical_mention(name, raw):
+            return False
+        return True
+
+    def _corrected_concept(self, src, name: str, concept: dict | None = None, raw: str = ""):
+        """Use a *marked* and nonliteral ASR concept label only as a hint."""
+        if not self._marked_distortion(concept or {}, raw):
+            return name
         match = self._code_guess(src["lesson"] or "", name)
         if not match or match["candidate"].casefold() == name.casefold():
             return name
@@ -804,19 +826,19 @@ class Publisher:
         fname = f"{slug(Path(src['label']).stem, 52)}-{src['id'][:7]}.md"
         rel = f"02-Minhas-Aulas/{lesson}/{fname}"
         concepts = analysis.get("conceitos",[]) if analysis else []
-        # Two spoken names that resolve to one canonical concept should have
-        # exactly ONE Obsidian link (DB Contact + DbContext -> DbContext).
+        raw = self.vault / src["stored_path"]
+        text = raw.read_text(encoding="utf-8-sig",errors="replace")
         concept_links_by_target = {}
         for c in concepts:
-            name = c.get("nome", "").strip()
+            if not isinstance(c, dict):
+                continue
+            name = str(c.get("nome", "")).strip()
             if name:
-                canonical = self._corrected_concept(src, name)
+                canonical = self._corrected_concept(src, name, c, text)
                 target = self._concept_target(name, src["id"])
                 concept_links_by_target[target] = (
                     f"[[{target}|{_escape_md(canonical)}]]")
         concept_links = list(concept_links_by_target.values())
-        raw = self.vault / src["stored_path"]
-        text = raw.read_text(encoding="utf-8-sig",errors="replace")
         # Uma apresentação ou encontro administrativo não vira falsamente um
         # módulo técnico só porque alguém mencionou a palavra 'programação'.
         lesson_kind=analysis.get('tipo_aula','indefinida') if analysis else 'indefinida'
@@ -865,7 +887,8 @@ class Publisher:
                     if warning:
                         body.append("  - **Nome possivelmente distorcido pela transcrição:** "
                                     + _escape_md(warning))
-                    matched = self._code_guess(lesson, name)
+                    matched = (self._code_guess(lesson, name)
+                               if self._marked_distortion(c, text) else None)
                     if matched and matched["candidate"].casefold() != name.casefold():
                         body.append("  - **Nome provável no código:** "
                                     + chr(96) + _escape_md(matched["candidate"]) + chr(96)
@@ -892,9 +915,8 @@ class Publisher:
                 for label,found in observed:
                     body.append("- `"+_escape_md(label)+"` — forma observada: `"+
                                 _escape_md(found)+"`; conferir o contexto na transcrição.")
-                    # A technical alias from an existing concept is recorded
-                    # in the single Dúvidas section, never duplicated here.
-                    self._corrected_concept(src,label)
+                    # This is a verified literal mention, not an ASR error:
+                    # never submit an unmarked concept to the matcher.
             if unsupported:
                 body += ["", "## Termos sugeridos pela IA para conferir", "",
                          "> Não foi encontrada menção literal nem abreviação verificável "
@@ -922,35 +944,19 @@ class Publisher:
                          "Não trate como código executado ou demonstrado."] + [
                              f"- {_escape_md(x)}"
                              for x in analysis.get("exemplos_reconstruidos_a_conferir", [])[:10]]
-            # Emit each frozen-code clue ONCE, here. Other sections may
-            # refer back to this location but do not repeat excerpts/links.
+            # Only the analysis' explicit doubts become stateful doubts.
+            # Never merge concepts or automatically suspected terms into this
+            # list; a Portuguese concept is not a transcription error.
             questions = [q for q in analysis.get("duvidas",[])
                          if isinstance(q,str) and q.strip()]
-            # Concepts that were transcribed under a wrong technical name
-            # belong here as reviewable evidence too (e.g. DB Contact).
-            concept_questions = [
-                c.get("nome","") for c in
-                [*concepts, *analysis.get("conceitos_a_conferir",[])]
-                if isinstance(c,dict) and c.get("nome")
-            ]
-            suspect_questions = [
-                heard for _stamp, heard, _candidate
-                in suspected_technical_transcription(text)
-            ]
             seen_questions = set()
             question_entries = []
-            for q in [*questions, *concept_questions, *suspect_questions]:
-                if not isinstance(q,str) or not q.strip():
-                    continue
+            for q in questions:
                 key = q.casefold().strip()
                 if key in seen_questions:
                     continue
                 seen_questions.add(key)
-                match = self._code_guess(lesson, q)
-                if q not in questions and (match is None or
-                        match["candidate"].casefold() == key):
-                    continue
-                question_entries.append((q, match))
+                question_entries.append((q, self._code_guess(lesson, q)))
             if question_entries:
                 body += ["", "## Dúvidas técnicas e passagens inaudíveis", "",
                          "> Hipóteses encontradas no SHA congelado; o áudio "
@@ -1250,7 +1256,7 @@ class Publisher:
             for concept in concepts:
                 name = concept.get("nome", "").strip()
                 if name:
-                    canonical = self._corrected_concept(src, name)
+                    canonical = self._corrected_concept(src, name, concept, original)
                     stored_concept = ({**concept, "nome_original":name}
                                       if canonical != name else concept)
                     concept_map[concept_slug(canonical)].append(
