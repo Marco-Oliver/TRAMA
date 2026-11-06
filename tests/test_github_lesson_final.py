@@ -164,9 +164,12 @@ class FrozenOfflineAndPublisherTests(unittest.TestCase):
         index = LessonRepositoryIndex(self.store)
         index.begin_run()
         self.assertTrue(index._no_token_bulk)
-        with patch.object(GithubMapping, "_get", side_effect=MappingError("offline")):
+        with patch.object(GithubMapping, "_get",
+                          side_effect=AssertionError("Bulk must warn BEFORE requests")) as get:
             index.for_lesson("Aula-131")
+            get.assert_not_called()
         self.assertIn("configure o token do GitHub", index.warning("Aula-131"))
+        self.assertIn("Aula-131", index.failed_lessons)
 
 
 class ContentBlobCacheTests(unittest.TestCase):

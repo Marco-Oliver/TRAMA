@@ -80,6 +80,10 @@ class LessonRepositoryIndex:
         if private is None:
             if self._rate_error:
                 raise self._rate_error
+            if self._no_token_bulk:
+                raise MappingError(
+                    "configure o token do GitHub antes de verificar a privacidade "
+                    "das revisões antigas em lote.")
             private = self.reader.is_private(repo)  # migration of old locks
             # Never assume an old, unknown-private lock is public.
         if type(private) is not bool:
@@ -91,6 +95,10 @@ class LessonRepositoryIndex:
             return cached
         if self._rate_error:
             raise self._rate_error
+        if self._no_token_bulk:
+            raise MappingError(
+                "configure o token do GitHub antes de montar índices de muitas aulas; "
+                "sem token, somente revisões já guardadas no cache serão usadas.")
 
         self.reader._privacy[repo] = private
         listing = self.reader.list_files(repo, sha, folder)
