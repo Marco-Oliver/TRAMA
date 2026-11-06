@@ -55,7 +55,9 @@
       field('anterior_pasta','Anterior: pasta',entry.anterior?.pasta||''))+
      '</div><button type="button" class="code-remove-row">Remover repositório</button>'+
      '<button type="button" class="code-freeze-row">Congelar SHA</button>'+
-     (role==='professor'?'<button type="button" class="code-freeze-previous">Congelar anterior</button>':'')+
+     '<button type="button" class="code-unfreeze-row">Descongelar SHA</button>'+
+     (role==='professor'?'<button type="button" class="code-freeze-previous">Congelar anterior</button>'+
+       '<button type="button" class="code-unfreeze-previous">Descongelar anterior</button>':'')+
      '<small class="code-freeze-status" role="status"></small>';
    node.querySelector('.code-remove-row').addEventListener('click',()=>{node.remove();refreshTeacherOptions();});
    const freeze=async previous=>{
@@ -70,8 +72,23 @@
      if(result?.ok)node.querySelector('.code-freeze-status').textContent=
        (previous?'Anterior':'Atual')+' fixado: '+result.sha.slice(0,12);
    };
+   const unfreeze=async previous=>{
+     const ident=node.querySelector('[data-code="id"]')?.value.trim()||'';
+     if(!loadedLesson||!ident)return feedback('lesson-code-feedback','Carregue o cadastro antes de descongelar.');
+     if(!await askTramaConfirm('Descongelar revisão GitHub',
+       'Remover o SHA '+(previous?'anterior':'atual')+' congelado de '+loadedLesson+
+       '? A próxima consulta poderá congelar uma versão diferente; nenhuma nota será alterada.',
+       'Descongelar SHA'))return;
+     const result=await call('unfreeze_lesson_code',loadedLesson,role,ident,
+                             previous?'previous':'current',true);
+     feedback('lesson-code-feedback',result?.message||'Não foi possível descongelar.');
+     if(result?.ok)node.querySelector('.code-freeze-status').textContent=
+       (previous?'Anterior':'Atual')+' descongelado.';
+   };
    node.querySelector('.code-freeze-row').addEventListener('click',()=>freeze(false));
    node.querySelector('.code-freeze-previous')?.addEventListener('click',()=>freeze(true));
+   node.querySelector('.code-unfreeze-row').addEventListener('click',()=>unfreeze(false));
+   node.querySelector('.code-unfreeze-previous')?.addEventListener('click',()=>unfreeze(true));
    list.append(node);
    if(role==='dupla')updateStudentSelect(node,entry.professor_id||'');
    else{

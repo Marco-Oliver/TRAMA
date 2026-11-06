@@ -1205,6 +1205,30 @@ class Bridge:
             if db is not None:db.close()
             self._write_lock.release()
 
+    def unfreeze_lesson_code(self, lesson, role, repository_id, slot, confirmed=False):
+        """Destructive operation only on explicit consent; does not touch JSON or notes."""
+        from .store import Store
+        if confirmed is not True:
+            return {"ok": False, "message": "Confirme o descongelamento desta referência GitHub."}
+        vault = self._vault()
+        if vault is None:
+            return {"ok": False, "message": "Selecione o cofre do Obsidian."}
+        if not self._write_lock.acquire(blocking=False):
+            return {"ok": False, "message": "Há uma operação em andamento."}
+        db = None
+        try:
+            db = Store(vault)
+            removed = db.unfreeze_github_ref(lesson, role, repository_id, slot)
+            return {"ok": removed,
+                    "message": ("SHA descongelado; a próxima versão precisará ser congelada explicitamente."
+                                if removed else "Não existe SHA congelado para essa referência.")}
+        except (ValueError, TypeError, OSError, sqlite3.Error) as exc:
+            return {"ok": False, "message": str(exc)[:300]}
+        finally:
+            if db is not None:
+                db.close()
+            self._write_lock.release()
+
     def frozen_lesson_code(self, lesson):
         """Read-only snapshots for the UI; never resolves a branch automatically."""
         from .lesson_code_config import read_config, LESSON_RE
@@ -1736,6 +1760,9 @@ class PublicApi:
 
     def frozen_lesson_code(self, lesson):
         return self._bridge.frozen_lesson_code(lesson)
+
+    def unfreeze_lesson_code(self, lesson, role, repository_id, slot, confirmed=False):
+        return self._bridge.unfreeze_lesson_code(lesson,role,repository_id,slot,confirmed)
 
     def preview_lesson_mappings(self, repo, dates=None, branch=""):
         return self._bridge.preview_lesson_mappings(repo,dates,branch)

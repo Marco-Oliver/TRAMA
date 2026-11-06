@@ -68,6 +68,25 @@ class FrozenShaTests(unittest.TestCase):
         frozen=self.bridge.frozen_lesson_code("Aula-131")
         self.assertEqual(frozen["refs"][0]["commit_sha"],SHA_A)
 
+    def test_unfreeze_requires_confirmation_and_allows_refreeze_after_branch_moves(self):
+        with patch.object(GithubMapping, "resolve_sha", return_value=SHA_A):
+            pinned=self.bridge.freeze_lesson_code("Aula-131","professor","backend",True)
+        self.assertTrue(pinned["ok"], pinned)
+        self.assertEqual(pinned["sha"],SHA_A)
+        denied=self.bridge.unfreeze_lesson_code("Aula-131","professor","backend","current",False)
+        self.assertFalse(denied["ok"])
+        self.assertEqual(self.bridge.frozen_lesson_code("Aula-131")["refs"][0]["commit_sha"],SHA_A)
+        cleared=self.bridge.unfreeze_lesson_code("Aula-131","professor","backend","current",True)
+        self.assertTrue(cleared["ok"],cleared)
+        self.assertEqual(self.bridge.frozen_lesson_code("Aula-131")["refs"],[])
+        with patch.object(GithubMapping, "resolve_sha", return_value=SHA_B):
+            new=self.bridge.freeze_lesson_code("Aula-131","professor","backend",True)
+        self.assertTrue(new["ok"],new)
+        self.assertEqual(new["sha"],SHA_B)
+        self.assertTrue(new["created"])
+        self.assertFalse(self.bridge.unfreeze_lesson_code("Aula-131","professor",
+                          "backend","invalid-slot",True)["ok"])
+
     def test_previous_folder_is_distinct_slot_and_deletion_clears_locks(self):
         with patch.object(GithubMapping,"resolve_sha",return_value=SHA_A):
             self.assertTrue(self.bridge.freeze_lesson_code("Aula-131","professor","backend",True)["ok"])

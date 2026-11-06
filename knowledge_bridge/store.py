@@ -200,6 +200,19 @@ class Store:
             raise ValueError("Referência congelada por outro processo; nenhuma atualização automática aplicada.")
         return {"sha":saved["commit_sha"],"created":True}
 
+    def unfreeze_github_ref(self, lesson: str, role: str, repository_id: str, slot: str):
+        """Explicitly clear one slot; it can subsequently be frozen again."""
+        if (not isinstance(lesson, str) or not re.fullmatch(r"Aula-\d{3,4}", lesson)
+                or role not in ("professor", "dupla")
+                or slot not in ("current", "previous")
+                or not isinstance(repository_id, str) or not repository_id):
+            raise ValueError("Aula, repositório ou versão inválida.")
+        with self.conn:
+            cursor = self.conn.execute(
+                "DELETE FROM github_lesson_refs WHERE lesson=? AND role=? AND repository_id=? AND slot=?",
+                (lesson, role, repository_id, slot))
+        return cursor.rowcount == 1
+
     def clear_github_lesson(self, lesson: str):
         with self.conn:
             self.conn.execute("DELETE FROM github_lesson_refs WHERE lesson=?", (lesson,))
