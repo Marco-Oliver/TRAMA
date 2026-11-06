@@ -45,15 +45,29 @@ const makeBridge=({notes})=>{
   snapshot: async()=>({connected:true,vault:'C:\\TRAMA-Teste\\Cofre',notes,stats:{notes:3,videos:2,transcriptions:2,materials:0,repositories:1},favorites:[notes[0].id]}),
   note: async id=>{const n=notes.find(n=>n.id===id);return n?baseNote(n.lesson==='Aula-001'?{...n,kind:'visao_geral',state:'fontes_organizadas',content:n.content+'\n\n## Em poucas palavras\n\n**Pendente:** a IA ainda não gerou o resumo desta aula.',summary:'**Pendente:** a IA ainda não gerou o resumo desta aula.'}:n):{error:'Nota não encontrada'};},
   graph: async()=>({nodes:notes.map(n=>({...n,kind:n.kind==='visao_geral'?'indice':n.kind})),edges:[[0,2]]}),
-  lesson_code_config: async()=>({ok:true,fatal:false,erros:[],github_token_configurado:false,
-    aulas:{'Aula-001':{professor:[],dupla:[]}},datas:[{aula:'Aula-001',data:'2026-10-28',origem_data:'contexto_classroom'}]}),
-  save_lesson_code: async (lesson,data,confirmed)=>{(window.__tramaCodeSaves??=[]).push({lesson,data,confirmed});return {ok:confirmed,message:'Cadastro GitHub salvo.'};},
-  preview_lesson_mappings: async (repo)=>{window.__tramaPreviewRepo=repo;return {ok:true,repo,
+  lesson_code_config: async(lesson)=>({ok:true,fatal:false,erros:[],github_token_configurado:false,
+    aulas:{'Aula-001':{professor:[],dupla:[]}},
+    invalid:window.__tramaShowInvalid&&lesson==='Aula-002'?{'Aula-002':{
+      raw:{professor:[{repo:'https://evil.invalid'}],dupla:[],injected:'<img src=x onerror="window.__tramaXss=true">'},
+      digest:'d'.repeat(64)}}:{},
+    datas:[{aula:'Aula-001',data:'2026-10-28',origem_data:'contexto_classroom'}]}),
+  save_lesson_code: async (lesson,data,confirmed,replace_invalid=false,expected_digest='')=>{
+    (window.__tramaCodeSaves??=[]).push({lesson,data,confirmed,replace_invalid,expected_digest});
+    return {ok:confirmed,message:'Cadastro GitHub salvo.'};
+  },
+  preview_lesson_mappings: async (repo,dates,branch)=>{
+    window.__tramaPreviewRepo=repo;window.__tramaPreviewBranch=branch;
+    return {ok:true,repo,branch,
     taxa:{restantes:56,limite:60,consultas:3},truncado:false,
     candidatos:[{id:'pasta:test',tipo:'pasta',ref_tipo:'commit',ref:'a'.repeat(40),pasta:'V3',
       rotulo:'Pasta V3',data:'2026-10-28',sugestao_anterior:{ref_tipo:'commit',ref:'a'.repeat(40),pasta:'V2'}}],
     aulas:[{aula:'Aula-001',data:'2026-10-28',origem_data:'contexto_classroom',candidato_id:'pasta:test',
       motivo:'Sugestão apenas por data'}]};},
+  suggest_lesson_mappings: async dates=>{
+    (window.__tramaPythonSuggestCalls??=[]).push(dates);
+    return {ok:true,aulas:[{aula:'Aula-001',data:dates['Aula-001'],candidato_id:'pasta:test',
+      motivo:'Preferência por pasta do backend'}]};
+  },
   apply_lesson_mappings: async (rows,confirmed)=>{(window.__tramaMapSaves??=[]).push({rows,confirmed});return {ok:true,message:'1 aula(s) confirmada(s)'};},
   process_lesson: async (lesson, confirmed, force)=>{
     window.__tramaLessonRefreshCalls=(window.__tramaLessonRefreshCalls||0)+1;
@@ -193,7 +207,13 @@ try{
     await teacher.nth(1).locator('[data-code="repo"]').fill('https://github.com/professor/frontend');
     await students.locator('[data-code="rotulo"]').fill('Back-end dupla');
     await students.locator('[data-code="repo"]').fill('https://github.com/dupla/backend');
-    await students.locator('[data-code="professor_id"]').fill('professor-1');
+    await teacher.nth(0).locator('[data-code="id"]').fill('map-abcdef1234567890');
+    const teacherSelector=students.locator('[data-code="professor_id"]');
+    if(await teacherSelector.locator('option').count()!==3)
+      throw Error('Pair teacher field is not a populated dropdown');
+    if(!(await teacherSelector.locator('option[value="map-abcdef1234567890"]').innerText()).includes('Back-end professor'))
+      throw Error('Teacher dropdown does not show readable labels for mapped IDs');
+    await teacherSelector.selectOption('map-abcdef1234567890');
     await page.locator('#lesson-code-form button[type=submit]').click();
     await page.locator('#trama-confirm-dialog').waitFor({state:'visible'});
     await page.locator('#trama-confirm-cancel').click();
@@ -203,15 +223,57 @@ try{
     await page.waitForFunction(()=>window.__tramaCodeSaves?.length===1);
     const data=await page.evaluate(()=>window.__tramaCodeSaves[0]);
     if(data.lesson!=='Aula-001'||!data.confirmed||data.data.professor.length!==2||
-       data.data.dupla.length!==1||data.data.dupla[0].professor_id!=='professor-1')
+       data.data.dupla.length!==1||data.data.dupla[0].professor_id!=='map-abcdef1234567890')
       throw Error('GitHub 2 professor + 1 student form did not submit exact data: '+JSON.stringify(data));
+    // No empty registration may be saved implicitly.
+    await page.locator('#lesson-code-number').fill('3');
+    await page.locator('#lesson-code-load').click();
+    await page.locator('#lesson-code-form button[type=submit]').click();
+    if(!(await page.locator('#lesson-code-feedback').innerText()).includes('Cadastro vazio'))
+      throw Error('Empty mapping was not rejected');
+    if(await page.evaluate(()=>window.__tramaCodeSaves?.length)!==1)
+      throw Error('Empty registration reached backend write');
+    // An invalid old record must be shown as raw TEXT and specifically confirmed.
+    await page.evaluate(()=>{window.__tramaShowInvalid=true;});
+    await page.locator('#lesson-code-number').fill('2');
+    await page.locator('#lesson-code-load').click();
+    await page.locator('#lesson-code-invalid').waitFor({state:'visible'});
+    const raw=await page.locator('#lesson-code-invalid-raw').innerText();
+    if(!raw.includes('https://evil.invalid')||!raw.includes('<img'))
+      throw Error('Invalid raw mapping not shown to user');
+    if(await page.locator('#lesson-code-invalid img').count())
+      throw Error('Untrusted raw JSON was interpreted as HTML');
+    await page.locator('#lesson-code-add-teacher').click();
+    await page.locator('#code-teachers [data-code="rotulo"]').fill('Professor corrigido');
+    await page.locator('#code-teachers [data-code="repo"]').fill('https://github.com/professor/validado');
+    await page.locator('#lesson-code-form button[type=submit]').click();
+    await page.locator('#trama-confirm-dialog').waitFor({state:'visible'});
+    if(!(await page.locator('#trama-confirm-title').innerText()).includes('registro inválido'))
+      throw Error('Invalid mapping did not require specific confirmation');
+    await page.locator('#trama-confirm-cancel').click();
+    if(await page.evaluate(()=>window.__tramaCodeSaves?.length)!==1)
+      throw Error('Invalid mapping replaced after denial');
+    await page.locator('#lesson-code-form button[type=submit]').click();
+    await page.locator('#trama-confirm-accept').click();
+    await page.waitForFunction(()=>window.__tramaCodeSaves?.length===2);
+    const replaced=await page.evaluate(()=>window.__tramaCodeSaves[1]);
+    if(!replaced.replace_invalid||replaced.expected_digest!=='d'.repeat(64))
+      throw Error('Explicit original-record digest was not sent with replacement');
     await page.locator('#lesson-code-map-open').click();
     await page.locator('#lesson-map-dialog').waitFor({state:'visible'});
     await page.locator('#lesson-map-repo').fill('https://github.com/professor/backend');
+    await page.locator('#lesson-map-branch').fill('course/v7');
+    if(!(await page.locator('#lesson-map-dialog').innerText()).includes('Aulas ainda não importadas não aparecem aqui'))
+      throw Error('Unimported lessons warning is missing');
     await page.locator('#lesson-map-search').click();
+    await page.waitForFunction(()=>window.__tramaPreviewBranch==='course/v7');
     await page.locator('.lesson-map-row').first().waitFor();
     if(!(await page.locator('#lesson-map-quota').innerText()).includes('56 de 60'))
       throw Error('Remaining API requests not displayed in map UI');
+    await page.locator('.lesson-map-row input[type="date"]').first().fill('2026-10-29');
+    await page.waitForFunction(()=>window.__tramaPythonSuggestCalls?.length===1);
+    if(await page.locator('.lesson-map-row select').first().inputValue()!=='pasta:test')
+      throw Error('Date edit ignored the Python-selected reference');
     if(await page.evaluate(()=>window.__tramaMapSaves?.length||0))
       throw Error('Mappings were written during preview');
     await page.locator('.lesson-map-row [data-map-check]').first().check();
