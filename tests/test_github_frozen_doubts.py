@@ -237,7 +237,7 @@ class FrozenV1DoubtsTests(unittest.TestCase):
         self.assertIn("ver dúvida técnica acima", followup)
         self.assertNotIn("**Provável no código:**", followup)
         self.assertNotIn("Nenhuma explicação posterior identificada", followup)
-        self.assertNotIn("**Nome provável no código:**", note)
+        self.assertEqual(note.count("**Nome provável no código:**"), 1)
         self.assertIn("DB Contact", note)
         # Keep unescaped generic type parameters in real fenced C# excerpts.
         self.assertIn("IEntityTypeConfiguration<Cliente>", note)
