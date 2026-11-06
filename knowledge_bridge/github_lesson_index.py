@@ -44,7 +44,8 @@ class LessonRepositoryIndex:
                 raw = decoder.decompress(saved, 2_000_001)
                 if len(raw) <= 2_000_000 and decoder.eof and not decoder.unconsumed_tail:
                     parsed = json.loads(raw)
-                    if (parsed.get("identity") == list(key)
+                    if (isinstance(parsed, dict)
+                            and parsed.get("identity") == list(key)
                             and isinstance(parsed.get("index"), dict)):
                         self._snapshots[key] = parsed["index"]
                         return parsed["index"]
@@ -95,8 +96,6 @@ class LessonRepositoryIndex:
             self.errors[lesson] = "congele a versão desta aula"
         result = []
         seen = set()
-        globals_by_url = {self._key(row["url"], "", "")[0]: row["name"]
-                          for row in self.store.repositories()}
         for row in frozen:
             key = self._key(row["repo_url"], row["commit_sha"], row["folder"])
             if key in seen:
@@ -112,7 +111,7 @@ class LessonRepositoryIndex:
             url = row["repo_url"]
             result.append(({
                 "url": url, "sha": row["commit_sha"],
-                "name": globals_by_url.get(key[0], url.rstrip("/").removesuffix(".git").rsplit("/", 1)[-1]),
+                "name": url.rstrip("/").removesuffix(".git").rsplit("/", 1)[-1],
                 "status": "FROZEN", "folder": row["folder"], "frozen": True,
             }, payload))
         return result

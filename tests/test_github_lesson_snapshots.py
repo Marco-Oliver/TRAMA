@@ -129,7 +129,7 @@ class FrozenLessonIndexTests(unittest.TestCase):
         self.transcript()
         self.run_with_mock()
         before = self.note()
-        self.db.save_repo(REPO, "course", PULLED, global_index("DestroyRef", PULLED),
+        self.db.save_repo(REPO, "renamed-after-pull", PULLED, global_index("DestroyRef", PULLED),
                           "INDEXED")
         self.run_with_mock()
         after = self.note()
