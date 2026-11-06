@@ -191,6 +191,28 @@ class MappingTests(unittest.TestCase):
         self.assertEqual(len(loaded["aulas"]["Aula-131"]["professor"]),2)
         self.assertEqual(len(loaded["aulas"]["Aula-131"]["dupla"]),1)
 
+    def test_explicit_removal_preserves_other_lessons_and_blocks_unconfirmed(self):
+        save_lessons(self.vault, {"Aula-131": sample(), "Aula-132": sample()})
+        original = read_config(self.vault)["aulas"]["Aula-131"]
+        denied = self.bridge.remove_lesson_code("Aula-131", False)
+        self.assertFalse(denied["ok"])
+        self.assertEqual(read_config(self.vault)["aulas"]["Aula-131"], original)
+        removed = self.bridge.remove_lesson_code("Aula-131", True)
+        self.assertTrue(removed["ok"], removed)
+        self.assertNotIn("Aula-131", read_config(self.vault)["aulas"])
+        self.assertIn("Aula-132", read_config(self.vault)["aulas"])
+        self.assertFalse(self.bridge.remove_lesson_code("Aula-131", True)["ok"])
+        self.assertIn('id="lesson-code-remove"', load_local_ui())
+
+    def test_invalid_registration_removal_requires_current_digest(self):
+        file=self.vault/".base-conhecimento/aulas-github.json"
+        file.parent.mkdir(parents=True,exist_ok=True)
+        file.write_text(json.dumps({"schema":1,"aulas":{
+            "Aula-131":{"professor":[{"id":"x"}],"dupla":[]}}}),encoding="utf-8")
+        self.assertFalse(self.bridge.remove_lesson_code("Aula-131",True)["ok"])
+        digest=read_config(self.vault)["invalid"]["Aula-131"]["digest"]
+        self.assertTrue(self.bridge.remove_lesson_code("Aula-131",True,digest)["ok"])
+
     def test_bundled_html_includes_new_ui_and_strict_csp(self):
         html=load_local_ui()
         self.assertIn('id="lesson-code-dialog"',html)

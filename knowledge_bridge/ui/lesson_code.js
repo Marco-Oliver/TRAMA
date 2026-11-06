@@ -86,6 +86,7 @@
    if(result.fatal){feedback('lesson-code-feedback',(result.erros||[]).join('; '));return;}
    loadedLesson=lesson;
    loadedInvalid=result.invalid?.[lesson]||null;
+   el('lesson-code-remove').disabled=!(loadedInvalid||result?.aulas?.[lesson]);
    el('lesson-code-invalid').hidden=!loadedInvalid;
    el('lesson-code-invalid-raw').textContent=loadedInvalid?JSON.stringify(loadedInvalid.raw,null,2):'';
    el('code-teachers').replaceChildren();el('code-students').replaceChildren();
@@ -134,6 +135,26 @@
      loadedInvalid=null;
      el('lesson-code-invalid').hidden=true;
      el('lesson-code-invalid-raw').textContent='';
+   }
+ }
+ async function removeEditor(){
+   const nr=Number(el('lesson-code-number').value);
+   const lesson='Aula-'+String(nr).padStart(3,'0');
+   if(!Number.isInteger(nr)||nr<1||nr>9999||lesson!==loadedLesson){
+     feedback('lesson-code-feedback','Carregue a aula antes de remover seu cadastro.');return;
+   }
+   if(el('lesson-code-remove').disabled)return;
+   if(!await askTramaConfirm('Remover cadastro GitHub da aula',
+     'Excluir os repositórios associados à '+lesson+'? As demais aulas e as notas do Obsidian serão preservadas.',
+     'Remover cadastro'))return;
+   const answer=await call('remove_lesson_code',lesson,true,loadedInvalid?.digest||'');
+   feedback('lesson-code-feedback',answer?.message||'Não foi possível remover o cadastro.');
+   if(answer?.ok){
+     el('code-teachers').replaceChildren();el('code-students').replaceChildren();
+     loadedInvalid=null;el('lesson-code-invalid').hidden=true;
+     el('lesson-code-invalid-raw').textContent='';
+     el('lesson-code-remove').disabled=true;
+     notify('Cadastro GitHub removido.');
    }
  }
  function displayPreview(data){
@@ -236,6 +257,7 @@
  }
  el('btn-lesson-code').addEventListener('click',openEditor);
  el('lesson-code-load').addEventListener('click',loadLesson);
+ el('lesson-code-remove').addEventListener('click',removeEditor);
  el('lesson-code-add-teacher').addEventListener('click',()=>row('professor'));
  el('lesson-code-add-student').addEventListener('click',()=>row('dupla'));
  el('lesson-code-close').addEventListener('click',()=>hide(editor));

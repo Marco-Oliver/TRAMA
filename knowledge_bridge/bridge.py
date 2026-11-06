@@ -1114,6 +1114,22 @@ class Bridge:
         finally:
             self._write_lock.release()
 
+    def remove_lesson_code(self, lesson, confirmed=False, expected_digest=""):
+        from .lesson_code_config import delete_lesson
+        if confirmed is not True:
+            return {"ok":False,"message":"Confirme explicitamente a remoção do cadastro GitHub."}
+        vault=self._vault()
+        if vault is None:
+            return {"ok":False,"message":"Selecione o cofre do Obsidian."}
+        if not self._write_lock.acquire(blocking=False):
+            return {"ok":False,"message":"Há uma operação em andamento."}
+        try:
+            return delete_lesson(vault, lesson, expected_digest)
+        except (ValueError,TypeError,OSError) as exc:
+            return {"ok":False,"message":str(exc)[:350]}
+        finally:
+            self._write_lock.release()
+
     def preview_lesson_mappings(self, repo, dates=None, branch=""):
         """REST suggestions only. No file/database writes and no Git checkout."""
         from .github_mapping import preview_mapping, MappingError
@@ -1611,6 +1627,9 @@ class PublicApi:
 
     def save_lesson_code(self, lesson, data, confirmed=False, replace_invalid=False, expected_digest=""):
         return self._bridge.save_lesson_code(lesson,data,confirmed,replace_invalid,expected_digest)
+
+    def remove_lesson_code(self, lesson, confirmed=False, expected_digest=""):
+        return self._bridge.remove_lesson_code(lesson,confirmed,expected_digest)
 
     def preview_lesson_mappings(self, repo, dates=None, branch=""):
         return self._bridge.preview_lesson_mappings(repo,dates,branch)

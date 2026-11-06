@@ -200,6 +200,38 @@ def save_lessons(vault: Path, updates: dict, replacements: dict | None = None) -
     return {"ok": True, "saved": sorted(updates), "erros": current["erros"]}
 
 
+def delete_lesson(vault: Path, lesson: str, expected_digest: str = "") -> dict:
+    """Remove one explicitly selected registration, preserving other lessons."""
+    if not isinstance(lesson, str) or not LESSON_RE.fullmatch(lesson):
+        raise ValueError("Identificador da aula inválido.")
+    current = read_config(vault)
+    if current["fatal"]:
+        raise ValueError("Corrija o aulas-github.json antes de remover um cadastro.")
+    document = current["document"]
+    if lesson not in document["aulas"]:
+        return {"ok": False, "message": "Esta aula não possui cadastro GitHub."}
+    invalid = current.get("invalid", {}).get(lesson)
+    if invalid and expected_digest != invalid["digest"]:
+        raise ValueError("Cadastro inválido: confirme a exclusão do conteúdo original apresentado.")
+    del document["aulas"][lesson]
+    content = (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    path = _config_path(vault)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and path.is_symlink():
+        raise ValueError("Arquivo de configuração simbólico não permitido.")
+    fd, temporary = tempfile.mkstemp(dir=str(path.parent), prefix=".aulas-github-")
+    try:
+        with os.fdopen(fd, "wb") as output:
+            output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return {"ok": True, "message": f"Cadastro GitHub da {lesson} removido.", "removed": lesson}
+
+
 def lesson_dates(vault: Path) -> list[dict]:
     """Dados explícitos do Classroom são indícios; NÃO comprovam data da gravação."""
     vault = Path(vault).resolve()
