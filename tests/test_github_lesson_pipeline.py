@@ -37,7 +37,7 @@ class ProcessingFrozenShaTests(unittest.TestCase):
                                  REPO,"branch","main","V3",A)
             self.assertTrue(db.github_lesson_repo_allowed("Aula-131",REPO,A))
             self.assertFalse(db.github_lesson_repo_allowed("Aula-131",REPO,B))
-            self.assertFalse(db.github_lesson_repo_allowed("Aula-999",REPO,B))
+            self.assertTrue(db.github_lesson_repo_allowed("Aula-999",REPO,B))  # unmapped legacy
         finally:
             db.close()
 

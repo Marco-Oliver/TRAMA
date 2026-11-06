@@ -18,6 +18,7 @@ from .store import Store
 from .memory_atlas import make_atlas, render_atlas, lesson_order, norm, note_for, literal_technical_mention
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections
 from .learning_review import refresh_uncertainties, render_uncertainties
+from .github_lesson_index import LessonRepositoryIndex
 
 
 def _escape_md(s: object) -> str:
@@ -213,6 +214,16 @@ def _source_quote(value: object, limit: int = 260, term: str = "") -> str:
             .replace("[[", "［［").replace("]]", "］］"))
 
 
+def _project_ref(repo) -> str:
+    """Stable Obsidian note target for an immutable SHA/folder snapshot."""
+    name = f"{slug(repo['name'])}-{repo['sha'][:7]}"
+    if repo.get("frozen"):
+        identity = (str(repo["url"]) + "\n" + str(repo["sha"]) + "\n"
+                    + str(repo.get("folder", ""))).encode("utf-8")
+        return name + "-f" + hashlib.sha256(identity).hexdigest()[:8]
+    return name
+
+
 def _code_ref(repo, path: str, line: int) -> str:
     """Link to the immutable GitHub revision; local repos retain path:line."""
     location = f"{_escape_md(path)}:{line}"
@@ -228,10 +239,15 @@ class Publisher:
     def __init__(self, store: Store):
         self.db, self.vault = store, store.vault
         self._concept_targets = {}
+        self.lesson_repo_index = LessonRepositoryIndex(store)
         for folder in ["00-Inicio", "01-Meu-Conhecimento", "02-Minhas-Aulas", "03-Meus-Projetos",
                        "05-Anotacoes-Pessoais", "90-Sistema", "99-Anexos/Videos", "99-Anexos/Transcricoes-Originais",
                        "99-Anexos/Materiais-Originais", "99-Anexos/Contexto-Classroom"]:
             (self.vault / folder).mkdir(parents=True, exist_ok=True)
+
+    def _lesson_repos(self, lesson: str):
+        """Return SHA-locked snapshots, or the legacy global index if unmapped."""
+        return self.lesson_repo_index.for_lesson(lesson)
 
     def _concept_target(self, name: str) -> str:
         """Filename of a known concept group, independent of its comparison key."""
@@ -636,12 +652,12 @@ class Publisher:
             rows.append('*Nenhum conceito com relação temporal validável nesta aula. '
                         'Isso é normal em apresentações ou encontros sem conteúdo técnico.*')
         rows += ['', '## Projetos relacionados', '']
+        warning = self.lesson_repo_index.warning(lesson)
+        if warning:
+            rows.append("> " + warning)
         found_code=False
-        for repo in self.db.repositories():
-            if not self.db.github_lesson_repo_allowed(lesson,repo["url"],repo["sha"]):
-                continue
+        for repo, payload in self._lesson_repos(lesson):
             try:
-                payload=json.loads(repo['payload'])
                 matches=[]
                 for src, _note in recordings:
                     raw=(self.vault/src['stored_path']).read_text(encoding='utf-8-sig',errors='replace')
@@ -649,7 +665,7 @@ class Publisher:
                     matches.extend(match_lesson_to_repository(raw,a,payload,cap=2))
                 if matches:
                     found_code=True
-                    ref=f"{slug(repo['name'])}-{repo['sha'][:7]}"
+                    ref=f"{_project_ref(repo)}"
                     rows.append(f"- [[{ref}|{_escape_md(repo['name'])}]] — código relacionado por conceito; "
                                 f"ex.: {_code_ref(repo, matches[0]['path'], matches[0]['line'])}. "
                                 '**Possível relação; não comprova autoria nem momento da implementação.**')
@@ -952,15 +968,15 @@ class Publisher:
             body.append("*Link da gravação ainda não informado. Cadastre em Aulas → Contexto +.*")
         body += ["", "> Os códigos e nomes técnicos devem ser conferidos com o repositório antes de serem considerados verificados."]
         body += ["", "## Relações com códigos e projetos", ""]
+        warning = self.lesson_repo_index.warning(lesson)
+        if warning:
+            body.append("> " + warning)
         project_matches = []
-        for repo in self.db.repositories():
-            if not self.db.github_lesson_repo_allowed(lesson,repo["url"],repo["sha"]):
-                continue
-            payload = json.loads(repo["payload"])
+        for repo, payload in self._lesson_repos(lesson):
             matched = match_lesson_to_repository(text, analysis, payload, cap=5)
             if not matched:
                 continue
-            project_ref = f"{slug(repo['name'])}-{repo['sha'][:7]}"
+            project_ref = f"{_project_ref(repo)}"
             body.append(f"### [[{project_ref}|{_escape_md(repo['name'])}]]")
             body.append("*Conexão sugerida por conceito mencionado + código encontrado; não prova autoria nem que foi programado nesta aula.*")
             for e in matched:
@@ -1118,13 +1134,16 @@ class Publisher:
         for lesson in sorted({s['lesson'] for s in self.db.sources() if s['lesson']} - transcripts_by_lesson):
             self._other_lesson_note(lesson, [s for s in self.db.sources() if s['lesson'] == lesson])
 
-        repo_rows = self.db.repositories()
-        repo_info = []
-        for repo in repo_rows:
-            import json
-            payload = json.loads(repo["payload"])
-            repo_info.append((repo,payload))
-            rel = f"03-Meus-Projetos/{slug(repo['name'])}-{repo['sha'][:7]}.md"
+        repo_info = [(dict(repo), json.loads(repo["payload"]))
+                     for repo in self.db.repositories()]
+        known_projects = {_project_ref(repo) for repo, _ in repo_info}
+        for lesson in all_lessons:
+            for repo, payload in self._lesson_repos(lesson):
+                if repo["frozen"] and _project_ref(repo) not in known_projects:
+                    known_projects.add(_project_ref(repo))
+                    repo_info.append((repo, payload))
+        for repo, payload in repo_info:
+            rel = f"03-Meus-Projetos/{_project_ref(repo)}.md"
             body = [_frontmatter(tipo="projeto", sha=repo["sha"], estado=repo["status"]),
                     f"# Projeto — {repo['name']}", "", f"- Repositório: {repo['url']}",
                     f"- Commit analisado: `{repo['sha']}`", "",
@@ -1181,8 +1200,8 @@ class Publisher:
             body += ["", "## Conexões com aulas", ""]
             linked = False
             for src, note in lesson_links:
-                if not self.db.github_lesson_repo_allowed(
-                        src["lesson"] or "",repo["url"],repo["sha"]):
+                if not any(_project_ref(candidate) == _project_ref(repo)
+                           for candidate, _ in self._lesson_repos(src["lesson"] or "")):
                     continue
                 raw=(self.vault/src["stored_path"]).read_text(encoding="utf-8-sig",errors="replace")
                 analysis=self.db.analysis(src["id"],src["digest"])
@@ -1280,7 +1299,7 @@ class Publisher:
                            if norm(e["concept"]) == norm(name)]
                 if matches:
                     first = matches[0]
-                    body.append(f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{_escape_md(repo['name'])}]]: "
+                    body.append(f"- [[{_project_ref(repo)}|{_escape_md(repo['name'])}]]: "
                                 f"{_code_ref(repo, first['path'], first['line'])} — "
                                 "código existente, sem atribuição automática de autoria.")
             if body[-1] == "## Projetos relacionados":
@@ -1365,7 +1384,7 @@ class Publisher:
                 if not docs:
                     continue
                 project_found = True
-                body.append(f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{_escape_md(repo['name'])}]] — "
+                body.append(f"- [[{_project_ref(repo)}|{_escape_md(repo['name'])}]] — "
                             + ", ".join(f"`{_escape_md(d['path'])}`" for d in docs[:4])
                             + "; documentação existente no repositório, não necessariamente conteúdo da aula")
             if not project_found:
@@ -1398,8 +1417,8 @@ class Publisher:
         for repo,payload in repo_info:
             matches=[]
             for src,note in lesson_links:
-                if not self.db.github_lesson_repo_allowed(
-                        src["lesson"] or "",repo["url"],repo["sha"]):
+                if not any(_project_ref(candidate) == _project_ref(repo)
+                           for candidate, _ in self._lesson_repos(src["lesson"] or "")):
                     continue
                 raw=(self.vault/src["stored_path"]).read_text(encoding="utf-8-sig",errors="replace")
                 analysis=self.db.analysis(src["id"],src["digest"])
@@ -1410,7 +1429,7 @@ class Publisher:
                 context.append(f"- **{repo['name']}:** " + "; ".join(
                     f"[[{Path(n).stem}|{src['lesson'] or src['label']}]] aborda "
                     + ", ".join(f"`{e['concept']}`" for e in ev) for src,n,ev in matches[:5])
-                    + f"; trechos observados em [[{slug(repo['name'])}-{repo['sha'][:7]}|{repo['name']}]]. "
+                    + f"; trechos observados em [[{_project_ref(repo)}|{repo['name']}]]. "
                     + "*Associação candidata, não prova de quem implementou ou quando.*")
         context += ["", "## Pessoas mencionadas nas fontes", ""]
         context += [f"- [[{k}|{_escape_md(v[0][0])}]] — {len(v)} fonte(s); contexto/identidade a conferir" for k,v in sorted(person_map.items())]
@@ -1434,7 +1453,7 @@ class Publisher:
             index.append(f"- [[00-contexto-{slug(lesson)}|{lesson}]] — contexto sem transcrição")
         index += [f"- [[{Path(note).stem}|{src['label']}]] — gravação e transcrição" for src,note in lesson_links]
         index += ["", "## Projetos"]
-        index += [f"- [[{slug(repo['name'])}-{repo['sha'][:7]}|{repo['name']}]] — {repo['url']}" for repo,_ in repo_info]
+        index += [f"- [[{_project_ref(repo)}|{repo['name']}]] — {repo['url']}" for repo,_ in repo_info]
         index += ["", "> A aplicação não altera conteúdo de `05-Anotacoes-Pessoais`."]
         self.write("00-Inicio/Dashboard.md", "\n".join(index)+"\n")
         states = defaultdict(int)

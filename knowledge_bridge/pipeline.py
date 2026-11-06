@@ -560,12 +560,7 @@ class Application:
             analysis=self.store.analysis(src['id'],src['digest'])
             if not analysis:continue  # no externally generated claims without prior summary
             transcript=self._verified_transcript(src)
-            for repo in self.store.repositories():
-                if not self.store.github_lesson_repo_allowed(
-                        src["lesson"] or "",repo["url"],repo["sha"]):
-                    self.log("Código GitHub não comparado: congele a versão desta aula.")
-                    continue
-                payload=json.loads(repo['payload'])
+            for repo, payload in self.publisher._lesson_repos(src["lesson"] or ""):
                 matched=match_lesson_to_repository(transcript,analysis,payload,cap=10)
                 if not matched:continue
                 if self.store.connection(src['id'],src['digest'],repo['url'],repo['sha']):continue

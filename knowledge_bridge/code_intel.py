@@ -121,7 +121,8 @@ def _snippet(lines: list[str], lineno: int, before=2, after=3) -> str:
     return "\n".join(f"{i}: {redact_sensitive(lines[i - 1].rstrip()[:180])}" for i in range(first, last + 1))[:1250]
 
 
-def index_repository(root: Path, paths: list[str], history: list[dict] | None = None) -> dict:
+def index_repository(root: Path, paths: list[str], history: list[dict] | None = None, *,
+                     read_source=None) -> dict:
     """Deterministically index actual source definitions, code excerpts, docs, history."""
     files: list[dict] = []
     # Keep evidence from different concepts and files, instead of filling
@@ -134,21 +135,43 @@ def index_repository(root: Path, paths: list[str], history: list[dict] | None = 
     type_for_ext = {".cs": "C#", ".ts": "TypeScript", ".tsx": "React/TSX", ".js": "JavaScript",
                     ".jsx": "React/JSX", ".py": "Python", ".sql": "SQL", ".html": "HTML", ".css": "CSS"}
     for rel in paths[:1600]:
-        path = safe_repo_file(root, rel)
-        if path is None:
-            continue
         if len(files) >= 500:
             break
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-        files.append({"path": rel, "size": path.stat().st_size})
-        if path.suffix in type_for_ext:
-            techs.add(type_for_ext[path.suffix])
-        if path.suffix.lower() in DOC_EXTS and len(docs) < MAX_DOCS:
+        if read_source is None:
+            path = safe_repo_file(root, rel)
+            if path is None:
+                continue
+            body = path.read_text(encoding="utf-8", errors="replace")
+            size = path.stat().st_size
+            suffix = path.suffix.lower()
+        else:
+            # The remote reader verifies Git tree blob hashes and permits only
+            # UTF-8 files below the same local indexer's size limit.
+            if (not isinstance(rel, str) or not rel or "\\" in rel or
+                    rel.startswith(("/", "-")) or
+                    any(p in (".", "..", "") for p in rel.split("/")) or
+                    any(word in rel.casefold() for word in SENSITIVE_NAMES)):
+                continue
+            suffix = Path(rel).suffix.lower()
+            if suffix not in SOURCE_EXTS | DOC_EXTS | {".json"}:
+                continue
+            source = read_source(rel)
+            if source is None:
+                continue
+            body, size = source
+            if (not isinstance(body, str) or type(size) is not int or
+                    size < 0 or size > MAX_FILE_BYTES):
+                continue
+        lines = body.splitlines()
+        files.append({"path": rel, "size": size})
+        if suffix in type_for_ext:
+            techs.add(type_for_ext[suffix])
+        if suffix in DOC_EXTS and len(docs) < MAX_DOCS:
             # Documentation is a source, not a command to the model.
             excerpt = "\n".join(x for x in lines if x.strip())[:650]
             if excerpt:
                 docs.append({"path": rel, "excerpt": redact_sensitive(excerpt)})
-        if path.suffix.lower() not in SOURCE_EXTS:
+        if suffix not in SOURCE_EXTS:
             continue
         hits_in_file: dict[str, int] = {}
         symbols_in_file: list[dict] = []
