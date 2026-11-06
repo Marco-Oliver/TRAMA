@@ -176,8 +176,22 @@ class GithubCodeReader:
         right = {path[len(right_prefix):]: path for path in tree if path.startswith(right_prefix)}
         names = sorted(set(left) | set(right))
         results = []
-        for relative in names[:40]:
+        downloads = 0
+        truncated = False
+        # 40 *file downloads* total, rather than 40 two-sided comparisons (80).
+        for relative in names:
+            if len(results) >= 40:
+                truncated = True
+                break
             old_path, new_path = left.get(relative), right.get(relative)
+            if (old_path and new_path and
+                    tree[old_path]["blob_sha"] == tree[new_path]["blob_sha"]):
+                continue
+            needed = int(bool(old_path)) + int(bool(new_path))
+            if downloads + needed > 40:
+                truncated = True
+                break
+            downloads += needed
             old = self.read_file(repo, sha, old_path)["content"].splitlines(keepends=True) if old_path else []
             new = self.read_file(repo, sha, new_path)["content"].splitlines(keepends=True) if new_path else []
             if old == new:
@@ -186,5 +200,5 @@ class GithubCodeReader:
                                                  tofile=new_path or "(ausente)", n=3))
             results.append({"path": relative, "status": ("modified" if old_path and new_path else
                             "removed" if old_path else "added"), "patch": patch[:MAX_DIFF]})
-        return {"sha": sha, "before": before, "after": after, "files": results[:40],
-                "truncated": len(names) > 40, "source": "local_folder_diff"}
+        return {"sha": sha, "before": before, "after": after, "files": results,
+                "truncated": truncated, "downloads": downloads, "source": "local_folder_diff"}

@@ -89,6 +89,23 @@ class CodeReaderTests(unittest.TestCase):
         with self.assertRaises(MappingError):
             self.reader.list_files(REPO,"main")
 
+    def test_folder_diff_never_reads_more_than_40_file_downloads(self):
+        tree = {}
+        for n in range(30):
+            tree[f"V1/file{n:02d}.cs"]={"size":10,"blob_sha":"a"*40}
+            tree[f"V2/file{n:02d}.cs"]={"size":10,"blob_sha":"b"*40}
+        self.reader._trees[(REPO,SHA_A)]=tree
+        calls=[]
+        def fake(_repo,_sha,path):
+            calls.append(path)
+            return {"content":"old\n" if path.startswith("V1/") else "new\n"}
+        with patch.object(self.reader,"read_file",side_effect=fake):
+            result=self.reader.diff_folders(REPO,SHA_A,"V1","V2")
+        self.assertEqual(result["downloads"],40)
+        self.assertLessEqual(len(calls),40)
+        self.assertEqual(len(result["files"]),20)
+        self.assertTrue(result["truncated"])
+
     def test_compare_rest_and_local_folder_diff(self):
         compare=self.reader.compare_commits(REPO,SHA_B,SHA_A,"V3")
         self.assertEqual(compare["source"],"github_compare_rest")

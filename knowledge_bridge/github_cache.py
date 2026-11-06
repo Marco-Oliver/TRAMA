@@ -26,6 +26,8 @@ class GithubCache:
         self.root = Path(root) if root is not None else DATA_HOME / "github-cache"
         self.root = self.root.expanduser()
         self.max_bytes = min(MAX_CACHE, max(0, int(max_bytes)))
+        # Per-instance monotonic clock; a read does not scan the cache directory.
+        self._last_touch_ns = 0
         if self.root.is_symlink():
             raise ValueError("Cache GitHub não pode apontar para link simbólico.")
         if vault is not None and self.root.resolve().is_relative_to(Path(vault).resolve()):
@@ -76,9 +78,8 @@ class GithubCache:
         try:
             if path.is_symlink():
                 return
-            latest = max((item.stat().st_mtime_ns for item in self.root.glob("*.entry")
-                          if item.is_file() and not item.is_symlink()), default=0)
-            stamp = max(time.time_ns(), latest + 1_000_000)  # Distinct at >=1 ms.
+            stamp = max(time.time_ns(), self._last_touch_ns + 1_000_000)
+            self._last_touch_ns = stamp  # Distinct at >=1 ms without O(n) reads.
             try:
                 os.utime(path, ns=(stamp, stamp), follow_symlinks=False)
             except NotImplementedError:

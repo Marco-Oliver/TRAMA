@@ -27,6 +27,15 @@ class GithubCacheTests(unittest.TestCase):
         self.assertEqual(cache.get(("two",)),b"2"*14)
         self.assertLessEqual(sum(p.stat().st_size for p in self.root.glob("*.entry")),25)
 
+    def test_cache_hit_does_not_scan_directory_to_update_lru(self):
+        from unittest.mock import patch
+        cache=GithubCache(self.root,self.vault)
+        self.assertTrue(cache.put(("warm",),b"code"))
+        with patch("pathlib.Path.glob",side_effect=AssertionError("cache hit scanned files")):
+            self.assertEqual(cache.get(("warm",)),b"code")
+            self.assertEqual(cache.get(("warm",)),b"code")
+        self.assertGreater(cache._last_touch_ns,0)
+
     def test_private_requires_dpapi_and_never_falls_back_to_plaintext(self):
         cache=GithubCache(self.root,self.vault)
         with patch("knowledge_bridge.github_cache.sys.platform","linux"):
