@@ -24,8 +24,21 @@ from .code_intel import concept_from_text
 
 PROFESSOR_ORG = "academiadoprogramador-fullstack"
 VERSION = re.compile(r"^(?:v|vers[aã]o)[._ -]*(\d+)(?:[._-](\d+))*$", re.I)
-SPEECH = re.compile(r"\b(?:v|versao)[\s._:#-]*(\d{1,3})\b", re.I)
+# A version mention is only evidence when it refers to a project action.
+# Video segment IDs and version numbers of languages/frameworks are not Git refs.
+SPEECH = re.compile(r"(?<![a-z0-9_])(?:v|versao)[\s._:#-]*(\d{1,3})\b", re.I)
+VIDEO_HEADER = re.compile(r"^\s*(?:a\d{1,4}\s*[-–|]\s*v\d+\b|v0\d+\b)", re.I)
+TECH_BEFORE = re.compile(
+    r"(?:\.net|angular|node(?:\.js)?|c#|http|java|typescript|react|postgres(?:ql)?|sql)\s*$", re.I)
+PROJECT_VERBS = {
+    "jogar", "jogando", "joguei", "jogou", "jogamos",
+    "subir", "subindo", "subiu", "subimos", "subo",
+    "criar", "criando", "criou", "criamos", "crio",
+    "mandar", "mandando", "mandou", "mandamos", "mando",
+    "branch", "branches", "commit", "commits", "commitar", "commitando",
+}
 REVIEW = re.compile(r"\b(?:revisao|revisamos|quebra.cuca|sem codigo|teorica|sem programar)\b", re.I)
+TIMESTAMP = re.compile(r"^\s*\[?(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\]?")
 IGNORE = {"class","public","private","const","return","import","export","default",
           "from","using","namespace","string","number","true","false","void",
           "main","src","index","app","component","services","service","interface",
@@ -80,6 +93,48 @@ def _changed_lines(patch):
     return sorted(result)
 
 
+def project_version_mentions(text):
+    """Conservative project-version clues from spoken TXT, not video/tech versions.
+
+    Require a project verb or an explicit "para a v" / "na v" construction
+    within six surrounding words on the same transcript line.
+    """
+    found = set()
+    for raw in str(text).splitlines():
+        line = normalized(raw)
+        if VIDEO_HEADER.match(line):
+            continue
+        for match in SPEECH.finditer(line):
+            digits = match.group(1)
+            if len(digits) > 1 and digits.startswith("0"):
+                continue  # V01, V02 etc. are recording parts, never project refs.
+            if TECH_BEFORE.search(line[:match.start()]):
+                continue
+            before = re.findall(r"[a-z0-9]+", line[:match.start()])
+            after = re.findall(r"[a-z0-9]+", line[match.end():])
+            surrounding = before[-6:] + after[:6]
+            explicit = bool(re.search(r"(?:para\s+(?:a\s+)?|na\s+)\s*(?:v|versao)\s*[._:#-]*\s*\d{1,3}\b",
+                                      line[max(0,match.start()-30):match.end()]))
+            if explicit or any(word in PROJECT_VERBS for word in surrounding):
+                found.add(int(digits))
+    return found
+
+
+def _early_review(transcript, title=""):
+    """Review is a lesson type only in its title or at/before minute two."""
+    if REVIEW.search(normalized(title)):
+        return True
+    last_seconds = None
+    for raw in str(transcript).splitlines():
+        match = TIMESTAMP.match(raw)
+        if match:
+            hours, minutes, seconds = match.groups()
+            last_seconds = int(hours or 0)*3600 + int(minutes)*60 + int(seconds)
+        if last_seconds is not None and last_seconds <= 120 and REVIEW.search(normalized(raw)):
+            return True
+    return False
+
+
 def _words(value):
     # Split PascalCase to match spoken terms in a natural-language TXT.
     value = re.sub(r"([a-z\d])([A-Z])", r"\1 \2", str(value))
@@ -97,6 +152,7 @@ class GithubAutoMapper:
         self.index = LessonRepositoryIndex(store,reader=self.reader,cache=self.cache)
         self.log = log if log is not None else (lambda message: None)
         self.pending = []
+        self._review_titles = {}
 
     def _paginate(self, repo, resource):
         entries = []
@@ -141,10 +197,14 @@ class GithubAutoMapper:
                 raise MappingError("GitHub não confirmou a privacidade do repositório.")
             private = metadata["private"]
             self.reader._privacy[repo] = private
+            default_branch = metadata.get("default_branch")
             candidates = []
+            available_branches = set()
             for kind,resource in (("branch","branches"),("tag","tags")):
                 for item in self._paginate(repo,resource):
                     name = item.get("name") if isinstance(item,dict) else None
+                    if kind == "branch" and isinstance(name,str):
+                        available_branches.add(name)
                     number = version_number(name)
                     if number is not None and isinstance(name,str):
                         candidates.append({"name":name,"number":number,"kind":kind})
@@ -162,6 +222,20 @@ class GithubAutoMapper:
                 version["first_exclusive_at"] = ""
                 version["changed_paths"] = None
                 version["changed_lines"] = {}
+            # The default branch can contain progress beyond the last vN.
+            # Do not invent a version for repositories with no vN candidates.
+            main_name = default_branch if isinstance(default_branch,str) else (
+                "main" if "main" in available_branches else "")
+            if (versions and isinstance(main_name,str) and main_name in available_branches
+                    and not any(v["name"] == main_name for v in versions)):
+                main_sha = self.client.resolve_sha(repo,"branch",main_name)
+                if main_sha not in {v["sha"] for v in versions}:
+                    versions.append({
+                        "name": main_name, "kind": "branch", "is_default": True,
+                        "number": versions[-1]["number"]+1, "sha": main_sha,
+                        "folder": "", "first_exclusive_at": "",
+                        "changed_paths": None, "changed_lines": {},
+                    })
             for i,version in enumerate(versions):
                 if i == 0:
                     continue
@@ -171,19 +245,38 @@ class GithubAutoMapper:
                     version["changed_paths"] = []
                     continue
                 compared = self.client._get(repo,f"compare/{old}...{new}")
-                if not isinstance(compared,dict) or not isinstance(compared.get("files"),list):
+                if not isinstance(compared,dict):
                     raise MappingError("GitHub não retornou comparação verificável das versões.")
-                if len(compared["files"]) >= 300 or compared.get("too_large"):
-                    raise MappingError("Diff incompleto; referências não serão associadas incorretamente.")
+                files = compared.get("files")
+                large = (compared.get("too_large") is True or
+                         isinstance(files,list) and len(files) >= 300 or
+                         isinstance(compared.get("total_files"),int) and
+                         compared["total_files"] >= 300)
+                if not isinstance(files,list) and not large:
+                    raise MappingError("GitHub não retornou a lista de arquivos da comparação.")
                 version["first_exclusive_at"] = self._first_exclusive(compared)
-                version["changed_paths"] = [f["filename"] for f in compared["files"]
-                    if isinstance(f,dict) and f.get("status") in
-                    ("added","modified","renamed","copied") and isinstance(f.get("filename"),str)]
-                version["changed_lines"] = {
-                    f["filename"]:_changed_lines(f.get("patch",""))
-                    for f in compared["files"]
-                    if isinstance(f,dict) and f.get("status") == "modified"
-                    and isinstance(f.get("filename"),str)}
+                if large:
+                    # REST compare may cap its files to 300. Full verified Git
+                    # trees have blob identities, so detect added/modified
+                    # content without trusting an incomplete files list.
+                    before = self.reader.tree(repo,old)
+                    after = self.reader.tree(repo,new)
+                    version["changed_paths"] = sorted(
+                        path for path, info in after.items()
+                        if path not in before or
+                        info["blob_sha"] != before[path]["blob_sha"])
+                    version["changed_lines"] = {}
+                    version["diff_source"] = "git_trees"
+                else:
+                    version["changed_paths"] = [f["filename"] for f in files
+                        if isinstance(f,dict) and f.get("status") in
+                        ("added","modified","renamed","copied") and
+                        isinstance(f.get("filename"),str)]
+                    version["changed_lines"] = {
+                        f["filename"]:_changed_lines(f.get("patch",""))
+                        for f in files
+                        if isinstance(f,dict) and f.get("status") == "modified"
+                        and isinstance(f.get("filename"),str)}
             versions.sort(key=lambda x:(x["number"],x["first_exclusive_at"],x["name"].casefold()))
             self.store.save_auto_repository(
                 repo,role,private,"ready" if versions else "no_versions",versions)
@@ -241,14 +334,17 @@ class GithubAutoMapper:
             if _literal(text,name):
                 code += 2.5
         code = min(code,18)
-        spoken = {int(n) for n in SPEECH.findall(normalized(text))}
-        speech = 13 if number in spoken else 0
-        if spoken and number not in spoken:
-            speech -= 2
-        return code + speech, code, speech
+        spoken = project_version_mentions(text)
+        speech = 6 if number is not None and number in spoken else 0
+        if spoken and number is not None and number not in spoken:
+            speech = -2
+        # Even the weakest code evidence (one changed filename: 2.5) outweighs
+        # speech alone (6); speech remains a useful tie-breaker when code agrees.
+        return code * 3 + speech, code, speech
 
     def _texts(self):
         grouped = defaultdict(list)
+        self._review_titles = {}
         for src in self.store.sources("transcript"):
             lesson = src["lesson"]
             if lesson_order(lesson) == 999999:
@@ -262,7 +358,11 @@ class GithubAutoMapper:
                 from .content import file_hash
                 if file_hash(target) != src["digest"]:
                     continue
-                grouped[lesson].append(target.read_text(encoding="utf-8-sig",errors="replace")[:60000])
+                text = target.read_text(encoding="utf-8-sig",errors="replace")[:60000]
+                grouped[lesson].append(text)
+                self._review_titles[lesson] = (
+                    self._review_titles.get(lesson,False) or
+                    _early_review(text,src["label"] or ""))
             except (OSError,ValueError,UnicodeError):
                 continue
         return {key:"\n".join(value)[:120000] for key,value in grouped.items()}
@@ -373,11 +473,13 @@ class GithubAutoMapper:
             scores = {}
             for lesson in lessons:
                 text = texts[lesson]
-                options = [self._score(text,diff,v["number"]) for diff,v in zip(diffs,versions)]
+                options = [self._score(
+                    text,diff,None if v.get("is_default") else v["number"])
+                    for diff,v in zip(diffs,versions)]
                 score_list = [result[0] for result in options]
                 # Pure revision/quebra-cuca should not acquire code by proximity.
-                if REVIEW.search(normalized(text)) and not any(x[1] >= 3
-                                                               for x in options):
+                if self._review_titles.get(lesson,False) and not any(
+                        x[1] >= 3 for x in options):
                     score_list = [0.0]*len(versions)
                 scores[lesson] = score_list
             plan = self._optimize(lessons, versions, scores, anchored, prior_decisions)

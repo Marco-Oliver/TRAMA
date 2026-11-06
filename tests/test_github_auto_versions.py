@@ -10,7 +10,8 @@ from unittest.mock import patch
 from knowledge_bridge.auto_ingest import AutoOrganizer
 from knowledge_bridge.github_code import GithubCodeReader
 from knowledge_bridge.github_mapping import GithubMapping
-from knowledge_bridge.github_auto_versions import GithubAutoMapper, role_for, version_number
+from knowledge_bridge.github_auto_versions import (GithubAutoMapper, role_for,
+    version_number, project_version_mentions, _early_review)
 from knowledge_bridge.lesson_code_config import save_lessons
 from knowledge_bridge.pipeline import Application
 from knowledge_bridge.store import Store
@@ -226,6 +227,156 @@ class AutoVersionsEndToEnd(unittest.TestCase):
         self.assertEqual(role_for("https://github.com/Marco-Oliver/dupla"),"dupla")
         self.assertEqual([version_number(v) for v in ("v0","v1","V2","versao-3")],[0,1,2,3])
 
+
+
+    def _default_branch_mock(self, branch="main", same_sha=False):
+        original = self.api.get
+        final = SHAS[3] if same_sha else "f" * 40
+
+        def rest(client, repo, endpoint):
+            if endpoint == "":
+                return {"private":False, "default_branch":branch}
+            if endpoint == "branches?per_page=100&page=1":
+                return original(client,repo,endpoint)+[
+                    {"name":branch,"commit":{"sha":final}}]
+            if endpoint == "commits?per_page=1&sha="+branch:
+                return [{"sha":final}]
+            if endpoint == f"compare/{SHAS[3]}...{final}":
+                return {"files":[{"filename":"src/FinalService.ts",
+                                  "status":"added","patch":"@@ -0,0 +1 @@"}],
+                        "commits":[{"commit":{"committer":{
+                            "date":"2026-02-01T10:00:00Z"}}}]}
+            return original(client,repo,endpoint)
+
+        self.api.get = rest
+        return final
+
+    def test_main_is_last_if_head_differs_from_version_tags(self):
+        head = self._default_branch_mock("main")
+        versions=GithubAutoMapper(self.app.store).discover(REPO)
+        self.assertEqual([v["name"] for v in versions],
+                         ["v0","v1","V2","versao-3","main"])
+        self.assertEqual(versions[-1]["sha"],head)
+        self.assertEqual(versions[-1]["number"],4)
+        self.assertTrue(versions[-1]["is_default"])
+        self.assertEqual(versions[-1]["changed_paths"],["src/FinalService.ts"])
+        self.assertIn((REPO,f"compare/{SHAS[3]}...{head}"),self.api.calls)
+        self.assertEqual(sum(endpoint=="commits?per_page=1&sha=main"
+                             for _,endpoint in self.api.calls),1)
+
+    def test_another_default_branch_and_duplicate_head(self):
+        head=self._default_branch_mock("develop",same_sha=True)
+        versions=GithubAutoMapper(self.app.store).discover(REPO)
+        self.assertEqual(len(versions),4)
+        self.assertEqual(versions[-1]["sha"],head)
+        self.assertFalse(any(v.get("is_default") for v in versions))
+
+    def test_300_file_diff_uses_git_blob_identities_not_truncated_compare(self):
+        original = self.api.get
+
+        def truncated(client,repo,endpoint):
+            if endpoint == f"compare/{SHAS[0]}...{SHAS[1]}":
+                return {"files":[{"filename":f"bogus/file{i}.ts","status":"added"}
+                                 for i in range(300)],
+                        "commits":[{"commit":{"committer":{
+                            "date":"2026-01-03T10:00:00Z"}}}]}
+            return original(client,repo,endpoint)
+
+        self.api.get = truncated
+        mapper=GithubAutoMapper(self.app.store)
+        versions=mapper.discover(REPO)
+        self.assertEqual(len(versions),4)
+        second=versions[1]
+        self.assertEqual(second["diff_source"],"git_trees")
+        self.assertEqual(second["changed_paths"],["src/NoteService.ts"])
+        self.assertEqual(second["changed_lines"],{})
+        delta=mapper._delta(REPO,second,versions[0])
+        self.assertIn("NoteService",str(delta))
+        self.assertNotIn("bogus",str(delta))
+        trees=[endpoint for _,endpoint in self.api.calls
+               if endpoint.startswith("git/trees/")]
+        self.assertIn(f"git/trees/{SHAS[0]}?recursive=1",trees)
+        self.assertIn(f"git/trees/{SHAS[1]}?recursive=1",trees)
+
+    def test_early_review_signal_is_derived_from_verified_transcript(self):
+        early=self.txt(10,"Primeiro vamos fazer a revisão")
+        late=self.txt(11,"Projeto LoginService")
+        late.write_text("00:01 Criamos LoginService\n12:00 revisão rápida\n",
+                        encoding="utf-8")
+        for path in (early,late):
+            self.app.add_file(path)
+        matcher=GithubAutoMapper(self.app.store)
+        samples=matcher._texts()
+        self.assertIn("Aula-010",samples)
+        self.assertIn("Aula-011",samples)
+        self.assertTrue(matcher._review_titles["Aula-010"])
+        self.assertFalse(matcher._review_titles["Aula-011"])
+
+
+class SpeechReviewAndCascadeTests(unittest.TestCase):
+    def test_only_project_versioning_clues_count(self):
+        negatives = [
+            "A131 - V02 - Introdução à API",
+            "V02 - parte da gravação",
+            "A131 - V02\n00:01 Revisando a API",
+            "00:01 Estamos usando .NET versão 8.",
+            "00:02 Angular versão 17 tem signals.",
+            "00:03 HTTP versão 2 suporta multiplexação.",
+            "00:04 O Node versão 20 está instalado.",
+            "00:05 C# versão 12 e SQL versão 3.",
+            "00:06 Vamos subir Angular versão 17 na aula.",
+        ]
+        for sample in negatives:
+            with self.subTest(text=sample):
+                self.assertEqual(project_version_mentions(sample), set())
+                score, code, speech = GithubAutoMapper._score(
+                    sample, {"symbols": [], "evidence": [], "files": []}, 8)
+                self.assertEqual(speech, 0)
+        positives = [
+            ("vou jogar isso para a V1", 1),
+            ("agora vamos subir na v2", 2),
+            ("vou criar a branch v3", 3),
+            ("mandar para a versão 4", 4),
+            ("fiz o commit na V5", 5),
+        ]
+        for sample, number in positives:
+            with self.subTest(text=sample):
+                self.assertEqual(project_version_mentions(sample), {number})
+                self.assertEqual(GithubAutoMapper._score(
+                    sample, {"symbols": [], "evidence": [], "files": []}, number)[2], 6)
+
+    def test_speech_alone_cannot_outweigh_even_filename_code_evidence(self):
+        spoken = GithubAutoMapper._score("vamos jogar para a V8",
+            {"symbols": [], "evidence": [], "files": []}, 8)[0]
+        code = GithubAutoMapper._score("Novo HttpClient",
+            {"symbols": [], "evidence": [], "files": ["src/HttpClient.ts"]}, 2)[0]
+        self.assertGreater(code, spoken)
+
+    def test_review_title_or_first_two_minutes_only(self):
+        self.assertTrue(_early_review("00:01 aula normal", "A01 - Revisão de lógica.txt"))
+        self.assertTrue(_early_review("00:15 Revisão do conteúdo\n10:00 continuar"))
+        self.assertTrue(_early_review("01:59 Vamos revisar\n14:00 outros assuntos"))
+        self.assertFalse(_early_review("00:15 implementação\n11:55 revisão do detalhe"))
+        self.assertFalse(_early_review("00:15 implementação\n02:01 revisão"))
+        self.assertFalse(_early_review("sem timestamps e revisão apenas no meio"))
+
+    def test_dotnet_version_eight_does_not_cascade_to_later_lessons(self):
+        versions = [{"number":i, "sha":str(i % 10)*40} for i in range(9)]
+        diffs = [{"symbols": [], "evidence": [], "files": [f"src/Feature{i}.ts"]}
+                 for i in range(9)]
+        transcripts = [
+            "00:10 vou criar a branch v2 com Feature2",
+            "00:10 Feature2",
+            "00:10 Estamos usando .NET versão 8. Continuamos em Feature2.",
+            "00:10 Feature2 e os testes",
+            "00:10 Estamos na Feature2",
+        ]
+        lessons = [f"Aula-{i:03d}" for i in range(1,6)]
+        scores = {lesson:[GithubAutoMapper._score(text, delta, v["number"])[0]
+                          for delta,v in zip(diffs,versions)]
+                  for lesson,text in zip(lessons,transcripts)}
+        plan = GithubAutoMapper._optimize(lessons,versions,scores,{}, {})
+        self.assertEqual(plan,[2,2,2,2,2])
 
 if __name__ == "__main__":
     unittest.main()
