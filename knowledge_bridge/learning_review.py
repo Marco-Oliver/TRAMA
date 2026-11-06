@@ -67,36 +67,46 @@ def _index_source_terms(raw: str) -> dict:
     return {"terms":sorted(terms),"anchors":anchors}
 
 
-def _later_evidence(question, candidate, original, later, lesson_index=None):
-    """Later lesson evidence can ONLY use that later lesson's frozen SHA."""
+def _later_evidence(question, candidate, original, later, lesson_index=None, store=None):
+    """Only connect a later spoken follow-up to THAT later lesson's frozen SHA."""
     result = []
-    if not candidate:
-        return result
-    terms = [candidate, *CONCEPTS.get(candidate, (None, []))[1]]
+    terms = ([candidate, *CONCEPTS.get(candidate, (None, []))[1]]
+             if candidate else [])
     terms = [term for term in terms
              if not is_generic_code_term(term) and
              (norm(term) == norm(candidate) or not _contains_term(original, term))]
     for source, indexed in later:
         present = set(indexed.get("terms", []))
         observed = [norm(term) for term in terms if norm(term) in present]
-        if not observed:
-            continue
-        anchors = indexed.get("anchors", {})
-        first = next((anchors[t] for t in observed if t in anchors), None)
-        result.append({
-            "kind":"aula_posterior","source_id":source["id"],
-            "lesson":source["lesson"],"label":source["label"],
-            "digest":source["digest"],
-            "timestamp":first[0] if first else "",
-            "excerpt":first[1] if first else "",
-        })
+        code = None
         if lesson_index is not None:
             frozen = [item for item in lesson_index.for_lesson(source["lesson"])
                       if item[0].get("frozen")]
             code = match_frozen_question(question, frozen)
-            if code is not None:
-                result.append({**code, "lesson":source["lesson"],
-                               "source_id":source["id"]})
+        # A later SHA being able to answer a question is not evidence that the
+        # topic was discussed in that class. Require a literal later mention
+        # of the candidate identifier or the original ASR phrase.
+        related = bool(observed)
+        if not related and code is not None and store is not None:
+            later_text = _source_text(store, source)
+            related = bool(later_text and (
+                _contains_term(later_text, code["candidate"]) or
+                _contains_term(later_text, question)))
+        if not related:
+            continue
+        if observed:
+            anchors = indexed.get("anchors", {})
+            first = next((anchors[t] for t in observed if t in anchors), None)
+            result.append({
+                "kind":"aula_posterior","source_id":source["id"],
+                "lesson":source["lesson"],"label":source["label"],
+                "digest":source["digest"],
+                "timestamp":first[0] if first else "",
+                "excerpt":first[1] if first else "",
+            })
+        if code is not None:
+            result.append({**code, "lesson":source["lesson"],
+                           "source_id":source["id"]})
         if len(result) >= 6:
             break
     return result[:8]
@@ -153,9 +163,15 @@ def refresh_uncertainties(store, lesson_index=None) -> dict:
                 candidate = evidence[0]["candidate"]
             else:
                 evidence = _later_evidence(
-                    question, candidate, question, later, lesson_index)
-                state = "NOVA_EVIDENCIA_PARA_REVISAR" if evidence else (
-                    "HIPOTESE_SEM_CONFIRMACAO" if candidate else "PENDENTE")
+                    question, candidate, question, later, lesson_index, store)
+                later_code = next((item for item in evidence
+                                   if item.get("kind") == "codigo_congelado"), None)
+                if later_code:
+                    candidate = later_code["candidate"]
+                    state = "EXPLICADA_PELO_CODIGO"
+                else:
+                    state = "NOVA_EVIDENCIA_PARA_REVISAR" if evidence else (
+                        "HIPOTESE_SEM_CONFIRMACAO" if candidate else "PENDENTE")
             store.upsert_uncertainty(uid, src["id"], src["digest"], src["label"],
                                      question, candidate, state, evidence)
 

@@ -235,6 +235,45 @@ class FrozenV1DoubtsTests(unittest.TestCase):
             "check password saind assim",
             [({**repo, "frozen":False, "sha":MAIN},payload)]))
 
+    def test_later_question_reads_only_the_later_lesson_frozen_version(self):
+        from knowledge_bridge.learning_review import refresh_uncertainties
+        from knowledge_bridge.code_intel import index_repository
+        import json
+        self._prepare()
+        followup = self.folder / "A132 - V01 - Retomada.txt"
+        followup.write_text("00:10 Revisitamos CheckPasswordSignInAsync.\\n",
+                            encoding="utf-8")
+        self.app.add_file(followup)
+        index = index_repository(
+            Path("."), list(SOURCE), read_source=lambda path: (
+                SOURCE[path].decode("utf-8"), len(SOURCE[path])))
+        next_sha = "6" * 40
+
+        class IndexedPerLesson:
+            def __init__(self):
+                self.requests = []
+            def for_lesson(self, lesson):
+                self.requests.append(lesson)
+                if lesson == "Aula-131":
+                    # Deliberate MAIN data must never resolve this doubt.
+                    return [({"url":REPO,"sha":MAIN,"frozen":False},index)]
+                if lesson == "Aula-132":
+                    return [({"url":REPO,"sha":next_sha,"frozen":True,
+                              "version":"v2"},index)]
+                return []
+
+        scoped = IndexedPerLesson()
+        refresh_uncertainties(self.app.store, scoped)
+        row = next(item for item in self.app.store.uncertainties()
+                   if item["question"] == "check password saind assim")
+        self.assertEqual(row["status"], "EXPLICADA_PELO_CODIGO")
+        evidence = json.loads(row["evidence_json"])
+        self.assertEqual(evidence[0]["sha"], next_sha)
+        self.assertEqual(evidence[0]["lesson"], "Aula-132")
+        self.assertEqual(evidence[0]["candidate"], "CheckPasswordSignInAsync")
+        self.assertIn("Aula-132", scoped.requests)
+        self.assertNotIn(MAIN, row["evidence_json"])
+
     def test_no_frozen_lesson_never_uses_main_for_asr_answer(self):
         self._prepare()
         self.app.store.conn.execute(
