@@ -23,6 +23,9 @@ FILLER = frozenset({
     "usando", "chama", "chamou", "nome", "seria", "foi", "era", "tipo",
     "code", "codigo", "implementacao", "entao", "veja", "diz",
     "vamos", "fazer", "fez", "usou", "pasta", "sobre",
+    # A correct PT-BR contextual noun is not evidence that the speaker
+    # pronounced the English identifier UserManager.
+    "usuario", "usuarios",
 })
 # A stand-alone common term is not a specific technical identifier. In
 # particular, "manager de usuário" cannot prove UserManager or RoleManager.
