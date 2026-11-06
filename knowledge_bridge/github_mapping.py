@@ -136,6 +136,7 @@ class GithubMapping:
             raise MappingError("Branch inválida. Informe o nome da branch, sem URL ou parâmetros.")
         sha_filter = ("&sha=" + parse.quote(branch, safe="")) if branch else ""
         windows = self._date_windows(lessons, overrides)
+        queried_windows = []
         history_partial = False
         commits = []
         seen = set()
@@ -187,6 +188,8 @@ class GithubMapping:
                         history_partial = True
                         break
                     page_count += 1
+                    if page == 1:
+                        queried_windows.append([start.isoformat(), end.isoformat()])
                     add(batch)
                     if len(batch) < 100:
                         break
@@ -227,6 +230,14 @@ class GithubMapping:
 
         if not commits:
             raise MappingError("Nenhum commit acessível no período selecionado.")
+        if not windows:
+            # Only known commit dates, never extrapolate beyond inspected history.
+            observed = sorted(filter(None, (
+                _date(((row.get("commit") or {}).get("committer") or
+                        (row.get("commit") or {}).get("author") or {}).get("date"))
+                for row in commits)))
+            if observed:
+                queried_windows = [[observed[0], observed[-1]]]
 
         # Preserve calls for the tree when unauthenticated quota is low.
         remaining = self.rate.get("restantes")
@@ -304,7 +315,8 @@ class GithubMapping:
         return {"candidatos": candidates, "truncado": bool(tree.get("truncated")),
                 "historico_parcial": history_partial,
                 "limite_amostra": {"commits": 1801 if windows else 300, "tags": 100},
-                "taxa": self.rate, "autenticado": bool(self.token), "branch": branch}
+                "taxa": self.rate, "autenticado": bool(self.token), "branch": branch,
+                "periodos_consultados": queried_windows, "consulta_por_periodo": bool(windows or queried_windows)}
 
     @staticmethod
     def suggestions(catalogue, lessons, overrides=None):
@@ -333,11 +345,16 @@ class GithubMapping:
                     dated.append((abs(delta), 0 if delta >= 0 else 1,
                                   {'pasta': 0, 'tag': 1, 'commit': 2}.get(c.get('tipo'), 3), c))
                 dated.sort(key=lambda item: (item[0], item[1], item[2]))
-            best = dated[0][3]["id"] if dated and dated[0][0] <= 30 else ""
+            covered = any(isinstance(span, (list, tuple)) and len(span) == 2 and
+                          span[0] <= day <= span[1]
+                          for span in catalogue.get("periodos_consultados", []))
+            outside = bool(day and catalogue.get("consulta_por_periodo") and not covered)
+            best = (dated[0][3]["id"] if dated and dated[0][0] <= 30 and not outside else "")
             results.append({"aula": name, "data": day,
                             "origem_data": "informada_usuario" if name in overrides else lesson.get("origem_data", ""),
                             "candidato_id": best,
-                            "motivo": ("Data próxima (não comprova correspondência)" if best else
+                            "motivo": ("data fora do período consultado; consulte o repositório novamente" if outside else
+                                       "Data próxima (não comprova correspondência)" if best else
                                        "Sem sugestão confiável; selecione manualmente")})
         return results
 

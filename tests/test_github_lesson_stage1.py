@@ -236,6 +236,19 @@ class MappingSuggestionTests(unittest.TestCase):
         self.assertEqual(sum("recursive=1" in x for x in seen), 1)
 
 
+    def test_changed_date_outside_queried_windows_has_explicit_warning(self):
+        candidate = {"id":"commit:" + "a"*40, "tipo":"commit", "data":"2026-11-04"}
+        catalogue = {"candidatos":[candidate], "consulta_por_periodo":True,
+                     "periodos_consultados":[["2026-10-15","2026-11-15"]]}
+        lessons = [{"aula":"Aula-131","data":"2026-11-05","origem_data":"contexto_classroom"}]
+        inside = GithubMapping.suggestions(catalogue, lessons)
+        self.assertEqual(inside[0]["candidato_id"],candidate["id"])
+        outside = GithubMapping.suggestions(catalogue, lessons, {"Aula-131":"2026-12-31"})
+        self.assertEqual(outside[0]["candidato_id"],"")
+        self.assertIn("data fora do período consultado",outside[0]["motivo"])
+        self.assertIn("consulte o repositório novamente",outside[0]["motivo"])
+        self.assertEqual(catalogue["periodos_consultados"],[["2026-10-15","2026-11-15"]])
+
     def test_priority_same_day_pasta_before_commit_and_previous_before_future(self):
         base = [
             {"id":"commit:abc","tipo":"commit","data":"2026-11-03"},
