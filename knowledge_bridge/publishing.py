@@ -980,7 +980,7 @@ class Publisher:
                     body.append(f"### {question}")
                     body.append(f"- Estado: `{status}`.")
                     body.append(f"- [[{row['id']}|Abrir registro e histórico desta dúvida]]")
-                    if status != "NOVA_EVIDENCIA_PARA_REVISAR":
+                    if status not in ("NOVA_EVIDENCIA_PARA_REVISAR", "EXPLICADA_PELO_CODIGO"):
                         body.append("- Nenhuma explicação posterior identificada nas fontes cadastradas.")
                         body.append("")
                         continue
@@ -1003,6 +1003,8 @@ class Publisher:
                             body.append(
                                 f"- **Aula posterior:** [[{link}|{_escape_md(later['lesson'] or later['label'])}]] "
                                 f"({stamp}) — trecho observado: “{excerpt}”.")
+                        elif evidence.get("kind") == "codigo_congelado":
+                            body.extend(code_evidence_lines(evidence))
                         elif evidence.get("kind") == "codigo":
                             ref = _code_ref({"url":evidence.get("repo", ""),
                                              "sha":evidence.get("sha", "")},
@@ -1094,9 +1096,17 @@ class Publisher:
         if warning:
             body.append("> " + warning)
         if not project_matches:
-            body.append("*Associação temporariamente pendente; não significa ausência de código.*"
-                        if "pendente por limite" in warning else
-                        "*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
+            verified = any(row["status"] == "EXPLICADA_PELO_CODIGO"
+                           and row["source_digest"] == src["digest"]
+                           for row in self.db.uncertainties_for_source(src["id"]))
+            if verified:
+                body.append("*Dúvidas relacionadas a identificadores concretos da versão congelada "
+                            "estão documentadas acima. Não houve outra relação literal "
+                            "de conceito identificada nesta seção.*")
+            else:
+                body.append("*Associação temporariamente pendente; não significa ausência de código.*"
+                            if "pendente por limite" in warning else
+                            "*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
         total, frozen, _ = self.lesson_repo_index._status.get(lesson, (0, [], []))
         if total<0 or total>len(frozen):
             body.append("**Código GitHub pendente:** congele a versão desta aula antes de relacionar código às notas.")
