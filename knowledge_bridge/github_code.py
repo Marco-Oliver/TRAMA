@@ -36,7 +36,7 @@ def _path(value, allow_empty=False):
 
 def _blob_sha(data):
     """Verify file bytes against their Git blob identity."""
-    return hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\x00" + data).hexdigest()
+    return hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\x00" + data, usedforsecurity=False).hexdigest()
 
 
 class GithubCodeReader:
