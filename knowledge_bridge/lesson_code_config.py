@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -59,6 +60,8 @@ def validate_lesson(lesson: str, data: object) -> list[str]:
         return [f"{lesson}: registro deve ser um objeto"]
     if set(data) - {"professor", "dupla"}:
         errors.append(f"{lesson}: campos desconhecidos: {', '.join(sorted(set(data) - {'professor', 'dupla'}))}")
+    if not data.get("professor") and not data.get("dupla"):
+        errors.append(f"{lesson}: cadastro vazio; adicione um repositório (remoção exige ação separada)")
     ids = set()
     teachers = set()
     for role in ("professor", "dupla"):
@@ -117,6 +120,12 @@ def _config_path(vault: Path) -> Path:
     return path
 
 
+def invalid_record_digest(value: object) -> str:
+    """Digest of the exact parsed JSON value, for explicit replacement consent."""
+    source = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
 def read_config(vault: Path) -> dict:
     """Erros de uma aula não impedem carregar as outras; documento cru é preservado."""
     empty = {"schema": 1, "aulas": {}}
@@ -140,17 +149,19 @@ def read_config(vault: Path) -> dict:
         return {"document": None, "aulas": {}, "erros": [f"aulas-github.json: {exc}"],
                 "fatal": True}
     good = {}
+    invalid = {}
     errors = []
     for lesson, data in raw["aulas"].items():
         issues = validate_lesson(lesson, data)
         if issues:
             errors.extend(issues[:40])
+            invalid[lesson] = {"raw": data, "digest": invalid_record_digest(data)}
         else:
             good[lesson] = data
-    return {"document": raw, "aulas": good, "erros": errors[:500], "fatal": False}
+    return {"document": raw, "aulas": good, "invalid": invalid, "erros": errors[:500], "fatal": False}
 
 
-def save_lessons(vault: Path, updates: dict) -> dict:
+def save_lessons(vault: Path, updates: dict, replacements: dict | None = None) -> dict:
     """Mescla edições validadas sem apagar aulas inválidas ou não relacionadas."""
     if not isinstance(updates, dict) or not updates or len(updates) > 500:
         raise ValueError("Selecione de 1 a 500 aulas para salvar")
@@ -163,6 +174,11 @@ def save_lessons(vault: Path, updates: dict) -> dict:
     if current["fatal"]:
         raise ValueError("Corrija o aulas-github.json antes de salvar: " + "; ".join(current["erros"]))
     doc = current["document"]
+    for lesson in updates:
+        if lesson in current.get("invalid", {}):
+            actual = current["invalid"][lesson]["digest"]
+            if not isinstance(replacements, dict) or replacements.get(lesson) != actual:
+                raise ValueError(f"{lesson}: cadastro inválido existente; exiba o registro original e confirme a substituição especificamente")
     doc["aulas"].update(updates)
     content = (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     if len(content) > MAX_CONFIG_BYTES:
