@@ -208,7 +208,7 @@ class Store:
         if total<0:
             return False
         if not total:
-            return True  # legacy lessons without new per-lesson GitHub mapping
+            return False  # GitHub evidence for any lesson requires a frozen SHA.
         if not isinstance(sha,str):
             return False
         normal=lambda url: url.rstrip("/").removesuffix(".git").casefold()
