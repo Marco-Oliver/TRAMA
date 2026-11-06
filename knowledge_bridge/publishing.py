@@ -715,7 +715,9 @@ class Publisher:
         if warning:
             rows.append("> " + warning)
         if not found_code:
-            rows.append('*Ainda não há código com relação verificável para esta aula.*')
+            rows.append("*Associação temporariamente pendente; não significa ausência de código.*"
+                        if "pendente por limite" in warning else
+                        "*Ainda não há código com relação verificável para esta aula.*")
         rows = self._keep_previous_code(rows, rel, lesson,
                                         "## Projetos relacionados", "## Fontes e materiais")
         rows += ['', '## Fontes e materiais', '']
@@ -1041,7 +1043,9 @@ class Publisher:
         if warning:
             body.append("> " + warning)
         if not project_matches:
-            body.append("*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
+            body.append("*Associação temporariamente pendente; não significa ausência de código.*"
+                        if "pendente por limite" in warning else
+                        "*Nenhum vínculo com código encontrado ainda. Pode ser incluído quando os repositórios chegarem.*")
         total, frozen, _ = self.lesson_repo_index._status.get(lesson, (0, [], []))
         if total<0 or total>len(frozen):
             body.append("**Código GitHub pendente:** congele a versão desta aula antes de relacionar código às notas.")

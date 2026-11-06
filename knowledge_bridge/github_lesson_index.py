@@ -30,6 +30,7 @@ class LessonRepositoryIndex:
         self._global = None
         self._status = {}
         self._auto_none = set()
+        self._auto_waiting = False
         self._rate_error = None
         self._no_token_bulk = False
 
@@ -44,9 +45,12 @@ class LessonRepositoryIndex:
         self._global = [({**dict(repo), "frozen": False, "folder": ""},
                          json.loads(repo["payload"])) for repo in self.store.repositories()]
         self._status.clear()
-        self._auto_none = {lesson for row in self.store.auto_repositories()
+        auto_repos = self.store.auto_repositories()
+        self._auto_none = {lesson for row in auto_repos
             for lesson, decision in self.store.automatic_decisions(row["repo_url"]).items()
             if decision["decision"] == "none"}
+        self._auto_waiting = any(row["status"] in
+                                 ("pending","paused","index_paused") for row in auto_repos)
         self.errors.clear()
         self.failed_lessons.clear()
         self.notices.clear()
@@ -145,6 +149,10 @@ class LessonRepositoryIndex:
         count, frozen = self.store.github_lesson_refs(lesson, config=self._config)
         self.errors.pop(lesson, None)
         if count == 0:
+            if self._auto_waiting and lesson not in self._auto_none:
+                self.notices[lesson] = (
+                    "Associação GitHub pendente por limite de cota ou rede; "
+                    "isso não significa que esta aula não tenha código.")
             # Explicitly excluded revision lessons do not acquire fake links
             # merely because a moving global HEAD happens to contain a term.
             chosen = [] if lesson in self._auto_none else self._global
@@ -198,9 +206,11 @@ class LessonRepositoryIndex:
             self.for_lesson(lesson)
         count, frozen, _ = self._status[lesson]
         if count == 0:
-            return ("Aula sem relação verificável com as versões do código."
-                    if lesson in self._auto_none else
-                    "versão não congelada: relação pode não corresponder ao código desta aula")
+            if lesson in self._auto_none:
+                return "Aula sem relação verificável com as versões do código."
+            if lesson in self.notices:
+                return self.notices[lesson]
+            return "versão não congelada: relação pode não corresponder ao código desta aula"
         messages = []
         if count < 0:
             messages.append("Cadastro GitHub inválido; código não vinculado.")

@@ -209,6 +209,18 @@ class AutoVersionsEndToEnd(unittest.TestCase):
         self.assertIn("versão estimada; confira", self.content_note(1))
         self.assertIn("confiança **baixa**", self.content_note(1))
 
+    def test_paused_rate_does_not_claim_a_new_lesson_has_no_code(self):
+        lesson=self.txt(10,"Hoje vemos HttpClient")
+        self.app.add_file(lesson)
+        self.app.store.save_auto_repository(
+            REPO,"professor",False,"index_paused",versions=[],
+            message='{"retry_at":9999999999}')
+        self.app.publisher.rebuild()
+        note=self.content_note(10)
+        self.assertIn("Associação temporariamente pendente", note)
+        self.assertIn("não significa ausência de código",note)
+        self.assertNotIn("*Nenhum vínculo com código encontrado ainda.",note)
+
     def test_role_and_version_name_detection(self):
         self.assertEqual(role_for(REPO),"professor")
         self.assertEqual(role_for("https://github.com/Marco-Oliver/dupla"),"dupla")
