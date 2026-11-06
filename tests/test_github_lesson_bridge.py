@@ -72,8 +72,8 @@ class LessonCodeBridgeTests(unittest.TestCase):
 
     def test_e2e_readonly_public_api_uses_frozen_sha_not_live_branch(self):
         api=PublicApi(self.bridge)
-        with patch.object(GithubMapping,"_get",self.fake_get), \
-             patch.object(GithubCodeReader,"_raw",self.fake_raw), \
+        with patch.object(GithubMapping,"_get",lambda client,repo,endpoint: self.fake_get(client,repo,endpoint)), \
+             patch.object(GithubCodeReader,"_raw",lambda reader,repo,sha,path,private: self.fake_raw(reader,repo,sha,path,private)), \
              patch.object(GithubMapping,"resolve_sha",side_effect=AssertionError("branch refresh forbidden")), \
              patch("knowledge_bridge.github_cache.GithubCache",wraps=GithubCache) as built:
             listing=api.lesson_code_files("Aula-131","professor","backend")
@@ -126,7 +126,7 @@ class LessonCodeBridgeTests(unittest.TestCase):
         with patch.object(self.bridge._key_vault,"configured",return_value={"gemini":True}), \
              patch.object(self.bridge,"_make_application",return_value=app), \
              patch.object(GithubMapping,"resolve_sha",return_value=B) as resolver, \
-             patch.object(GithubMapping,"_get",self.fake_get):
+             patch.object(GithubMapping,"_get",lambda client,repo,endpoint: self.fake_get(client,repo,endpoint)):
             processed=self.bridge.process_lesson("Aula-131",True,True)
             self.assertTrue(processed["ok"],processed)
             listed=self.bridge.lesson_code_files("Aula-131","professor","backend")
