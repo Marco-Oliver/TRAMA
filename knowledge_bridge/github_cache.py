@@ -69,6 +69,14 @@ class GithubCache:
             return None
         try:
             os.utime(path, None, follow_symlinks=False)
+        except NotImplementedError:
+            # Windows does not expose follow_symlinks for utime. Do not
+            # touch a replacement symlink; cached bytes remain read-only.
+            if not path.is_symlink():
+                try:
+                    os.utime(path, None)
+                except OSError:
+                    pass
         except OSError:
             pass
         return data
