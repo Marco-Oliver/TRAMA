@@ -175,6 +175,44 @@ class Store:
             (lesson, role, repository_id, slot)).fetchone()
         return dict(row) if row else None
 
+    def github_lesson_refs(self, lesson: str):
+        """Validated immutable current SHAs for a mapped lesson, never a branch tip."""
+        from .lesson_code_config import read_config
+        config=read_config(self.vault)
+        if config["fatal"]:
+            return -1, []
+        record=config["aulas"].get(lesson)
+        if not record:
+            return 0, []
+        locked=[]
+        total=0
+        for role in ("professor","dupla"):
+            for entry in record.get(role,[]):
+                total+=1
+                row=self.github_ref(lesson,role,entry["id"],"current")
+                if not row:
+                    continue
+                expected=(entry["repo"],entry["ref_tipo"],entry["ref"],entry.get("pasta",""))
+                stored=tuple(row[key] for key in ("repo_url","ref_kind","ref_name","folder"))
+                if stored==expected:
+                    locked.append(row)
+        return total,locked
+
+    def github_lesson_repo_allowed(self, lesson: str, repo_url: str, sha: str) -> bool:
+        """Never attach a moving branch to an explicitly mapped lesson."""
+        if not isinstance(repo_url,str) or not repo_url.startswith("https://github.com/"):
+            return True  # local repository indexing is a separate legacy workflow
+        total,locked=self.github_lesson_refs(lesson)
+        if total<0:
+            return False
+        if not total:
+            return True  # legacy lessons without new per-lesson GitHub mapping
+        if not isinstance(sha,str):
+            return False
+        normal=lambda url: url.rstrip("/").removesuffix(".git").casefold()
+        return any(normal(row["repo_url"])==normal(repo_url) and
+                   row["commit_sha"]==sha.lower() for row in locked)
+
     def freeze_github_ref(self, lesson: str, role: str, repository_id: str, slot: str,
                           repo_url: str, ref_kind: str, ref_name: str,
                           folder: str, commit_sha: str):

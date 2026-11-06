@@ -1074,8 +1074,20 @@ class Bridge:
                        if src["lesson"]==lesson and src["status"]!="PUBLISHED"]
             if remaining:
                 return self._processing_feedback(remaining,logs)
-            return {'ok':True,'message':'Análise da aula concluída; notas do Obsidian atualizadas.',
-                    'logs':logs[-8:]}
+            from .store import Store
+            db=Store(vault)
+            try:
+                count,code_locks=db.github_lesson_refs(lesson)
+            finally:
+                db.close()
+            needs_freeze=count<0 or count>len(code_locks)
+            message='Análise da aula concluída; notas do Obsidian atualizadas.'
+            if needs_freeze:
+                message+=' Código GitHub pendente: congele a versão desta aula.'
+            return {'ok':True,'message':message,
+                    'code_shas':[{'role':row['role'],'repository_id':row['repository_id'],
+                                  'sha':row['commit_sha']} for row in code_locks],
+                    'code_pending_freeze':needs_freeze,'logs':logs[-8:]}
         except Exception:
             return {'ok':False,'message':'Não foi possível reanalisar a aula. As transcrições originais foram preservadas.'}
         finally:
