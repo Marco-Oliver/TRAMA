@@ -1255,6 +1255,104 @@ class Bridge:
         finally:
             db.close()
 
+    def _lesson_code_binding(self, lesson, role, repository_id, slot="current"):
+        """Only resolve code access from a registered, immutable SQLite commit."""
+        from .github_cache import GithubCache
+        from .github_code import GithubCodeReader
+        from .lesson_code_config import read_config, LESSON_RE, ID_RE
+        from .store import Store
+        if (not isinstance(lesson, str) or not LESSON_RE.fullmatch(lesson)
+                or role not in ("professor", "dupla")
+                or not isinstance(repository_id, str) or not ID_RE.fullmatch(repository_id)
+                or slot not in ("current", "previous")):
+            raise ValueError("Aula, repositório ou versão inválida.")
+        vault=self._vault()
+        if vault is None:
+            raise ValueError("Selecione o cofre do Obsidian.")
+        config=read_config(vault)
+        if config["fatal"]:
+            raise ValueError("Cadastro GitHub inválido; revise antes de consultar código.")
+        entry=next((item for item in config["aulas"].get(lesson,{}).get(role,[])
+                    if item["id"]==repository_id),None)
+        if entry is None:
+            raise ValueError("Repositório não cadastrado nesta aula.")
+        spec=entry.get("anterior") if slot=="previous" else entry
+        if spec is None:
+            raise ValueError("Cadastre a referência anterior e congele a versão desta aula.")
+        db=Store(vault)
+        try:
+            locked=db.github_ref(lesson,role,repository_id,slot)
+        finally:
+            db.close()
+        if locked is None:
+            raise ValueError("congele a versão desta aula")
+        expected=(entry["repo"],spec["ref_tipo"],spec["ref"],spec.get("pasta",""))
+        current=tuple(locked[k] for k in ("repo_url","ref_kind","ref_name","folder"))
+        if current!=expected:
+            raise ValueError("Cadastro e SHA divergentes; congele a versão desta aula.")
+        reader=GithubCodeReader(cache=GithubCache(vault=vault))
+        return reader, locked["repo_url"], locked["commit_sha"], locked["folder"]
+
+    def _code_response(self, action):
+        from .github_mapping import MappingError
+        try:
+            return {"ok":True, **action()}
+        except (MappingError, ValueError, TypeError) as exc:
+            return {"ok":False, "message":str(exc)[:300]}
+        except (OSError,sqlite3.Error,RuntimeError):
+            return {"ok":False, "message":"Falha ao consultar código GitHub; nenhum SHA foi alterado."}
+
+    def lesson_code_files(self, lesson, role, repository_id, slot="current", folder=""):
+        def action():
+            reader,repo,sha,root=self._lesson_code_binding(lesson,role,repository_id,slot)
+            selected=folder or root
+            if root and selected!=root and not selected.startswith(root+"/"):
+                raise ValueError("A pasta solicitada não pertence ao cadastro congelado.")
+            return reader.list_files(repo,sha,selected)
+        return self._code_response(action)
+
+    def lesson_code_read_file(self, lesson, role, repository_id, path, slot="current"):
+        def action():
+            reader,repo,sha,root=self._lesson_code_binding(lesson,role,repository_id,slot)
+            if not isinstance(path,str) or (root and not path.startswith(root+"/")):
+                raise ValueError("Arquivo fora da pasta congelada desta aula.")
+            return reader.read_file(repo,sha,path)
+        return self._code_response(action)
+
+    @staticmethod
+    def _limit_code_diffs(result):
+        """Bound WebView payloads without misreporting partial patches as complete."""
+        rows=result.get("files",[])
+        compact=[]
+        shortened=False
+        for file in rows[:25]:
+            row=dict(file)
+            patch=row.get("patch","")
+            if isinstance(patch,str) and len(patch)>12000:
+                row["patch"]=patch[:12000]
+                shortened=True
+            compact.append(row)
+        return {**result,"files":compact,
+                "truncated":bool(result.get("truncated") or len(rows)>25 or shortened)}
+
+    def lesson_code_compare(self, lesson, role, repository_id):
+        """Compare previous and current frozen revisions, never moving branches."""
+        def action():
+            reader,repo,head,folder=self._lesson_code_binding(lesson,role,repository_id,"current")
+            _,old_repo,base,old_folder=self._lesson_code_binding(lesson,role,repository_id,"previous")
+            if repo!=old_repo:
+                raise ValueError("Repositórios diferentes não podem ser comparados.")
+            return self._limit_code_diffs(
+                reader.compare_commits(repo,base,head,folder if folder==old_folder else ""))
+        return self._code_response(action)
+
+    def lesson_code_diff_folders(self, lesson, role, repository_id, before, after, slot="current"):
+        """Local-only diff between folders inside exactly one frozen commit."""
+        def action():
+            reader,repo,sha,_=self._lesson_code_binding(lesson,role,repository_id,slot)
+            return self._limit_code_diffs(reader.diff_folders(repo,sha,before,after))
+        return self._code_response(action)
+
     def preview_lesson_mappings(self, repo, dates=None, branch=""):
         """REST suggestions only. No file/database writes and no Git checkout."""
         from .github_mapping import preview_mapping, MappingError
@@ -1776,6 +1874,18 @@ class PublicApi:
 
     def unfreeze_lesson_code(self, lesson, role, repository_id, slot, confirmed=False):
         return self._bridge.unfreeze_lesson_code(lesson,role,repository_id,slot,confirmed)
+
+    def lesson_code_files(self, lesson, role, repository_id, slot="current", folder=""):
+        return self._bridge.lesson_code_files(lesson,role,repository_id,slot,folder)
+
+    def lesson_code_read_file(self, lesson, role, repository_id, path, slot="current"):
+        return self._bridge.lesson_code_read_file(lesson,role,repository_id,path,slot)
+
+    def lesson_code_compare(self, lesson, role, repository_id):
+        return self._bridge.lesson_code_compare(lesson,role,repository_id)
+
+    def lesson_code_diff_folders(self, lesson, role, repository_id, before, after, slot="current"):
+        return self._bridge.lesson_code_diff_folders(lesson,role,repository_id,before,after,slot)
 
     def preview_lesson_mappings(self, repo, dates=None, branch=""):
         return self._bridge.preview_lesson_mappings(repo,dates,branch)
