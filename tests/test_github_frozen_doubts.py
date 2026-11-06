@@ -38,9 +38,17 @@ def source_with_lines(size, values):
 # These lines are quoted from the PUBLIC v1 SHA, not reconstructed from main.
 SOURCE = {
     CONTROLLER: source_with_lines(130, {
+        16: "    DeliveryAppDbContext dbContext,",
+        17: "    UserManager<IdentityUser<Guid>> userManager,",
+        18: "    SignInManager<IdentityUser<Guid>> signInManager,",
+        19: "    RoleManager<IdentityRole<Guid>> roleManager,",
+        20: "    JwtProvider jwtProvider",
         84: "        ",
         85: "            return Created(string.Empty, new AutenticacaoClienteResponse(",
         86: "                usuario.Id,",
+        106: "    {",
+        107: "        var usuario = await userManager.FindByEmailAsync(request.Email.Trim());",
+        108: "",
         111: "        ",
         112: "        var resultadoAutenticacao = await signInManager.CheckPasswordSignInAsync(",
         113: "            usuario,",
@@ -48,6 +56,9 @@ SOURCE = {
     CONFIG: source_with_lines(33, {
         7: "",
         8: "public sealed class ClienteConfiguration : IEntityTypeConfiguration<Cliente>",
+        14: "        builder.HasKey(c => c.Id);",
+        15: "        builder.Property(c => c.Id).ValueGeneratedNever();",
+        16: "",
         9: "{",
     }),
     JWT: source_with_lines(48, {
@@ -112,7 +123,12 @@ class FrozenV1DoubtsTests(unittest.TestCase):
             "00:55 altwtider / JWT Provider\n"
             "01:21 status 2011\n"
             "02:15 DB Contact\n"
-            "05:11 observação que não corresponde a nenhum identificador\n",
+            "03:00 sain in manager\n"
+            "03:15 rói manager\n"
+            "03:30 faind bai email\n"
+            "03:45 user maneger\n"
+            "04:00 valor generated never\n"
+            "05:11 observação que não corresponde a nenhum identificador\n"
             encoding="utf-8",
         )
         self.app.add_file(txt)
@@ -134,6 +150,11 @@ class FrozenV1DoubtsTests(unittest.TestCase):
                 "in type configuration",
                 "altwtider / JWT Provider",
                 "status 2011",
+                "sain in manager",
+                "rói manager",
+                "faind bai email",
+                "user maneger",
+                "valor generated never",
                 "observação que não corresponde a nenhum identificador",
             ],
         })
@@ -172,6 +193,11 @@ class FrozenV1DoubtsTests(unittest.TestCase):
             ("JwtProvider", JWT, 12),
             ("Created", CONTROLLER, 85),
             ("DbContext", DB, 9),
+            ("SignInManager", CONTROLLER, 18),
+            ("RoleManager", CONTROLLER, 19),
+            ("FindByEmailAsync", CONTROLLER, 107),
+            ("UserManager", CONTROLLER, 17),
+            ("ValueGeneratedNever", CONFIG, 15),
         ]
         for name, path, line in expected:
             with self.subTest(identifier=name):
@@ -179,7 +205,13 @@ class FrozenV1DoubtsTests(unittest.TestCase):
                 self.assertIn(REPO + "/blob/" + FROZEN + "/" + path +
                               "#L" + str(line), note)
                 self.assertIn(str(line) + ":", note)
-        self.assertGreaterEqual(note.count("Provável no código"), 5)
+        # One actual evidence block per phrase; no duplicates in other
+        # sections, even for DB Contact -> DbContext.
+        self.assertEqual(note.count("**Provável no código:**"), 10)
+        doubts = note.split("## Dúvidas técnicas e passagens inaudíveis",1)[1]
+        doubts = doubts.split("\n## ",1)[0]
+        self.assertEqual(doubts.count("**Provável no código:**"), 10)
+        self.assertEqual(note.count("**Trecho de 3 linhas do commit congelado:**"), 10)
         self.assertIn("EXPLICADA_PELO_CODIGO", note)
         self.assertIn("Dúvidas relacionadas a identificadores concretos da versão congelada", note)
         self.assertNotIn("*Nenhum vínculo com código encontrado ainda.", note)
@@ -188,6 +220,14 @@ class FrozenV1DoubtsTests(unittest.TestCase):
         self.assertNotIn("Nenhuma explicação posterior identificada", followup)
         self.assertIn("nome provável no código", note.casefold())
         self.assertIn("DB Contact", note)
+        # Keep unescaped generic type parameters in real fenced C# excerpts.
+        self.assertIn("IEntityTypeConfiguration<Cliente>", note)
+        self.assertIn("JwtProvider(IOptions<JwtOptions>", note)
+        self.assertNotIn("IEntityTypeConfiguration&lt;Cliente&gt;", note)
+        self.assertIn("```csharp", doubts)
+        knowledge = note.split("## Conhecimentos relacionados",1)[1].split("\n## ",1)[0]
+        self.assertEqual(knowledge.count("[[dbcontext|DbContext]]"), 1)
+        self.assertNotIn("[[dbcontext|DB Contact]]", knowledge)
         self.assertNotIn("/blob/" + MAIN, note)
         self.assertIn("PENDENTE", note)
 
@@ -196,7 +236,9 @@ class FrozenV1DoubtsTests(unittest.TestCase):
                 next(s["id"] for s in self.app.store.sources("transcript")))
         }
         for phrase in ("check password saind assim", "in type configuration",
-                       "altwtider / JWT Provider", "status 2011"):
+                       "altwtider / JWT Provider", "status 2011",
+                       "sain in manager", "rói manager", "faind bai email",
+                       "user maneger", "valor generated never"):
             self.assertEqual(uncertainties[phrase]["status"], "EXPLICADA_PELO_CODIGO")
         self.assertEqual(
             uncertainties["observação que não corresponde a nenhum identificador"]["status"],
@@ -213,7 +255,9 @@ class FrozenV1DoubtsTests(unittest.TestCase):
         suspect = note.split("## Termos suspeitos da transcrição", 1)[1]
         self.assertNotIn("Entity Framework", suspect)
         self.assertNotIn("migrações", suspect)
-        self.assertIn("CheckPasswordSignInAsync", suspect)
+        self.assertIn("Dúvidas técnicas e passagens inaudíveis acima", suspect)
+        self.assertNotIn("**Provável no código:**", suspect)
+        self.assertNotIn("/blob/" + FROZEN, suspect)
 
         target = os.getenv("TRAMA_TEST_NOTE_OUTPUT", "")
         if target:
@@ -226,14 +270,49 @@ class FrozenV1DoubtsTests(unittest.TestCase):
         payload = index_repository(Path("."), list(SOURCE), read_source=lambda p: (
             SOURCE[p].decode("utf-8"), len(SOURCE[p])))
         repo = {"url":REPO,"sha":FROZEN,"frozen":True,"version":"v1"}
-        for phrase in ("status 500", "Entity Framework", "migrações",
-                       "a configuração está concluída", "pagamento da entrega",
-                       "só usamos uma interface no projeto"):
+        for phrase in (
+            "o professor usou o manager de usuário",
+            "vamos fazer uma revisão",
+            "a pasta de configuração",
+            "não sei por que está falhando",
+            "a aula terminou cedo hoje",
+            "o controller tem uma classe pública",
+            "fizemos mudanças no projeto",
+            "vamos subir o código na branch",
+            "o formulário de cadastro de pessoas",
+            "a configuração da interface precisa mudar",
+            "status 500", "Entity Framework", "migrações",
+            "a configuração está concluída", "pagamento da entrega",
+            "só usamos uma interface no projeto",
+        ):
             with self.subTest(phrase=phrase):
                 self.assertIsNone(match_frozen_question(phrase, [(repo,payload)]))
         self.assertIsNone(match_frozen_question(
             "check password saind assim",
             [({**repo, "frozen":False, "sha":MAIN},payload)]))
+
+    def test_generic_pt_br_phonetics_on_real_v1_identifiers(self):
+        payload = index_repository(Path("."), list(SOURCE), read_source=lambda p: (
+            SOURCE[p].decode("utf-8"), len(SOURCE[p])))
+        frozen = {"url":REPO, "sha":FROZEN, "frozen":True, "version":"v1"}
+        cases = {
+            "sain in manager":"SignInManager",
+            "rói manager":"RoleManager",
+            "faind bai email":"FindByEmailAsync",
+            "user maneger":"UserManager",
+            "valor generated never":"ValueGeneratedNever",
+            "check password saind assim":"CheckPasswordSignInAsync",
+            "in type configuration":"IEntityTypeConfiguration",
+            "altwtider / JWT Provider":"JwtProvider",
+            "DB Contact":"DbContext",
+            "status 2011":"Created",
+        }
+        for heard, expected in cases.items():
+            with self.subTest(heard=heard):
+                match = match_frozen_question(heard, [(frozen, payload)])
+                self.assertIsNotNone(match, heard)
+                self.assertEqual(match["candidate"], expected)
+                self.assertEqual(match["sha"], FROZEN)
 
     def test_later_question_reads_only_the_later_lesson_frozen_version(self):
         from knowledge_bridge.learning_review import refresh_uncertainties

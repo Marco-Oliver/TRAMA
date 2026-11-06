@@ -205,17 +205,29 @@ def code_evidence_lines(item):
     if line < 1:
         return []
     link = url + "/blob/" + item["sha"] + "/" + quote(path, safe="/") + "#L" + str(line)
-    result = [
+    language = {".cs":"csharp", ".ts":"typescript", ".tsx":"tsx",
+                ".js":"javascript", ".jsx":"jsx", ".py":"python",
+                ".sql":"sql"}.get(Path(path).suffix.lower(), "text")
+    # Exact code excerpt is already redacted upstream. Fenced Markdown is
+    # literal: do NOT HTML-escape < or > (e.g. List<Cliente>), and neutralize
+    # only an embedded code fence before presenting untrusted source.
+    lines = [
+        str(raw).replace("```", "` ` `").replace("\r", "")[:210]
+        for raw in str(item.get("snippet", "")).splitlines()[:3]
+    ]
+    return [
         "- **Provável no código:** " + chr(96) + _safe(item["candidate"], 90) + chr(96)
         + " — [" + _safe(path, 160) + ":" + str(line) + "](" + link + ")"
         + " — versão " + chr(96) + _safe(item.get("version") or item["sha"][:10], 60) + chr(96)
         + " (**pista, não prova do áudio**).",
-        "  - **Trecho de 3 linhas do commit congelado:**",
+        "",
+        "  **Trecho de 3 linhas do commit congelado:**",
+        "",
+        "```" + language,
+        *lines,
+        "```",
+        "",
     ]
-    for raw in str(item.get("snippet", "")).splitlines()[:3]:
-        # Never interpolate source code as Markdown/HTML from untrusted repos.
-        result.append("    - " + chr(96) + _safe(raw.replace(chr(96), "'"), 210) + chr(96))
-    return result
 
 
 def render_uncertainties(store) -> tuple[str, list[tuple[str, str]]]:

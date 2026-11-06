@@ -804,12 +804,17 @@ class Publisher:
         fname = f"{slug(Path(src['label']).stem, 52)}-{src['id'][:7]}.md"
         rel = f"02-Minhas-Aulas/{lesson}/{fname}"
         concepts = analysis.get("conceitos",[]) if analysis else []
-        concept_links = []
+        # Two spoken names that resolve to one canonical concept should have
+        # exactly ONE Obsidian link (DB Contact + DbContext -> DbContext).
+        concept_links_by_target = {}
         for c in concepts:
             name = c.get("nome", "").strip()
             if name:
-                self._corrected_concept(src, name)
-                concept_links.append(f"[[{self._concept_target(name, src['id'])}|{_escape_md(name)}]]")
+                canonical = self._corrected_concept(src, name)
+                target = self._concept_target(name, src["id"])
+                concept_links_by_target[target] = (
+                    f"[[{target}|{_escape_md(canonical)}]]")
+        concept_links = list(concept_links_by_target.values())
         raw = self.vault / src["stored_path"]
         text = raw.read_text(encoding="utf-8-sig",errors="replace")
         # Uma apresentação ou encontro administrativo não vira falsamente um
@@ -864,8 +869,7 @@ class Publisher:
                     if matched and matched["candidate"].casefold() != name.casefold():
                         body.append("  - **Nome provável no código:** "
                                     + chr(96) + _escape_md(matched["candidate"]) + chr(96)
-                                    + " (nome original mantido; conferir a gravação).")
-                        body.extend(code_evidence_lines(matched))
+                                    + " (nome original mantido; consulte Dúvidas técnicas abaixo).")
             # Reconcile legacy cached analyses locally, without another API
             # call: a spoken abbreviation can back a mention even when the
             # whole expanded model label was not said. Do NOT auto-create a
@@ -888,13 +892,9 @@ class Publisher:
                 for label,found in observed:
                     body.append("- `"+_escape_md(label)+"` — forma observada: `"+
                                 _escape_md(found)+"`; conferir o contexto na transcrição.")
-                    match=self._code_guess(lesson,label)
-                    if match and match["candidate"].casefold()!=label.casefold():
-                        body.append("  - **Nome provável no código:** "
-                                    + chr(96) + _escape_md(match["candidate"]) + chr(96)
-                                    + " (não renomeado automaticamente).")
-                        body.extend(code_evidence_lines(match))
-                        self._corrected_concept(src,label)
+                    # A technical alias from an existing concept is recorded
+                    # in the single Dúvidas section, never duplicated here.
+                    self._corrected_concept(src,label)
             if unsupported:
                 body += ["", "## Termos sugeridos pela IA para conferir", "",
                          "> Não foi encontrada menção literal nem abreviação verificável "
@@ -922,19 +922,52 @@ class Publisher:
                          "Não trate como código executado ou demonstrado."] + [
                              f"- {_escape_md(x)}"
                              for x in analysis.get("exemplos_reconstruidos_a_conferir", [])[:10]]
-            if analysis.get("duvidas"):
+            # Emit each frozen-code clue ONCE, here. Other sections may
+            # refer back to this location but do not repeat excerpts/links.
+            questions = [q for q in analysis.get("duvidas",[])
+                         if isinstance(q,str) and q.strip()]
+            # Concepts that were transcribed under a wrong technical name
+            # belong here as reviewable evidence too (e.g. DB Contact).
+            concept_questions = [
+                c.get("nome","") for c in
+                [*concepts, *analysis.get("conceitos_a_conferir",[])]
+                if isinstance(c,dict) and c.get("nome")
+            ]
+            suspect_questions = [
+                heard for _stamp, heard, _candidate
+                in suspected_technical_transcription(text)
+            ]
+            seen_questions = set()
+            question_entries = []
+            for q in [*questions, *concept_questions, *suspect_questions]:
+                if not isinstance(q,str) or not q.strip():
+                    continue
+                key = q.casefold().strip()
+                if key in seen_questions:
+                    continue
+                seen_questions.add(key)
+                match = self._code_guess(lesson, q)
+                if q not in questions and (match is None or
+                        match["candidate"].casefold() == key):
+                    continue
+                question_entries.append((q, match))
+            if question_entries:
                 body += ["", "## Dúvidas técnicas e passagens inaudíveis", "",
-                         "> Uma hipótese de transcrição não comprova erro nem aprendizado."]
+                         "> Hipóteses encontradas no SHA congelado; o áudio "
+                         "não foi conferido e o TXT original foi preservado."]
                 current = {row["question"].casefold():row for row in
                            self.db.uncertainties_for_source(src["id"])
                            if row["source_digest"]==src["digest"]}
-                for question in analysis.get("duvidas",[]):
+                for question, match in question_entries:
                     row = current.get(str(question).strip().casefold())
-                    state = row["status"] if row is not None else "PENDENTE"
-                    body.append(f"- {_escape_md(question)} — **Estado:** `{state}`")
-                    if row is not None and state == "EXPLICADA_PELO_CODIGO":
-                        for evidence in json.loads(row["evidence_json"]):
-                            if evidence.get("kind") == "codigo_congelado":
+                    status = row["status"] if row is not None else (
+                        "EXPLICADA_PELO_CODIGO" if match else "PENDENTE")
+                    body.append(f"- {_escape_md(question)} — **Estado:** `{status}`")
+                    if status == "EXPLICADA_PELO_CODIGO":
+                        # A later follow-up may have a DIFFERENT frozen SHA.
+                        evidences = json.loads(row["evidence_json"]) if row else [match]
+                        for evidence in evidences:
+                            if evidence and evidence.get("kind") == "codigo_congelado":
                                 body.extend(code_evidence_lines(evidence))
             if analysis.get("nomes_a_conferir"):
                 body += ["", "## Nomes e apelidos para conferir", "",
@@ -1004,7 +1037,8 @@ class Publisher:
                                 f"- **Aula posterior:** [[{link}|{_escape_md(later['lesson'] or later['label'])}]] "
                                 f"({stamp}) — trecho observado: “{excerpt}”.")
                         elif evidence.get("kind") == "codigo_congelado":
-                            body.extend(code_evidence_lines(evidence))
+                            body.append("- **Código da versão congelada:** "
+                                        "ver dúvida técnica acima (pista, não prova do áudio).")
                         elif evidence.get("kind") == "codigo":
                             ref = _code_ref({"url":evidence.get("repo", ""),
                                              "sha":evidence.get("sha", "")},
@@ -1151,32 +1185,15 @@ class Publisher:
                                 + "; hipótese a revisar: "
                                 + chr(96) + _escape_md(suggestion) + chr(96) + ".")
         body += ["", "## Termos suspeitos da transcrição", ""]
-        # Only surface phonetic *errors* grounded in specific identifiers
-        # on this lesson's immutable SHA. Broad concept aliases such as
-        # Entity Framework -> DbContext are not transcription corrections.
-        candidates = [x for x in (analysis or {}).get("duvidas",[]) if isinstance(x,str)]
-        candidates += [x.get("nome","") for x in
-                       (analysis or {}).get("conceitos_a_conferir",[])
-                       if isinstance(x,dict)]
-        candidates += [x.get("nome","") for x in concepts if isinstance(x,dict)]
-        candidates += [heard for _stamp,heard,_candidate in
-                       suspected_technical_transcription(text)]
-        suggested=set()
-        for observed in candidates:
-            if not isinstance(observed,str) or is_generic_code_term(observed):
-                continue
-            matched=self._code_guess(lesson,observed)
-            if not matched or matched["candidate"].casefold()==observed.casefold():
-                continue
-            key=(observed.casefold(),matched["candidate"],matched["path"])
-            if key in suggested:
-                continue
-            suggested.add(key)
-            body.append("- **Possível erro de transcrição:** "
-                        + chr(96) + _escape_md(observed) + chr(96))
-            body.extend(code_evidence_lines(matched))
-        if not suggested:
-            body.append("*Nenhuma correção fundamentada no código desta versão.*")
+        # Do not duplicate the clue or propose broad conceptual rewordings.
+        # Every grounded correction lives in Dúvidas técnicas above.
+        if any(matched for _question, matched in
+               (question_entries if analysis else [])):
+            body.append("*Possíveis erros de grafia com identificador específico "
+                        "no código: ver Dúvidas técnicas e passagens inaudíveis acima.*")
+        else:
+            body.append("*Nenhuma correção específica fundamentada no código "
+                        "congelado desta aula.*")
         self.write(rel, "\n".join(body).strip() + "\n")
         return rel, concepts, modules
 
