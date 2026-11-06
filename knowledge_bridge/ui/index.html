@@ -161,6 +161,13 @@ Alexandre Rech — professor"></textarea></label>
   <p>Cadastre os repositórios e as revisões de cada aula. A análise do código e o congelamento de SHAs serão adicionados nas próximas etapas.</p>
   <div class="context-fields"><label>Número da aula <input id="lesson-code-number" type="number" min="1" max="9999" required></label><button type="button" id="lesson-code-load">Carregar esta aula</button></div>
   <p id="lesson-code-token" role="status"></p>
+  <div class="context-fields">
+   <label>Token GitHub opcional (somente no Windows, armazenado com DPAPI)
+    <input id="lesson-code-github-key" type="password" maxlength="400" autocomplete="off" spellcheck="false" placeholder="Cole seu token; ele não será exibido novamente">
+   </label>
+   <button type="button" id="lesson-code-save-token">Salvar token protegido</button>
+   <button type="button" id="lesson-code-remove-token">Remover token protegido</button>
+  </div>
   <section id="lesson-code-invalid" class="lesson-code-invalid" hidden aria-label="Registro inválido já armazenado">
    <h3>Registro atual inválido — atenção à substituição</h3>
    <p>O cadastro abaixo foi preservado exatamente como está no JSON. Leia-o antes de substituir: será exigida confirmação específica.</p>

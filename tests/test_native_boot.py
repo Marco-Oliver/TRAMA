@@ -14,7 +14,7 @@ class NativeBootTests(TestCase):
             'snapshot','vault_disk_usage','note','search_notes','graph','audit_note','organize_library','select_vault','backup_vault','restore_vault','import_materials','auto_import',
             'staged_items','stage_files','stage_clipboard_image','remove_staged','clear_staged','process_staged',
             'process','process_lesson',
-            'lesson_code_config','save_lesson_code','remove_lesson_code','preview_lesson_mappings','suggest_lesson_mappings','apply_lesson_mappings',
+            'lesson_code_config','save_lesson_code','remove_lesson_code','save_github_token','remove_github_token','preview_lesson_mappings','suggest_lesson_mappings','apply_lesson_mappings',
             'add_repo','toggle_favorite','reveal_note','copy_note_link','compare_proposal','open_note',
             'open_obsidian','open_attachment','open_video_link','open_code_link','window_action',
             'save_classroom_context','import_classroom_materials',

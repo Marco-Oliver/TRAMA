@@ -42,7 +42,16 @@ def _version(path):
 
 class GithubMapping:
     def __init__(self, token=None):
-        self.token = token if token is not None else os.environ.get("TRAMA_GITHUB_TOKEN", "").strip()
+        if token is None:
+            token = os.environ.get("TRAMA_GITHUB_TOKEN", "").strip()
+            if not token:
+                try:
+                    from .paths import DATA_HOME
+                    from .secure_keys import KeyVault
+                    token = KeyVault(DATA_HOME / "api_keys.dpapi.json").get_github_token()
+                except (OSError, ValueError, RuntimeError):
+                    token = ""
+        self.token = token
         self.rate = {"restantes": None, "limite": None, "reset": None, "consultas": 0}
         self._opener = request.build_opener(_NoRedirect)
 

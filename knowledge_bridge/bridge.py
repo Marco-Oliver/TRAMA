@@ -1095,7 +1095,10 @@ class Bridge:
         return {"ok":not result["fatal"],"fatal":result["fatal"],"erros":result["erros"],
                 "aulas":data if not lesson else {lesson:data[lesson]} if lesson in data else {},
                 "invalid":{lesson:result["invalid"][lesson]} if lesson and lesson in result.get("invalid",{}) else {},
-                "datas":lesson_dates(vault), "github_token_configurado":bool(os.environ.get("TRAMA_GITHUB_TOKEN"))}
+                "datas":lesson_dates(vault),
+                "github_token_configurado":bool(os.environ.get("TRAMA_GITHUB_TOKEN") or self._key_vault.github_configured()),
+                "github_token_fonte":("ambiente" if os.environ.get("TRAMA_GITHUB_TOKEN") else
+                                       "dpapi" if self._key_vault.github_configured() else "nenhuma")}
 
     def save_lesson_code(self, lesson, data, confirmed=False, replace_invalid=False, expected_digest=""):
         from .lesson_code_config import save_lessons
@@ -1113,6 +1116,29 @@ class Bridge:
             return {"ok":False,"message":str(exc)[:700]}
         finally:
             self._write_lock.release()
+
+    def save_github_token(self, token, confirmed=False):
+        if confirmed is not True:
+            return {"ok":False,"message":"Confirme o armazenamento seguro do token GitHub."}
+        if not isinstance(token,str):
+            return {"ok":False,"message":"Token GitHub inválido."}
+        vault=self._vault()
+        if vault and self._key_vault.path.resolve().is_relative_to(vault.resolve()):
+            return {"ok":False,"message":"O armazenamento de credenciais deve ficar fora do cofre."}
+        try:
+            self._key_vault.save("github",token)
+            return {"ok":True,"message":"Token GitHub protegido por DPAPI neste Windows."}
+        except (OSError,ValueError,RuntimeError) as exc:
+            return {"ok":False,"message":str(exc)[:140]}
+
+    def remove_github_token(self, confirmed=False):
+        if confirmed is not True:
+            return {"ok":False,"message":"Confirme a remoção do token GitHub."}
+        try:
+            self._key_vault.remove("github")
+            return {"ok":True,"message":"Token GitHub seguro apagado; variável de ambiente, se houver, permanece."}
+        except (OSError,ValueError,RuntimeError) as exc:
+            return {"ok":False,"message":str(exc)[:140]}
 
     def remove_lesson_code(self, lesson, confirmed=False, expected_digest=""):
         from .lesson_code_config import delete_lesson
@@ -1627,6 +1653,12 @@ class PublicApi:
 
     def save_lesson_code(self, lesson, data, confirmed=False, replace_invalid=False, expected_digest=""):
         return self._bridge.save_lesson_code(lesson,data,confirmed,replace_invalid,expected_digest)
+
+    def save_github_token(self, token, confirmed=False):
+        return self._bridge.save_github_token(token,confirmed)
+
+    def remove_github_token(self, confirmed=False):
+        return self._bridge.remove_github_token(confirmed)
 
     def remove_lesson_code(self, lesson, confirmed=False, expected_digest=""):
         return self._bridge.remove_lesson_code(lesson,confirmed,expected_digest)

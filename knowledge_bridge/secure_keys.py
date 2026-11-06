@@ -13,6 +13,8 @@ import tempfile
 from pathlib import Path
 
 PROVIDERS={"gemini": "GEMINI_API_KEY", "groq": "GROQ_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
+# GitHub is not an AI provider and must not enter FreeAIRouter or AI diagnostics.
+SECURE_KEYS = {**PROVIDERS, "github": "TRAMA_GITHUB_TOKEN"}
 
 
 def _crypt(payload: bytes, encrypt: bool) -> bytes:
@@ -60,7 +62,7 @@ class KeyVault:
         except (OSError,ValueError):
             return {}
         if not isinstance(obj,dict):return {}
-        return {k:v for k,v in obj.items() if k in PROVIDERS and isinstance(v,str)}
+        return {k:v for k,v in obj.items() if k in SECURE_KEYS and isinstance(v,str)}
 
     def _save(self, obj:dict):
         self.path.parent.mkdir(parents=True,exist_ok=True)
@@ -75,8 +77,20 @@ class KeyVault:
     def configured(self):
         return {k:k in self._load() for k in PROVIDERS}
 
+    def github_configured(self):
+        return "github" in self._load()
+
+    def get_github_token(self):
+        ciphertext = self._load().get("github", "")
+        if not ciphertext:
+            return ""
+        try:
+            return _crypt(base64.b64decode(ciphertext, validate=True), False).decode("utf-8")
+        except (OSError, RuntimeError, UnicodeDecodeError, ValueError):
+            return ""
+
     def save(self, provider:str, key:str):
-        if provider not in PROVIDERS or not isinstance(key,str) or not 8<=len(key.strip())<=400:
+        if provider not in SECURE_KEYS or not isinstance(key,str) or not 8<=len(key.strip())<=400:
             raise ValueError("Provedor ou chave inválidos")
         # Trim accidental whitespace; never log the key.
         obj=self._load()
@@ -84,12 +98,14 @@ class KeyVault:
         self._save(obj)
 
     def remove(self, provider:str):
-        if provider not in PROVIDERS:raise ValueError("Provedor inválido")
+        if provider not in SECURE_KEYS:raise ValueError("Provedor inválido")
         obj=self._load();obj.pop(provider,None);self._save(obj)
 
     def get_env(self):
         out={}
         for provider,token in self._load().items():
+            if provider not in PROVIDERS:
+                continue
             try:
                 out[PROVIDERS[provider]]=_crypt(base64.b64decode(token,validate=True),False).decode("utf-8")
             except (OSError,UnicodeDecodeError,ValueError):

@@ -98,8 +98,9 @@
      errors.slice(0,8).join('; ')+' — revise antes de substituir este cadastro.':
      lesson+' carregada; alterações ainda não gravadas.');
    el('lesson-code-token').textContent=result?.github_token_configurado?
-     'Token GitHub encontrado no ambiente.':
-     'Sem token: limite baixo de requisições e sem acesso a repositórios privados. Recomendamos configurar TRAMA_GITHUB_TOKEN.';
+     (result.github_token_fonte==='dpapi'?'Token GitHub protegido por DPAPI no Windows.':
+       'Token GitHub configurado por variável de ambiente.'):
+     'Sem token GitHub: limite baixo e sem acesso a repositórios privados.';
  }
  async function openEditor(){
    el('lesson-code-number').value=Number(selectedLesson().slice(5));
@@ -136,6 +137,27 @@
      el('lesson-code-invalid').hidden=true;
      el('lesson-code-invalid-raw').textContent='';
    }
+ }
+ async function saveGithubToken(){
+   const input=el('lesson-code-github-key');
+   const token=input.value.trim();
+   if(!token){feedback('lesson-code-feedback','Cole um token GitHub antes de salvar.');return;}
+   if(!await askTramaConfirm('Proteger token GitHub',
+      'Salvar o token criptografado por DPAPI fora do cofre? Nenhuma nota ou banco SQLite será alterado.',
+      'Salvar protegido'))return;
+   const answer=await call('save_github_token',token,true);
+   input.value='';
+   feedback('lesson-code-feedback',answer?.message||'Falha ao salvar token.');
+   if(answer?.ok)el('lesson-code-token').textContent='Token GitHub protegido por DPAPI no Windows.';
+ }
+ async function removeGithubToken(){
+   if(!await askTramaConfirm('Remover token GitHub protegido',
+      'Apagar o token salvo no Windows? Uma variável TRAMA_GITHUB_TOKEN, se existir, não será alterada.',
+      'Remover token'))return;
+   const answer=await call('remove_github_token',true);
+   el('lesson-code-github-key').value='';
+   feedback('lesson-code-feedback',answer?.message||'Falha ao remover token.');
+   if(answer?.ok)el('lesson-code-token').textContent='Token DPAPI removido; consulte novamente para conferir outras credenciais.';
  }
  async function removeEditor(){
    const nr=Number(el('lesson-code-number').value);
@@ -258,6 +280,8 @@
  el('btn-lesson-code').addEventListener('click',openEditor);
  el('lesson-code-load').addEventListener('click',loadLesson);
  el('lesson-code-remove').addEventListener('click',removeEditor);
+ el('lesson-code-save-token').addEventListener('click',saveGithubToken);
+ el('lesson-code-remove-token').addEventListener('click',removeGithubToken);
  el('lesson-code-add-teacher').addEventListener('click',()=>row('professor'));
  el('lesson-code-add-student').addEventListener('click',()=>row('dupla'));
  el('lesson-code-close').addEventListener('click',()=>hide(editor));

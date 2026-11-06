@@ -31,6 +31,40 @@ DUPLA = {
 }
 
 
+class GithubTokenDPAITests(unittest.TestCase):
+    def test_encrypted_storage_is_not_ai_env_or_vault_data(self):
+        from knowledge_bridge.secure_keys import KeyVault
+        with tempfile.TemporaryDirectory() as folder:
+            protected = Path(folder) / "safe" / "api_keys.dpapi.json"
+            vault = Path(folder) / "vault"
+            vault.mkdir()
+            key = "ghp_exampletoken_1234567890"
+            def crypt(payload, encrypt):
+                if encrypt:
+                    return b"dpapi-sealed:" + payload[::-1]
+                if not payload.startswith(b"dpapi-sealed:"):
+                    raise ValueError("bad ciphertext")
+                return payload[len(b"dpapi-sealed:"):][::-1]
+            with patch("knowledge_bridge.secure_keys._crypt", side_effect=crypt):
+                store = KeyVault(protected)
+                store.save("github", key)
+                self.assertTrue(store.github_configured())
+                self.assertEqual(store.get_github_token(), key)
+                self.assertNotIn("github", store.configured())
+                self.assertNotIn("TRAMA_GITHUB_TOKEN", store.get_env())
+                self.assertNotIn(key, protected.read_text(encoding="utf-8"))
+                self.assertFalse(list(vault.rglob("*.dpapi.json")))
+                store.remove("github")
+                self.assertEqual(store.get_github_token(), "")
+
+    def test_mapping_falls_back_to_secure_token_without_returning_secret(self):
+        from knowledge_bridge.github_mapping import GithubMapping
+        with patch.dict("os.environ", {"TRAMA_GITHUB_TOKEN": ""}):
+            with patch("knowledge_bridge.secure_keys.KeyVault.get_github_token", return_value="github-private-token"):
+                self.assertEqual(GithubMapping().token, "github-private-token")
+                self.assertEqual(GithubMapping(token="").token, "")
+
+
 class LessonCodeConfigTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
