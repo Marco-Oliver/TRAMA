@@ -41,3 +41,4 @@ jobs:
           node --check knowledge_bridge/ui/app.js
           node --check knowledge_bridge/ui/library.js
           node --check knowledge_bridge/ui/teacher.js
+          node --check knowledge_bridge/ui/lesson_code.js

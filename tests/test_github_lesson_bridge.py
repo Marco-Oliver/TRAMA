@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from knowledge_bridge.bridge import Bridge, PublicApi
+from knowledge_bridge.bridge import Bridge, PublicApi, load_local_ui
 from knowledge_bridge.github_code import GithubCodeReader
 from knowledge_bridge.github_cache import GithubCache
 from knowledge_bridge.github_mapping import GithubMapping
@@ -98,6 +98,12 @@ class LessonCodeBridgeTests(unittest.TestCase):
                                 for call in built.call_args_list))
         self.assertFalse((self.vault/"github-cache").exists())
         self.assertTrue((self.cache_home/"github-cache").exists())
+
+    def test_ui_exposes_readonly_github_controls(self):
+        html=load_local_ui()
+        for ident in ("lesson-code-inspect-list","lesson-code-inspect-read",
+                      "lesson-code-inspect-compare","lesson-code-inspect-diff"):
+            self.assertIn('id="'+ident+'"',html)
 
     def test_without_frozen_sha_warns_and_never_calls_network(self):
         self.assertTrue(self.bridge.unfreeze_lesson_code(

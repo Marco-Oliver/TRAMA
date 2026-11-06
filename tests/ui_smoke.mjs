@@ -52,6 +52,8 @@ const makeBridge=({notes})=>{
       digest:'d'.repeat(64)}}:{},
     datas:[{aula:'Aula-001',data:'2026-10-28',origem_data:'contexto_classroom'}]}),
   lesson_code_changes: async(lesson,data)=>({ok:true,invalidated:[]}),
+  lesson_code_files: async()=>({ok:true,sha:'a'.repeat(40),folder:'V3',
+    files:[{path:'V3/file<img src=x onerror="window.__tramaXss=true">.cs',size:150}],truncated:false}),
   save_lesson_code: async (lesson,data,confirmed,replace_invalid=false,expected_digest='')=>{
     (window.__tramaCodeSaves??=[]).push({lesson,data,confirmed,replace_invalid,expected_digest});
     return {ok:confirmed,message:'Cadastro GitHub salvo.'};
@@ -230,6 +232,11 @@ try{
     if(data.lesson!=='Aula-001'||!data.confirmed||data.data.professor.length!==2||
        data.data.dupla.length!==1||data.data.dupla[0].professor_id!=='map-abcdef1234567890')
       throw Error('GitHub 2 professor + 1 student form did not submit exact data: '+JSON.stringify(data));
+    // The SHA-bound explorer renders returned untrusted paths only as text.
+    await page.locator('#lesson-code-inspect-list').click();
+    await page.locator('#lesson-code-inspect-output').getByText('V3/file<img', {exact:false}).waitFor();
+    if(await page.evaluate(()=>window.__tramaXss===true))
+      throw Error('GitHub file listing injected markup into the UI');
     // No empty registration may be saved implicitly.
     await page.locator('#lesson-code-number').fill('3');
     await page.locator('#lesson-code-load').click();

@@ -177,6 +177,23 @@ Alexandre Rech — professor"></textarea></label>
   <button type="button" id="lesson-code-add-teacher">+ Repositório do professor</button>
   <h3>Repositórios da dupla</h3><div id="code-students"></div>
   <button type="button" id="lesson-code-add-student">+ Repositório da dupla</button>
+  <section id="lesson-code-inspector" aria-label="Consulta de código por SHA congelado">
+    <h3>Explorar código congelado</h3>
+    <p>Somente as revisões fixadas para esta aula podem ser consultadas. Sem SHA, congele a versão desta aula primeiro.</p>
+    <div class="context-fields">
+     <label>Repositório cadastrado <select id="lesson-code-inspect-repo"></select></label>
+     <label>Arquivo relativo ao repositório <input id="lesson-code-inspect-file" maxlength="300" placeholder="V3/src/Program.cs"></label>
+     <label>Pasta anterior (mesmo SHA) <input id="lesson-code-inspect-before" maxlength="300" value="V2"></label>
+     <label>Pasta atual (mesmo SHA) <input id="lesson-code-inspect-after" maxlength="300" value="V3"></label>
+    </div>
+    <div class="dialog-actions">
+     <button type="button" id="lesson-code-inspect-list">Listar arquivos</button>
+     <button type="button" id="lesson-code-inspect-read">Ler arquivo</button>
+     <button type="button" id="lesson-code-inspect-compare">Comparar commits</button>
+     <button type="button" id="lesson-code-inspect-diff">Diff de pastas</button>
+    </div>
+    <pre id="lesson-code-inspect-output" role="status" aria-live="polite"></pre>
+  </section>
   <div class="dialog-actions"><span id="lesson-code-feedback" role="status" aria-live="polite"></span>
    <button type="button" id="lesson-code-map-open">Assistente de mapeamento em lote</button>
    <button type="button" id="lesson-code-remove" disabled>Remover cadastro GitHub da aula</button>

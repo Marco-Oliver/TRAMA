@@ -127,6 +127,7 @@
    const current=result?.aulas?.[lesson]||{professor:[],dupla:[]};
    for(const item of current.professor||[])row('professor',item);
    for(const item of current.dupla||[])row('dupla',item);
+   refreshInspectTargets(current);
    const errors=(result.erros||[]).filter(x=>x.startsWith(lesson+'.')||x.startsWith(lesson+':'));
    feedback('lesson-code-feedback',errors.length?
      errors.slice(0,8).join('; ')+' — revise antes de substituir este cadastro.':
@@ -173,6 +174,7 @@
                        !!loadedInvalid,loadedInvalid?.digest||'',invalidated.length>0);
    feedback('lesson-code-feedback',out?.message||'Falha ao salvar.');
    if(out?.ok){
+     refreshInspectTargets(data);
      notify('Cadastro GitHub salvo.');
      loadedInvalid=null;
      el('lesson-code-invalid').hidden=true;
@@ -217,8 +219,66 @@
      loadedInvalid=null;el('lesson-code-invalid').hidden=true;
      el('lesson-code-invalid-raw').textContent='';
      el('lesson-code-remove').disabled=true;
+     refreshInspectTargets({professor:[],dupla:[]});
+     el('lesson-code-inspect-output').textContent='';
      notify('Cadastro GitHub removido.');
    }
+ }
+ function refreshInspectTargets(data){
+   const target=el('lesson-code-inspect-repo');
+   const previous=target.value;
+   target.replaceChildren();
+   for(const role of ['professor','dupla']){
+     for(const item of data[role]||[]){
+       const option=document.createElement('option');
+       option.value=role+':'+item.id;
+       option.textContent=(role==='professor'?'Professor':'Dupla')+' — '+item.rotulo;
+       target.append(option);
+     }
+   }
+   if([...target.options].some(opt=>opt.value===previous))target.value=previous;
+   if(!target.options.length){
+     const empty=document.createElement('option');
+     empty.value='';empty.textContent='Nenhum repositório cadastrado';
+     target.append(empty);
+   }
+ }
+ async function inspectFrozen(kind){
+   const output=el('lesson-code-inspect-output');
+   const selected=el('lesson-code-inspect-repo').value;
+   if(!loadedLesson||!selected.includes(':')){
+     output.textContent='Salve um repositório para esta aula antes de consultar código.';return;
+   }
+   const [role,id]=selected.split(':');
+   const path=el('lesson-code-inspect-file').value.trim();
+   const before=el('lesson-code-inspect-before').value.trim();
+   const after=el('lesson-code-inspect-after').value.trim();
+   if(kind==='read'&&!path){output.textContent='Informe o caminho de um arquivo da lista.';return;}
+   if(kind==='diff'&&(!before||!after)){
+     output.textContent='Informe as duas pastas para comparar.';return;
+   }
+   output.textContent='Consultando exclusivamente o SHA congelado desta aula...';
+   let result;
+   if(kind==='list')result=await call('lesson_code_files',loadedLesson,role,id);
+   else if(kind==='read')result=await call('lesson_code_read_file',loadedLesson,role,id,path);
+   else if(kind==='compare')result=await call('lesson_code_compare',loadedLesson,role,id);
+   else result=await call('lesson_code_diff_folders',loadedLesson,role,id,before,after);
+   if(!result?.ok){
+     output.textContent=result?.message||'Falha na consulta. Congele a versão desta aula.';
+     return;
+   }
+   const prefix='SHA: '+(result.sha||result.head||'').slice(0,12)+'\n';
+   let detail='';
+   if(kind==='list'){
+     detail=(result.files||[]).slice(0,100).map(file=>file.path+' ('+file.size+' bytes)').join('\n');
+   }else if(kind==='read'){
+     detail=(result.content||'').slice(0,20000);
+     if((result.content||'').length>20000)detail+='\n[Exibição limitada; conteúdo original não alterado]';
+   }else{
+     detail=(result.files||[]).map(file=>file.path+'\n'+(file.patch||'(diff textual indisponível)')).join('\n\n');
+   }
+   output.textContent=prefix+(detail||'Nenhum resultado para esta consulta.')+
+     (result.truncated?'\n[Resultado limitado para segurança/desempenho]':'');
  }
  function displayPreview(data){
    preview=data;const rate=data.taxa||{};
@@ -323,6 +383,10 @@
  el('lesson-code-remove').addEventListener('click',removeEditor);
  el('lesson-code-save-token').addEventListener('click',saveGithubToken);
  el('lesson-code-remove-token').addEventListener('click',removeGithubToken);
+ el('lesson-code-inspect-list').addEventListener('click',()=>inspectFrozen('list'));
+ el('lesson-code-inspect-read').addEventListener('click',()=>inspectFrozen('read'));
+ el('lesson-code-inspect-compare').addEventListener('click',()=>inspectFrozen('compare'));
+ el('lesson-code-inspect-diff').addEventListener('click',()=>inspectFrozen('diff'));
  el('lesson-code-add-teacher').addEventListener('click',()=>row('professor'));
  el('lesson-code-add-student').addEventListener('click',()=>row('dupla'));
  el('lesson-code-close').addEventListener('click',()=>hide(editor));
