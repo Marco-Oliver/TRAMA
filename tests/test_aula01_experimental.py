@@ -311,6 +311,85 @@ class Aula01ExperimentalTests(unittest.TestCase):
         self.assertTrue(any("texto fora" in warning for warning in result["pending"]))
         self.assertIn("Aula-001",result["lessons"])
 
+    def test_links_first_then_classroom_post_preserves_both_and_no_ai_reprocess(self):
+        self.app.ai = ContextRecorder()
+        row = self.source("A01 - V01 - Boas-vindas.txt",
+                          "00:01 Alexandre Rech apresentou a turma.\n")
+        self.app.process(lesson_filter="Aula-001")
+        calls_before = self.app.ai.attempts
+        organizer = AutoOrganizer(self.app)
+        links = (
+            "Aula 01 | V01 - Boas-vindas | https://drive.google.com/file/d/A/view\n"
+            "Aula 01 | V02 - Apresentação | https://drive.google.com/file/d/B/view"
+        )
+        first = organizer.run([], links, authorized=True)
+        self.assertFalse(first["processed"])
+        self.assertEqual(self.app.ai.attempts, calls_before)
+        link_rows = self.app.store.sources("classroom")
+        self.assertEqual(len(link_rows), 1)
+        link_path = self.vault / link_rows[0]["stored_path"]
+        links_before = link_path.read_bytes()
+
+        second = organizer.run([], POST_ONE, authorized=True)
+        self.assertEqual(second["classroom_posts"], 1)
+        self.assertFalse(second["processed"])
+        self.assertEqual(self.app.ai.attempts, calls_before)
+        self.assertEqual(link_path.read_bytes(), links_before)
+        contexts = [json.loads((self.vault / row["stored_path"]).read_text(
+            encoding="utf-8")) for row in self.app.store.sources("classroom")]
+        self.assertEqual(len(contexts), 2)
+        self.assertEqual(len([c for c in contexts if c.get("origem") ==
+            "Post do Classroom colado pelo usuário (não verificado automaticamente)"]), 1)
+        self.assertEqual(sum(len(c.get("videos", [])) for c in contexts), 2)
+        self.assertTrue(any("Alexandre Rech" == c.get("autor") for c in contexts))
+        self.assertTrue(any("reprocesse a aula" in p.lower()
+                            for p in second["pending"]))
+        self.assertEqual(self.app.store.analysis(
+            row["id"], row["digest"])["resumo"],
+            "A professora apresentou o início do curso.")
+
+    def test_same_post_id_changed_content_is_not_overwritten(self):
+        organizer = AutoOrganizer(self.app)
+        self.assertEqual(organizer.run([], POST_ONE, authorized=True)["classroom_posts"], 1)
+        original = self.app.store.sources("classroom")[0]
+        path = self.vault / original["stored_path"]
+        saved = path.read_bytes()
+        changed = POST_ONE.replace("Conversar sobre o curso",
+                                   "Reescrever a programação completa do curso")
+        result = organizer.run([], changed, authorized=True)
+        self.assertEqual(result["classroom_posts"], 0)
+        self.assertEqual(path.read_bytes(), saved)
+        self.assertEqual(len(self.app.store.sources("classroom")), 1)
+        self.assertTrue(any("não sobrescrito" in p for p in result["pending"]))
+
+    def test_general_and_batch_processing_do_not_invalidate_old_short_names(self):
+        self.app.ai = ContextRecorder()
+        rows = []
+        for n in (1, 2, 3):
+            row = self.source(
+                f"A{n:02d} - V01 - Boas-vindas.txt",
+                f"00:01 Rash foi mencionado na apresentação {n}.\n")
+            self.analysis(row, kind="apresentacao",
+                          pessoas=[{"nome": "Rash", "papel": "apresentador"}],
+                          nomes_a_conferir=["Rash"])
+            rows.append(row)
+
+        self.app.process()
+        self.assertEqual(self.app.ai.attempts, 0)
+        self.app.process(lesson_filters={"Aula-001", "Aula-002"})
+        self.assertEqual(self.app.ai.attempts, 0)
+        for row in rows:
+            self.assertEqual(self.app.store.analysis(
+                row["id"], row["digest"])["pessoas"][0]["nome"], "Rash")
+
+        self.app.process(lesson_filter="Aula-001")
+        self.assertEqual(self.app.ai.attempts, 1)
+        self.assertEqual(len(self.app.ai.calls), 1)
+        self.assertIn("A01 - V01", self.app.ai.calls[0][1])
+        for row in rows[1:]:
+            self.assertEqual(self.app.store.analysis(
+                row["id"], row["digest"])["pessoas"][0]["nome"], "Rash")
+
     def test_context_already_exists_does_not_overwrite_or_reprocess(self):
         self.app.ai=ContextRecorder()
         row=self.source("A01 - V02 - Apresentação Alexandre Rech.txt",
@@ -328,8 +407,11 @@ class Aula01ExperimentalTests(unittest.TestCase):
         self.assertFalse(result["processed"])
         self.assertEqual(original.read_bytes(),saved)
         self.assertTrue(any("reprocesse a aula" in x.lower() for x in result["pending"]))
-        self.assertFalse(any("Post do Classroom colado" in x["label"]
-                             for x in self.app.store.sources("classroom")))
+        contexts = [json.loads((self.vault / src["stored_path"]).read_text(
+            encoding="utf-8")) for src in self.app.store.sources("classroom")]
+        self.assertEqual(len(contexts), 2)
+        self.assertTrue(any(c.get("origem", "").startswith("Post do Classroom colado")
+                            for c in contexts))
 
     def test_untrusted_prompt_injection_is_data_not_an_instruction(self):
         self.app.ai=ContextRecorder()
