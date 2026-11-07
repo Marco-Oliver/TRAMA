@@ -355,15 +355,15 @@ class Application:
             # local operation; merely importing Classroom context never schedules
             # a reprocess of previously imported transcripts.
             nontechnical = previous.get("tipo_aula") in ("apresentacao", "organizacional", "atividade")
+            person_rows = previous.get("pessoas")
             short_person = any(
                 isinstance(person, dict) and
                 len(str(person.get("nome", "")).strip().split()) == 1
-                for person in previous.get("pessoas", [])
-                if isinstance(previous.get("pessoas"), list)
+                for person in (person_rows if isinstance(person_rows, list) else [])
             )
             affected = (nontechnical or short_person or
                         bool(previous.get("nomes_a_conferir")) or
-                        bool(re.search(r"\\bapresenta(?:ção|cao|ções|coes)\\b",
+                        bool(re.search(r"\bapresenta(?:ção|cao|ções|coes)\b",
                                        src["label"], re.I)))
             rules_revision = "aula01-grounding-v1" if affected else ""
             # The revision participates in the per-source chunk key, preventing
