@@ -361,17 +361,21 @@ class Application:
                 len(str(person.get("nome", "")).strip().split()) == 1
                 for person in (person_rows if isinstance(person_rows, list) else [])
             )
-            affected = (nontechnical or short_person or
+            affected = (bool(previous.get("_rules_revision")) or
+                        nontechnical or short_person or
                         bool(previous.get("nomes_a_conferir")) or
                         bool(re.search(r"\bapresenta(?:ção|cao|ções|coes)\b",
                                        src["label"], re.I)))
             rules_revision = "aula01-grounding-v1" if affected else ""
             # The revision participates in the per-source chunk key, preventing
             # reuse of stale extraction for only the affected recordings.
-            segment_digest = hashlib.sha256(
-                (src['digest'] + context_digest +
-                 f":chunk-layout:v2:{CHUNK_MAX_CHARS}:{rules_revision}").encode()
-            ).hexdigest()
+            cache_identity = (src['digest'] + context_digest +
+                              f":chunk-layout:v2:{CHUNK_MAX_CHARS}")
+            # Preserve the existing digest for unaffected recordings; only
+            # impacted sources get a new chunk-cache namespace.
+            if rules_revision:
+                cache_identity += ":" + rules_revision
+            segment_digest = hashlib.sha256(cache_identity.encode()).hexdigest()
             was_done = bool(done and done['digest'] == src['digest'] and
                 previous.get('_context_revision') == context_digest and
                 previous.get('_rules_revision', '') == rules_revision)
