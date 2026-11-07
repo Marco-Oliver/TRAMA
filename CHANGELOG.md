@@ -1,5 +1,23 @@
 # Histórico de versões do TRAMA
 
+## [2.2.1] — 2026-11-06
+
+### Corrigido — Aula 01
+- **Apresentador ausente:** usar o título da gravação e a autoria do Classroom como pistas, incluindo uma pessoa somente quando o nome completo também consta na transcrição ou no contexto disponível.
+- **Nomes distorcidos:** evitar criar perfis para variantes fonéticas como `Rash`; registrar `Rash (possivelmente Rech)` em **Nomes e apelidos para conferir**.
+- **Aulas não técnicas:** conceitos de apresentações, organização e atividades ficam na nota da própria aula, sem gerar páginas em `01-Meu-Conhecimento` nem marcos no mapa da evolução.
+- **Avisos fora de contexto:** exibir hipóteses vinculadas a SHA apenas quando existe versão congelada; não exigir congelamento do GitHub se a aula não possui repositório associado.
+- **Post do Classroom no lote:** aceitar conteúdo colado como contexto local (título, autor, agenda, conteúdo, atividades, links e gravações), separar múltiplos posts e tratar o texto como dado não confiável, sem utilizar IA para interpretar a colagem.
+
+### Corrigido — auditoria da PR #8
+- **Posts após links:** um contexto já criado somente por URLs não impede salvar o post colado da mesma aula. Fontes permanecem separadas; o mesmo post alterado e arquivos com edição manual não são sobrescritos silenciosamente.
+- **Cache e cota da IA:** processamento geral e lotes preservam análises antigas válidas, incluindo aulas com nomes curtos; revisão de regras só invalida a aula solicitada explicitamente (`lesson_filter` ou `force=True`). Importar contexto não reprocessa automaticamente aulas anteriores.
+
+### Instalação e atualização
+- Mantidos o AppId, a pasta de instalação e os dados locais da versão 2.2.0.
+- Release com `TRAMA_Setup.exe` e `SHA256SUMS.txt`, mediante testes sintéticos de instalação, reinstalação e upgrade no Windows.
+- Reprocessar uma aula antiga para incorporar as novas regras requer ação explícita; recomenda-se backup local antes de reprocessar.
+
 ## [2.2.0] — 2026-11-06
 
 ### Adicionado
