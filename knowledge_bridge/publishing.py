@@ -667,13 +667,14 @@ class Publisher:
         for item in contexts:
             for line in str(item.get('pessoas','')).splitlines():
                 name = re.split(r"\s+[—–-]\s+|\s*:\s*",line.strip(),maxsplit=1)[0].strip()
-                if 3<=len(name)<=80:
+                if 3<=len(name)<=80 and not self._nonperson_name(name):
                     link=f"[[{slug(name)}|{_escape_md(name)}]]"
                     if link not in person_links:person_links.append(link)
         for src, note in recordings:
             a=self.db.analysis(src['id'],src['digest']) or {}
             raw=(self.vault/src['stored_path']).read_text(encoding='utf-8-sig',errors='replace')
             normalized=self._person_key(raw)
+            accepted_person_names=[]
             for person in a.get('pessoas',[]):
                 if not isinstance(person,dict):
                     continue
@@ -683,10 +684,14 @@ class Publisher:
                 name,warning=self._reviewable_person_name(name,lesson)
                 if warning:
                     continue  # transcription alias gets review, not a person page
+                accepted_person_names.append(name)
                 link=f"[[{slug(name)}|{_escape_md(name)}]]"
                 if link not in person_links:person_links.append(link)
             presenter=self._grounded_presenter(src,raw)
-            if presenter:
+            if presenter and not any(
+                    self._person_key(presenter)==self._person_key(person_name) or
+                    self._same_full_name_spelling(presenter,person_name)
+                    for person_name in accepted_person_names):
                 link=f"[[{slug(presenter)}|{_escape_md(presenter)}]]"
                 if link not in person_links:person_links.append(link)
             if a.get("tipo_aula") not in ("apresentacao","organizacional","atividade"):
@@ -703,6 +708,8 @@ class Publisher:
         for src, _note in recordings:
             analysis=self.db.analysis(src['id'],src['digest']) or {}
             for person in analysis.get('pessoas',[]):
+                if not isinstance(person,dict) or self._nonperson_name(person.get('nome','')):
+                    continue
                 _canonical,possible=self._reviewable_person_name(person.get('nome',''),lesson)
                 if possible and possible not in variant_warnings:variant_warnings.append(possible)
         if variant_warnings:
