@@ -350,6 +350,14 @@ class Application:
             context_digest = hashlib.sha256(json.dumps(context_payload,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
             done = self.store.conn.execute("SELECT digest,payload FROM analyses WHERE source_id=?",(src["id"],)).fetchone()
             previous = json.loads(done["payload"]) if done and done["digest"] == src["digest"] else {}
+            explicit_reprocess = force or lesson_filter is not None
+            # A general run (including the batch-only lesson_filters) must
+            # never refresh existing analyses merely because the Classroom
+            # context or extraction rules have changed. Only new/changed TXT
+            # sources are processed automatically.
+            if previous and not explicit_reprocess:
+                self.log(f"Já analisada, ignorando: {src['label']}")
+                continue
             # Only invalidate old AI outputs affected by the presenter, short-name
             # and nontechnical classification corrections. Publishing remains a
             # local operation; merely importing Classroom context never schedules
@@ -361,11 +369,12 @@ class Application:
                 len(str(person.get("nome", "")).strip().split()) == 1
                 for person in (person_rows if isinstance(person_rows, list) else [])
             )
-            affected = (bool(previous.get("_rules_revision")) or
-                        nontechnical or short_person or
-                        bool(previous.get("nomes_a_conferir")) or
-                        bool(re.search(r"\bapresenta(?:ção|cao|ções|coes)\b",
-                                       src["label"], re.I)))
+            affected = explicit_reprocess and (
+                bool(previous.get("_rules_revision")) or
+                nontechnical or short_person or
+                bool(previous.get("nomes_a_conferir")) or
+                bool(re.search(r"\bapresenta(?:ção|cao|ções|coes)\b",
+                               src["label"], re.I)))
             # Fresh/changed sources have no reusable legacy analysis: tag
             # them on the first pass so a later nontechnical classification
             # does not trigger a redundant second AI request.
