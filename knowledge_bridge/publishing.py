@@ -667,26 +667,31 @@ class Publisher:
         for item in contexts:
             for line in str(item.get('pessoas','')).splitlines():
                 name = re.split(r"\s+[—–-]\s+|\s*:\s*",line.strip(),maxsplit=1)[0].strip()
-                if 3<=len(name)<=80:
+                if 3<=len(name)<=80 and not self._nonperson_name(name):
                     link=f"[[{slug(name)}|{_escape_md(name)}]]"
                     if link not in person_links:person_links.append(link)
         for src, note in recordings:
             a=self.db.analysis(src['id'],src['digest']) or {}
             raw=(self.vault/src['stored_path']).read_text(encoding='utf-8-sig',errors='replace')
             normalized=self._person_key(raw)
+            accepted_person_names=[]
             for person in a.get('pessoas',[]):
                 if not isinstance(person,dict):
                     continue
                 name=str(person.get('nome','')).strip()
-                if len(name)<3 or self._person_key(name) not in normalized:
+                if len(name)<3 or self._nonperson_name(name) or self._person_key(name) not in normalized:
                     continue
                 name,warning=self._reviewable_person_name(name,lesson)
                 if warning:
                     continue  # transcription alias gets review, not a person page
+                accepted_person_names.append(name)
                 link=f"[[{slug(name)}|{_escape_md(name)}]]"
                 if link not in person_links:person_links.append(link)
             presenter=self._grounded_presenter(src,raw)
-            if presenter:
+            if presenter and not any(
+                    self._person_key(presenter)==self._person_key(person_name) or
+                    self._same_full_name_spelling(presenter,person_name)
+                    for person_name in accepted_person_names):
                 link=f"[[{slug(presenter)}|{_escape_md(presenter)}]]"
                 if link not in person_links:person_links.append(link)
             if a.get("tipo_aula") not in ("apresentacao","organizacional","atividade"):
@@ -703,6 +708,8 @@ class Publisher:
         for src, _note in recordings:
             analysis=self.db.analysis(src['id'],src['digest']) or {}
             for person in analysis.get('pessoas',[]):
+                if not isinstance(person,dict) or self._nonperson_name(person.get('nome','')):
+                    continue
                 _canonical,possible=self._reviewable_person_name(person.get('nome',''),lesson)
                 if possible and possible not in variant_warnings:variant_warnings.append(possible)
         if variant_warnings:
@@ -897,11 +904,40 @@ class Publisher:
                     continue
         return names
 
+    @staticmethod
+    def _nonperson_name(value: str) -> bool:
+        """Recognize institution/organization-shaped tokens conservatively.
+
+        A mixed-capitals abbreviation (FCVest, NDD) is not a person's name.
+        Unknown terms stay reviewable, not automatically resolved.
+        """
+        name=str(value).strip()
+        if re.match(r"^(?:universidade|faculdade|instituto|col[eé]gio|escola|fundação)\b",
+                    name, re.I):
+            return True
+        return bool(re.fullmatch(r"[A-Z]{2,}[A-Za-z]{1,24}|[A-Z]{3,12}",name))
+
+    @classmethod
+    def _same_full_name_spelling(cls, spoken: str, known: str) -> bool:
+        """Equivalent surname plus near-identical first name: no alias warning.
+
+        This compares spelling only, and never asserts two human identities
+        are the same person.
+        """
+        a=cls._person_key(spoken).split()
+        b=cls._person_key(known).split()
+        return bool(len(a)>=2 and len(a)==len(b) and a[1:]==b[1:]
+                    and a[0][0]==b[0][0]
+                    and SequenceMatcher(None,a[0],b[0]).ratio()>=0.85)
+
     def _reviewable_person_name(self, name: str, lesson: str) -> tuple[str,str]:
-        canonical=self._classroom_person_names(lesson)
-        for candidate in canonical:
+        for candidate in self._classroom_person_names(lesson):
             if self._person_key(candidate)==self._person_key(name):
                 return candidate,''
+            if self._same_full_name_spelling(name,candidate):
+                # "Thiago Santini" versus "Tiago Santini" is an orthographic
+                # uncertainty, not "Thiago (possibly Santini)".
+                return name,''
             if self._possible_spelling_variant(name,candidate):
                 surname=candidate.split()[-1]
                 return candidate,(f'{name} (possivelmente {surname}) — '
@@ -909,16 +945,43 @@ class Publisher:
                                    'nenhuma pessoa nova foi criada.')
         return name,''
 
-    def _grounded_presenter(self, src, raw: str) -> str:
+    def _presenter_evidence(self, src, raw: str) -> tuple[str,str]:
+        """Require more than a filename to suggest the presenter.
+
+        A full name in the TXT/Classroom is stronger evidence. A self-intro
+        using only a matching first name is reported as tentative, preserving
+        the title's spelling and explicitly flagging the unverified surname.
+        """
         candidate=self._title_person(Path(src["label"]).stem)
         if not candidate:
-            return ""
+            return "", ""
         context="\n".join(
             str(item.get(field,"")) for _,item in self._context_rows(src["lesson"] or "")
             for field in ("autor","pessoas","descricao","atividades"))
         key=self._person_key(candidate)
-        return candidate if key and (
-            key in self._person_key(raw) or key in self._person_key(context)) else ""
+        source_text=self._person_key(raw)
+        if key and (key in source_text or key in self._person_key(context)):
+            return candidate,"nome completo encontrado no TXT ou Classroom"
+        tokens=key.split()
+        if len(tokens)<2:
+            return "", ""
+        surname=re.escape(tokens[-1])
+        for match in re.finditer(r"\b([a-z]{3,35})\s+"+surname+r"\b",source_text):
+            first=match.group(1)
+            if (first[0]==tokens[0][0] and
+                    SequenceMatcher(None,first,tokens[0]).ratio()>=0.85):
+                return candidate,"nome com pequena divergência de grafia no TXT; conferir"
+        for match in re.finditer(
+                r"\b(?:eu\s+sou(?:\s+o)?|me\s+chamo|meu\s+nome\s+e)"
+                r"\s+([a-z]{3,35})\b",source_text):
+            first=match.group(1)
+            if (first[0]==tokens[0][0] and
+                    SequenceMatcher(None,first,tokens[0]).ratio()>=0.85):
+                return candidate,"apenas primeiro nome na apresentação; confirmar sobrenome"
+        return "", ""
+
+    def _grounded_presenter(self, src, raw: str) -> str:
+        return self._presenter_evidence(src,raw)[0]
 
     def _person_warnings(self, src, analysis, raw: str) -> list[str]:
         warnings=[]
@@ -926,12 +989,14 @@ class Publisher:
             if not isinstance(item,dict):
                 continue
             name=str(item.get("nome","")).strip()
-            if name and self._person_key(name) in self._person_key(raw):
+            if (name and not self._nonperson_name(name) and
+                    self._person_key(name) in self._person_key(raw)):
                 _,warning=self._reviewable_person_name(name,src["lesson"] or "")
                 if warning and warning not in warnings:
                     warnings.append(warning)
         for value in analysis.get("nomes_a_conferir",[]):
             if (not isinstance(value,str) or not value.strip() or
+                    self._nonperson_name(value) or
                     self._person_key(value) not in self._person_key(raw)):
                 continue
             _,warning=self._reviewable_person_name(value,src["lesson"] or "")
@@ -939,6 +1004,20 @@ class Publisher:
             if chosen not in warnings:
                 warnings.append(chosen)
         return warnings
+
+    def _uncertain_nonperson_terms(self, analysis, raw: str) -> list[str]:
+        """Keep organization-like references outside human name lists."""
+        names=[str(item.get("nome","")).strip()
+               for item in analysis.get("pessoas",[]) if isinstance(item,dict)]
+        names += [name for name in analysis.get("nomes_a_conferir",[])
+                  if isinstance(name,str)]
+        result=[]
+        for name in names:
+            if (self._nonperson_name(name) and
+                    self._person_key(name) in self._person_key(raw) and
+                    name not in result):
+                result.append(name)
+        return result[:10]
 
     def transcript_note(self, src, analysis: dict | None):
         lesson = src["lesson"] or "Aulas-Sem-Numero"
@@ -1108,6 +1187,11 @@ class Publisher:
                 body += ["", "## Nomes e apelidos para conferir", "",
                          "> Grafias semelhantes são pistas para revisão, não confirmação de identidade."] + [
                              f"- {_escape_md(x)}" for x in person_warnings]
+            uncertain_terms=self._uncertain_nonperson_terms(analysis,text)
+            if uncertain_terms:
+                body += ["", "## Termos, siglas e instituições para conferir", "",
+                         "> Grafia e natureza a confirmar na fonte; não são perfis de pessoas."] + [
+                             f"- {_escape_md(x)}" for x in uncertain_terms]
         else:
             body += ["*Pendente: resumo ainda não gerado por IA. Se você configurou uma API gratuita em Ajustes, clique em Gerar Resumos para processar as transcrições pendentes. Os trechos abaixo não são síntese.*", "",
                      "## Trechos da transcrição para consulta (não são síntese)"]
@@ -1121,19 +1205,21 @@ class Publisher:
                 if not isinstance(person,dict):
                     continue
                 name=str(person.get("nome","")).strip()
-                if not name:
+                if not name or self._nonperson_name(name):
                     continue
                 _,variant=self._reviewable_person_name(name,lesson)
                 if variant:
-                    continue  # variants appear only under Nomes a conferir
+                    continue  # variant only appears in name review
                 people_entries.append(person)
-            presenter=self._grounded_presenter(src,text)
-            if presenter and not any(self._person_key(p.get("nome","")) ==
-                                     self._person_key(presenter) for p in people_entries):
+            presenter,evidence=self._presenter_evidence(src,text)
+            if presenter and not any(
+                    self._person_key(p.get("nome","")) == self._person_key(presenter)
+                    or self._same_full_name_spelling(p.get("nome",""),presenter)
+                    for p in people_entries):
                 people_entries.append({
                     "nome":presenter,
                     "papel":"possível apresentador; confirmar função",
-                    "informacao":"Pista do título e nome encontrado no TXT ou no contexto do Classroom",
+                    "informacao":"Pista do título: "+evidence,
                     "tempo":""})
             for key, heading in (("pessoas", "Pessoas citadas e papéis"),
                                  ("atividades", "Atividades mencionadas"),
@@ -1393,7 +1479,8 @@ class Publisher:
                     name = str(person.get("nome", "")).strip()
                     # Must be literal in the TXT; do not promote spelling
                     # variants to a new person or claim identity with a known name.
-                    if not 3 <= len(name) <= 130 or self._person_key(name) not in normalized:
+                    if (not 3 <= len(name) <= 130 or self._nonperson_name(name)
+                            or self._person_key(name) not in normalized):
                         continue
                     canonical,warning=self._reviewable_person_name(name,src['lesson'] or '')
                     if warning:
@@ -1401,11 +1488,14 @@ class Publisher:
                     person_map[slug(canonical)].append(
                         (canonical, src, note, person, 'transcrição (extração IA, revisar)'))
                     names_seen.add(self._person_key(canonical))
-                presenter=self._grounded_presenter(src,original)
-                if presenter and self._person_key(presenter) not in names_seen:
+                presenter,evidence=self._presenter_evidence(src,original)
+                if presenter and not any(
+                        self._person_key(presenter)==spoken or
+                        self._same_full_name_spelling(presenter,spoken)
+                        for spoken in names_seen):
                     person_map[slug(presenter)].append(
                         (presenter, src, note, {
-                            'informacao':'Nome corroborado no TXT ou contexto; possível apresentador pelo título'},
+                            'informacao':'Pista do título: '+evidence},
                          'título da gravação + TXT/contexto (função a confirmar)'))
             for m in modules:
                 module_map[m].append((src,note,analysis))
@@ -1432,7 +1522,7 @@ class Publisher:
                     if not line:
                         continue
                     name = re.split(r"\s+[—–-]\s+|\s*:\s*", line, maxsplit=1)[0].strip()
-                    if not 3 <= len(name) <= 80:
+                    if not 3 <= len(name) <= 80 or self._nonperson_name(name):
                         continue
                     person_map[slug(name)].append((name, src, lesson_to_note.get(src["lesson"], f"02-Minhas-Aulas/{src['lesson']}/00-contexto-{slug(src['lesson'])}.md"),
                                                    {"informacao": line}, "Classroom (registrado pelo usuário)"))

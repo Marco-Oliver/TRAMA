@@ -11,7 +11,7 @@ import re
 import urllib.request
 import urllib.error
 
-VERSION = '2.2.1'
+VERSION = '2.2.2'
 _REPO = re.compile(r'^[A-Za-z0-9_.-]{1,80}/[A-Za-z0-9_.-]{1,100}$')
 _VERSION = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:[-+][A-Za-z0-9.-]+)?$')
 

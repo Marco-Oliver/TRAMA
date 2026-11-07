@@ -13,6 +13,14 @@ MAX_PASTE = 20000
 HEADER = re.compile(r"^\s*Aula\s*0*(\d{1,4})\s*[-–—]\s*(.{2,220})$", re.I)
 RECORDING = re.compile(r"^\s*A0*(\d{1,4})\s*[-–—]\s*V0*(\d{1,3})\s*[-–—]\s*(.{2,160})$", re.I)
 AGENDA = re.compile(r"^\s*Agenda\s*:\s*(\d{2}/\d{2}/\d{4})\b", re.I)
+# Classroom's localized date header ("2 de mar.") is display metadata.
+# It is not the scheduled lesson date; keep Agenda: dd/mm/yyyy authoritative.
+DATE_HEADER = re.compile(
+    r"^\d{1,2}\s+de\s+(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço|co)?|"
+    r"abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|"
+    r"set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)\.?"
+    r"(?:\s+de\s+\d{4})?$", re.I)
+
 SECTION = re.compile(r"^\s*(Conte[uú]do|Atividades)\s*:\s*(.*)$", re.I)
 OMIT = re.compile(r"^\s*(?:V[ií]deo|Coment[aá]rios da turma)\s*:?\s*$", re.I)
 EDITED = re.compile(r"\s*\(\s*editado\s*:\s*[^)]{0,100}\)", re.I)
@@ -106,6 +114,8 @@ def parse_import_paste(value: str) -> dict:
             continue
         if comments:
             continue
+        if DATE_HEADER.fullmatch(line):
+            continue  # Display timestamp; do not override Agenda or author.
         if current is not None and awaiting_author and AUTHOR.fullmatch(line):
             current["autor"] = line[:100]
             awaiting_author = False

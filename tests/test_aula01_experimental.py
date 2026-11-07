@@ -208,6 +208,84 @@ class Aula01ExperimentalTests(unittest.TestCase):
         self.assertIn("[[alexandre-rech|Alexandre Rech]]", overview)
         self.assertIn("Alexandre Rech", note)
 
+    def test_presenter_with_first_name_in_intro_is_tentative_without_ai(self):
+        row=self.source(
+            "A01 - V01 - Apresentação Tiago Santini.txt",
+            "00:03 Olá turma, eu sou o Thiago, comecei a programar em 2019.\n")
+        self.analysis(row, pessoas=[])
+        self.app.publisher.rebuild()
+        overview,note=self.notes()
+        self.assertIn("[[tiago-santini|Tiago Santini]]",overview)
+        self.assertIn("## Pessoas citadas e papéis",note)
+        self.assertIn("Tiago Santini",note)
+        self.assertIn("apenas primeiro nome na apresentação; confirmar sobrenome",note)
+        self.assertNotIn("possivelmente Santini",note)
+        self.assertTrue((self.vault/"01-Meu-Conhecimento"/"Pessoas"/
+                         "tiago-santini.md").exists())
+
+    def test_full_spoken_thiago_and_title_tiago_do_not_duplicate_identity(self):
+        row=self.source(
+            "A01 - V01 - Apresentação Tiago Santini.txt",
+            "00:01 Olá, eu sou o Thiago Santini. Bem-vindos ao curso.\n")
+        self.analysis(row, pessoas=[{"nome":"Thiago Santini",
+                                    "papel":"Professor","informacao":"Apresentação"}],
+                      nomes_a_conferir=["Thiago Santini"])
+        self.app.publisher.rebuild()
+        overview,note=self.notes()
+        self.assertIn("[[thiago-santini|Thiago Santini]]",overview)
+        self.assertNotIn("possivelmente Santini",overview+note)
+        self.assertEqual(overview.count("[[thiago-santini|Thiago Santini]]"),1)
+        self.assertFalse((self.vault/"01-Meu-Conhecimento"/"Pessoas"/
+                          "tiago-santini.md").exists())
+        self.assertTrue((self.vault/"01-Meu-Conhecimento"/"Pessoas"/
+                         "thiago-santini.md").exists())
+        self.assertEqual(note.count("- Thiago Santini —"),1)
+
+    def test_organization_acronym_is_a_term_not_a_person(self):
+        row=self.source(
+            "A01 - V01 - Apresentação Tiago Santini.txt",
+            "00:01 Eu estudei na FCVest, uma faculdade da região.\n")
+        self.analysis(row,pessoas=[{"nome":"FCVest","papel":"professor"}],
+                      nomes_a_conferir=["FCVest"])
+        self.app.publisher.rebuild()
+        overview,note=self.notes()
+        self.assertIn("## Termos, siglas e instituições para conferir",note)
+        self.assertIn("- FCVest",note)
+        self.assertNotIn("## Nomes e apelidos para conferir\n\n"
+                         "> Grafias semelhantes são pistas para revisão, não confirmação de identidade.\n"
+                         "- FCVest",note)
+        self.assertFalse((self.vault/"01-Meu-Conhecimento"/"Pessoas"/
+                          "fcvest.md").exists())
+        self.assertNotIn("[[fcvest|FCVest]]",overview)
+
+    def test_local_rebuild_with_old_analysis_does_not_call_ai(self):
+        row=self.source(
+            "A01 - V01 - Apresentação Tiago Santini.txt",
+            "00:01 Eu sou o Thiago, estudei na FCVest.\n")
+        self.analysis(row,nomes_a_conferir=["FCVest"])
+        self.app.ai=ContextRecorder()
+        self.app.publisher.rebuild()
+        self.assertEqual(self.app.ai.attempts,0)
+        self.app.process()
+        self.assertEqual(self.app.ai.attempts,0)
+        overview,note=self.notes()
+        self.assertIn("Tiago Santini",overview)
+        self.assertIn("Termos, siglas e instituições",note)
+
+    def test_classroom_short_localized_date_is_not_an_error_or_agenda(self):
+        for pasted in (
+            POST_ONE.replace("Alexandre Rech\nAgenda:",
+                             "2 de mar.\nAlexandre Rech\nAgenda:"),
+            POST_ONE.replace("Alexandre Rech\nAgenda:",
+                             "Alexandre Rech\n2 de mar.\nAgenda:"),
+        ):
+            with self.subTest(order=pasted.index("2 de mar.")):
+                result=parse_import_paste(pasted)
+                self.assertEqual(result["warnings"],[])
+                self.assertEqual(result["posts"][0]["autor"],"Alexandre Rech")
+                self.assertEqual(result["posts"][0]["data"],"02/03/2026")
+                self.assertNotIn("2 de mar.",result["posts"][0]["descricao"])
+
     def test_rash_does_not_create_a_person_or_assume_identity(self):
         row = self.source(
             "A01 - V02 - Apresentação Alexandre Rech.txt",
