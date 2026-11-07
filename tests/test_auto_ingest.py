@@ -186,16 +186,20 @@ class AutoIngestTests(TestCase):
         self.assertEqual(seen[0][2]['x-goog-api-key'],'SECRET')
 
 
-    def test_later_classroom_print_refreshes_analyzed_transcript(self):
+    def test_later_classroom_print_does_not_reprocess_old_lesson_without_user_action(self):
         ai=FakeAI();self.app.ai=ai
         a=AutoOrganizer(self.app)
         a.run([self.transcript()],'',authorized=True)
         self.assertEqual(ai.texts,1)
         a.run([self.image()],'',authorized=True)
-        self.assertEqual(ai.texts,2)
+        self.assertEqual(ai.texts,1)
         self.assertEqual(ai.visual,1)
-        # Same context / transcript is cached on a third run.
+        # Same context/transcript remains cached even when resent.
         a.run([self.transcript(),self.image()],'',authorized=True)
+        self.assertEqual(ai.texts,1)
+        # An explicit user-triggered processing is allowed to use the new
+        # Classroom context and invalidate this lesson's digest only.
+        self.app.process(lesson_filter='Aula-001')
         self.assertEqual(ai.texts,2)
 
     def test_github_link_is_given_to_repository_indexer(self):

@@ -4,6 +4,7 @@ on:
     branches:
       - feat/v2.2.0-automation-foundations
       - feat/github-por-aula
+      - fix/v220-classroom-people-nontechnical-a01
   workflow_dispatch:
 
 permissions:

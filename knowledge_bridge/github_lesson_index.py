@@ -208,6 +208,8 @@ class LessonRepositoryIndex:
             self.for_lesson(lesson)
         count, frozen, _ = self._status[lesson]
         if count == 0:
+            if not self._global and not self.store.auto_repositories():
+                return ""  # No GitHub linked; no irrelevant freeze warning.
             if lesson in self._auto_none:
                 return "Aula sem relação verificável com as versões do código."
             if lesson in self.notices:
