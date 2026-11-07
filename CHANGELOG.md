@@ -1,5 +1,18 @@
 # Histórico de versões do TRAMA
 
+## [2.2.2] — 2026-11-07
+
+### Corrigido — Aula 01 e organização de pessoas
+- **Apresentadores em gravações:** o nome no título é apenas uma pista. Se a transcrição contém uma autoapresentação com primeiro nome compatível, a nota apresenta o possível palestrante explicitando que o sobrenome ainda precisa de conferência; nome completo confirmado no TXT ou no contexto mantém evidência mais forte. Um título isolado não cria pessoas.
+- **Grafias similares de nomes completos:** divergências pequenas como `Tiago Santini` / `Thiago Santini`, com o mesmo sobrenome, deixam de gerar avisos redundantes como `Thiago Santini (possivelmente Santini)`. Nenhum nome é corrigido no TXT original.
+- **Perfis de pessoas e siglas:** siglas e nomes com formato institucional (ex.: `FCVest`) passam à seção de termos, siglas e instituições para conferir; não viram páginas de pessoas. Preserva a hipótese legítima `Rash (possivelmente Rech)` sem criar identidade nova.
+- **Classroom colado:** linhas de cabeçalho de data abreviada, como `2 de mar.`, são ignoradas sem avisos ou mudança da data `Agenda: dd/mm/aaaa`.
+
+### Compatibilidade e segurança
+- Correções locais nas notas; não consomem chamadas extras de IA e não reprocessam automaticamente aulas já analisadas. O texto original, contextos do Classroom, preferências e chaves locais são preservados.
+- Testes sintéticos cobrem nomes completos/abreviados, ausência de evidências, siglas, importação de datas e preservação do cache.
+- Instalação e atualização com `TRAMA_Setup.exe` e `SHA256SUMS.txt`. Smokes Windows de instalação/reinstalação e upgrade das versões oficiais 2.1.0, 2.2.0 e 2.2.1 usam somente dados fictícios.
+
 ## [2.2.1] — 2026-11-06
 
 ### Corrigido — Aula 01
