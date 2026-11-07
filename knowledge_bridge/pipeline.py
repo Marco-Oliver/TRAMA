@@ -369,16 +369,18 @@ class Application:
             # Fresh/changed sources have no reusable legacy analysis: tag
             # them on the first pass so a later nontechnical classification
             # does not trigger a redundant second AI request.
-            new_source_revision = not done or done["digest"] != src["digest"]
+            legacy_identity = (src['digest'] + context_digest +
+                               f":chunk-layout:v2:{CHUNK_MAX_CHARS}")
+            legacy_digest = hashlib.sha256(legacy_identity.encode()).hexdigest()
+            # An older chunk can be revalidated locally without another AI
+            # request, even when this source has no complete analysis yet.
+            legacy_cached = self.store.get_chunk(src["id"], legacy_digest, 0)
+            new_source_revision = (
+                (not done or done["digest"] != src["digest"]) and
+                legacy_cached is None)
             rules_revision = "aula01-grounding-v1" if affected or new_source_revision else ""
-            # The revision participates in the per-source chunk key, preventing
-            # reuse of stale extraction for only the affected recordings.
-            cache_identity = (src['digest'] + context_digest +
-                              f":chunk-layout:v2:{CHUNK_MAX_CHARS}")
-            # Preserve the existing digest for unaffected recordings; only
-            # impacted sources get a new chunk-cache namespace.
-            if rules_revision:
-                cache_identity += ":" + rules_revision
+            # Preserve historical hashes for unaffected/locally reusable chunks.
+            cache_identity = legacy_identity + (":" + rules_revision if rules_revision else "")
             segment_digest = hashlib.sha256(cache_identity.encode()).hexdigest()
             was_done = bool(done and done['digest'] == src['digest'] and
                 previous.get('_context_revision') == context_digest and
