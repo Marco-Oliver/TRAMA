@@ -17,6 +17,7 @@ from defusedxml import ElementTree
 
 from .ai import BudgetStopped, NoFreeProvider, ProviderError
 from .classroom import lesson_number, normalize_context
+from .classroom_paste import parse_import_paste
 from .content import lesson_identity
 from .pipeline import Application, MATERIAL_EXTS, TEXT_EXTS, VIDEO_EXTS
 
@@ -148,7 +149,15 @@ class AutoOrganizer:
              'data':data.get('data',''),'descricao':data.get('descricao',''),
              'pessoas':data.get('pessoas',''),'atividades':data.get('atividades',''),
              'links':data.get('links',''),'videos':data.get('videos','')})
-        payload['origem']='Extração por IA (hipótese, não verificada): '+reason
+        if data.get('_pasted_classroom'):
+            payload['origem']='Post do Classroom colado pelo usuário (não verificado automaticamente)'
+            payload['autor']=str(data.get('autor',''))[:100]
+            payload['gravacoes']=[str(x)[:160] for x in data.get('gravacoes',[])[:30]
+                                   if isinstance(x,str) and re.fullmatch(
+                                       r'A\d+\s*[-–—]\s*V\d+\s*[-–—]\s*.+',
+                                       x.strip(),re.I)]
+        else:
+            payload['origem']='Extração por IA (hipótese, não verificada): '+reason
         payload['arquivo_fonte']=source['stored_path'] if source is not None else ''
         if data.get('incertezas'):
             payload['incertezas']=data['incertezas'][:2000]
@@ -202,10 +211,15 @@ class AutoOrganizer:
         if not authorized:
             raise ValueError('Confirme antes de enviar prints/transcrições à IA externa.')
         if len(paths)>MAX_FILES:raise ValueError('Selecione até 100 arquivos por lote.')
-        links=parse_link_rows(links_text)
+        pasted=parse_import_paste(links_text)
+        links=pasted['links']
         outcome={'files':0,'visual_analyzed':0,'lessons':[], 'repositories':0,
-                 'pending':[], 'errors':[], 'calls':0, 'processed':False}
-        seen_lessons=set()
+                 'classroom_posts':0,
+                 'pending':list(pasted['warnings']), 'errors':[], 'calls':0, 'processed':False}
+        seen_lessons={post['aula'] for post in pasted['posts']}
+        fresh_lessons=set()
+        previous_context_lessons={
+            row['lesson'] for row in self.app.store.sources('classroom') if row['lesson']}
         candidates=[]
         for path in paths:
             path=Path(path).expanduser()
@@ -226,6 +240,8 @@ class AutoOrganizer:
                 if not source:continue
                 if source['lesson']:
                     seen_lessons.add(source['lesson'])
+                    if changed and source['kind']=='transcript':
+                        fresh_lessons.add(source['lesson'])
                 if path.suffix.lower() in MATERIAL_EXTS:
                     candidates.append((path,source))
             except (OSError,ValueError) as exc:
@@ -287,6 +303,33 @@ class AutoOrganizer:
                 self._save_extracted(source,lesson,extracted,reason=path.name)
             except (ValueError,OSError) as exc:
                 outcome['pending'].append(path.name+': contexto incompleto ('+str(exc)[:100]+').')
+        # Posts pasted from Classroom are local, untrusted sources. Do not
+        # overwrite ANY context already saved before this batch, including
+        # the user's manually entered Contexto +.
+        for post in pasted['posts']:
+            lesson=post['aula']
+            if lesson in previous_context_lessons:
+                outcome['pending'].append(
+                    lesson+': Contexto já existente; não sobrescrito. '
+                    'Reprocesse a aula para a IA usar o contexto atualizado.')
+                continue
+            post_id=hashlib.sha256(
+                ('classroom-post:'+lesson+':'+post['titulo'].casefold()).encode()
+            ).hexdigest()[:24]
+            synthetic={'id':post_id,'stored_path':'(post do Classroom colado)'}
+            data={**post,'_pasted_classroom':True}
+            try:
+                if self._save_extracted(synthetic,lesson,data,reason='Post copiado do Classroom'):
+                    outcome['classroom_posts']+=1
+                else:
+                    outcome['pending'].append(lesson+': contexto já existente ou protegido; não sobrescrito.')
+            except (ValueError,OSError) as exc:
+                outcome['pending'].append(lesson+': post do Classroom para revisão ('+str(exc)[:100]+').')
+            if lesson not in fresh_lessons and any(
+                    row['lesson']==lesson for row in self.app.store.sources('transcript')):
+                outcome['pending'].append(
+                    lesson+': Contexto registrado sem alterar a análise anterior; '
+                    'reprocesse a aula para a IA usar.')
         # Links sem identificação são vinculados somente se existir uma aula única.
         by_lesson={}
         for entry in links:
@@ -334,11 +377,15 @@ class AutoOrganizer:
         automatic = self.app.assign_github_versions()
         outcome['automatic_versions'] = automatic.get('mapped', 0)
         outcome['pending'].extend(automatic.get('pending', []))
-        if self.app.store.sources('transcript') and self.app.ai.active():
-            # process() já reutiliza transcrições anteriores e compara repositórios.
-            self.app.process();outcome['processed']=True
+        if fresh_lessons and self.app.ai.active():
+            # Never silently reprocess existing older lessons due to a pasted
+            # Classroom post or unrelated new source. Explicit reprocess is a
+            # separate user action.
+            self.app.process(lesson_filters=fresh_lessons)
+            outcome['processed']=True
             waiting=[row['label'] for row in self.app.store.sources('transcript')
-                     if row['status'] in ('WAITING_FOR_PROVIDER','NEEDS_REVIEW')]
+                     if row['lesson'] in fresh_lessons and
+                     row['status'] in ('WAITING_FOR_PROVIDER','NEEDS_REVIEW')]
             if waiting:
                 outcome['pending'].append(f'{len(waiting)} transcrição(ões) pendente(s) por limite da IA ou falha: '+', '.join(waiting[:3]))
         else:

@@ -82,6 +82,10 @@ def make_atlas(store, max_concepts: int = 2000,
         result = store.analysis(src['id'], src['digest'])
         if not result:
             continue
+        # A presentation/organizational event is not a technical learning
+        # milestone even if the model listed words under 'conceitos'.
+        if result.get('tipo_aula') in ('apresentacao','organizacional','atividade'):
+            continue
         original = (store.vault / src['stored_path']).resolve()
         if not original.is_relative_to(store.vault) or not original.is_file():
             continue

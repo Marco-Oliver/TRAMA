@@ -369,6 +369,8 @@ class Publisher:
         candidates = {}
         for src in self.db.sources("transcript"):
             analysis = self.db.analysis(src["id"], src["digest"]) or {}
+            if analysis.get("tipo_aula") in ("apresentacao","organizacional","atividade"):
+                continue  # nontechnical concept names never get a page
             for concept in analysis.get("conceitos", []):
                 if not isinstance(concept, dict):
                     continue
@@ -525,6 +527,10 @@ class Publisher:
                 if isinstance(value, str) and value.strip():
                     body.extend(["", f"**{heading}:**"])
                     body.extend(f"> {_escape_md(line)}" for line in value.splitlines() if line.strip())
+            if item.get("gravacoes"):
+                body.extend(["", "**Gravações mencionadas no post (sem URL):**"])
+                body.extend(f"- {_escape_md(str(title))}"
+                            for title in item["gravacoes"][:30] if isinstance(title,str))
             recordings = item.get("videos", [])
             if recordings:
                 body.extend(["", "**Gravações (somente links, sem cópia do vídeo):**"])
@@ -644,6 +650,9 @@ class Publisher:
                     rows.extend(['', '**Descrição/agenda publicada:**', ''])
                     for line in str(item['descricao']).splitlines()[:100]:
                         if line.strip():rows.append(f"> {_escape_md(line)}")
+                if item.get('gravacoes'):
+                    rows.extend(['', '**Gravações citadas no Classroom (sem URL confirmada):**', ''])
+                    rows.extend(f"- {_escape_md(str(name))}" for name in item['gravacoes'][:30])
                 if item.get('atividades'):
                     rows.extend(['', '**Atividades registradas na publicação (não necessariamente realizadas):**',''])
                     for line in str(item['atividades']).splitlines()[:40]:
@@ -666,16 +675,28 @@ class Publisher:
             raw=(self.vault/src['stored_path']).read_text(encoding='utf-8-sig',errors='replace')
             normalized=self._person_key(raw)
             for person in a.get('pessoas',[]):
-                name=person.get('nome','').strip()
-                if len(name)<3 or self._person_key(name) not in normalized:continue
-                name,warning=self._reviewable_person_name(name, lesson)
+                if not isinstance(person,dict):
+                    continue
+                name=str(person.get('nome','')).strip()
+                if len(name)<3 or self._person_key(name) not in normalized:
+                    continue
+                name,warning=self._reviewable_person_name(name,lesson)
+                if warning:
+                    continue  # transcription alias gets review, not a person page
                 link=f"[[{slug(name)}|{_escape_md(name)}]]"
                 if link not in person_links:person_links.append(link)
-            for c in a.get('conceitos',[]):
-                name=c.get('nome','').strip()
-                if not name:continue
-                link=f"[[{self._concept_target(name)}|{_escape_md(name)}]]"
-                if link not in concept_links:concept_links.append(link)
+            presenter=self._grounded_presenter(src,raw)
+            if presenter:
+                link=f"[[{slug(presenter)}|{_escape_md(presenter)}]]"
+                if link not in person_links:person_links.append(link)
+            if a.get("tipo_aula") not in ("apresentacao","organizacional","atividade"):
+                for c in a.get('conceitos',[]):
+                    if not isinstance(c,dict):
+                        continue
+                    name=str(c.get('nome','')).strip()
+                    if not name:continue
+                    link=f"[[{self._concept_target(name)}|{_escape_md(name)}]]"
+                    if link not in concept_links:concept_links.append(link)
         rows.extend([f'- {link} — confira o contexto na fonte' for link in person_links]
                     if person_links else ['*Ainda sem pessoas associadas com evidência.*'])
         variant_warnings=[]
@@ -797,26 +818,82 @@ class Publisher:
         return unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode().casefold().strip()
 
     @staticmethod
-    def _possible_spelling_variant(name: str, authoritative: str) -> bool:
-        """Suggest a spelling conflict; NEVER certify two identities as equal.
+    def _title_person(value: str) -> str:
+        """An explicit presenter-like title is a clue, not proof of identity."""
+        matched = re.search(
+            r"\bApresenta(?:ção|cao|ção\s+de)\s+"
+            r"([A-ZÀ-Ý][A-Za-zÀ-ÿ'-]{2,35}"
+            r"(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ'-]{2,35}){1,3})\b",
+            str(value))
+        return matched.group(1).strip() if matched else ""
 
-        Used to keep suspicious near-identical names in one reviewable context
-        rather than creating two definite person profiles from automatic text.
+    @staticmethod
+    def _possible_spelling_variant(name: str, authoritative: str) -> bool:
+        """Flag plausible ASR aliases, never merge two human identities.
+
+        Includes surname-only cues, e.g. Rash/Rech; no assertion that two
+        individuals are the same person or that the audio confirms an alias.
         """
-        def parts(raw):
-            normalized=unicodedata.normalize('NFKD',raw).encode('ascii','ignore').decode().casefold()
-            return [p for p in re.split(r'\W+', normalized) if p]
-        a,b=parts(name),parts(authoritative)
-        if len(a)<2 or len(b)<2 or a==b or a[-1]!=b[-1] or min(len(a[0]),len(b[0]))<4:
+        def terms(value):
+            plain = unicodedata.normalize("NFKD", value).encode(
+                "ascii", "ignore").decode().casefold()
+            return re.findall(r"[a-z]{3,35}", plain)
+        def phoneme(value):
+            for before,after in (("sch","x"),("sh","x"),("ch","x"),
+                                 ("ph","f"),("ck","k"),("ss","s"),
+                                 ("z","s")):
+                value=value.replace(before,after)
+            return value
+        a,b=terms(name),terms(authoritative)
+        if not a or not b or a==b:
             return False
-        return SequenceMatcher(None,a[0],b[0]).ratio()>=0.86
+        # A surname may be said alone. Require a matching initial AND an
+        # unusually similar consonant signature before calling it ambiguous.
+        for spoken in a:
+            for known in b:
+                if spoken==known or spoken[0]!=known[0]:
+                    continue
+                x,y=phoneme(spoken),phoneme(known)
+                skeleton_x=re.sub(r"[aeiou]", "", x)
+                skeleton_y=re.sub(r"[aeiou]", "", y)
+                if (len(skeleton_x)>=2 and skeleton_x==skeleton_y and
+                        SequenceMatcher(None,x,y).ratio()>=0.60):
+                    return True
+                if (min(len(spoken),len(known))>=4 and
+                        SequenceMatcher(None,x,y).ratio()>=0.81):
+                    return True
+        return False
 
     def _classroom_person_names(self, lesson: str) -> list[str]:
         names=[]
+        def add(name):
+            name=str(name).strip()
+            if (3<=len(name)<=80 and name not in names and
+                    not re.search(r"[<>\\]",name)):
+                names.append(name)
         for _, item in self._context_rows(lesson):
+            add(item.get("autor",""))
+            add(self._title_person(item.get("titulo","")))
             for line in str(item.get('pessoas','')).splitlines()[:25]:
-                name=re.split(r'\s+[—–-]\s+|\s*:\s*', line.strip().lstrip('-• '),maxsplit=1)[0].strip()
-                if 3 <= len(name) <=80 and name not in names:names.append(name)
+                add(re.split(r"\s+[—–-]\s+|\s*:\s*", line.strip().lstrip('-• '),
+                             maxsplit=1)[0])
+        for src in self.db.sources("transcript"):
+            if src["lesson"]==lesson:
+                add(self._title_person(Path(src["label"]).stem))
+        # Read only the heading of existing local person notes as secondary
+        # clues; never turn an arbitrary path or external name into identity.
+        people_dir=self.vault/"01-Meu-Conhecimento"/"Pessoas"
+        if people_dir.is_dir():
+            for path in sorted(people_dir.glob("*.md"))[:200]:
+                if path.is_symlink() or not path.is_file():
+                    continue
+                try:
+                    for line in path.read_text(encoding="utf-8").splitlines()[:16]:
+                        if line.startswith("# "):
+                            add(line[2:])
+                            break
+                except (OSError,UnicodeError):
+                    continue
         return names
 
     def _reviewable_person_name(self, name: str, lesson: str) -> tuple[str,str]:
@@ -825,9 +902,41 @@ class Publisher:
             if self._person_key(candidate)==self._person_key(name):
                 return candidate,''
             if self._possible_spelling_variant(name,candidate):
-                return candidate,(f'Possível variante de grafia: a transcrição menciona "{name}", '
-                                   f'mas o Classroom registra "{candidate}". Confirmar se é a mesma pessoa.')
+                surname=candidate.split()[-1]
+                return candidate,(f'{name} (possivelmente {surname}) — '
+                                   'grafia/identidade a conferir na gravação; '
+                                   'nenhuma pessoa nova foi criada.')
         return name,''
+
+    def _grounded_presenter(self, src, raw: str) -> str:
+        candidate=self._title_person(Path(src["label"]).stem)
+        if not candidate:
+            return ""
+        context="\n".join(
+            str(item.get(field,"")) for _,item in self._context_rows(src["lesson"] or "")
+            for field in ("autor","pessoas","descricao","atividades"))
+        key=self._person_key(candidate)
+        return candidate if key and (
+            key in self._person_key(raw) or key in self._person_key(context)) else ""
+
+    def _person_warnings(self, src, analysis, raw: str) -> list[str]:
+        warnings=[]
+        for item in analysis.get("pessoas",[]):
+            if not isinstance(item,dict):
+                continue
+            name=str(item.get("nome","")).strip()
+            if name and self._person_key(name) in self._person_key(raw):
+                _,warning=self._reviewable_person_name(name,src["lesson"] or "")
+                if warning and warning not in warnings:
+                    warnings.append(warning)
+        for value in analysis.get("nomes_a_conferir",[]):
+            if not isinstance(value,str) or not value.strip():
+                continue
+            _,warning=self._reviewable_person_name(value,src["lesson"] or "")
+            chosen=warning or value
+            if chosen not in warnings:
+                warnings.append(chosen)
+        return warnings
 
     def transcript_note(self, src, analysis: dict | None):
         lesson = src["lesson"] or "Aulas-Sem-Numero"
@@ -835,6 +944,8 @@ class Publisher:
         fname = f"{slug(Path(src['label']).stem, 52)}-{src['id'][:7]}.md"
         rel = f"02-Minhas-Aulas/{lesson}/{fname}"
         concepts = analysis.get("conceitos",[]) if analysis else []
+        lesson_kind=analysis.get("tipo_aula","indefinida") if analysis else "indefinida"
+        nontechnical = lesson_kind in ("apresentacao","organizacional","atividade")
         raw = self.vault / src["stored_path"]
         text = raw.read_text(encoding="utf-8-sig",errors="replace")
         concept_links_by_target = {}
@@ -843,15 +954,16 @@ class Publisher:
                 continue
             name = str(c.get("nome", "")).strip()
             if name:
+                if nontechnical:
+                    # Keep the concept in the lesson as ordinary text.
+                    concept_links_by_target[concept_slug(name)] = _escape_md(name)
+                    continue
                 canonical = self._corrected_concept(src, name, c, text)
                 target = self._concept_target(name, src["id"])
                 concept_links_by_target[target] = (
                     f"[[{target}|{_escape_md(canonical)}]]")
         concept_links = list(concept_links_by_target.values())
-        # Uma apresentação ou encontro administrativo não vira falsamente um
-        # módulo técnico só porque alguém mencionou a palavra 'programação'.
-        lesson_kind=analysis.get('tipo_aula','indefinida') if analysis else 'indefinida'
-        modules = [] if lesson_kind in ('apresentacao','organizacional','atividade') and not concepts else [
+        modules = [] if nontechnical else [
             m for m in guess_modules(text[:24000] + ' ' + ' '.join(c.get('nome','') for c in concepts))
             if m != 'A-Classificar']
         times = evidence_excerpt(text)
@@ -967,9 +1079,14 @@ class Publisher:
                 seen_questions.add(key)
                 question_entries.append((q, self._code_guess(lesson, q)))
             if question_entries:
+                frozen = any(repo.get("frozen") for repo,_ in self._lesson_repos(lesson))
+                note_text = ("Hipóteses encontradas no SHA congelado; "
+                             "o áudio não foi conferido e o TXT original foi preservado."
+                             if frozen else
+                             "Dúvidas levantadas pela IA; conferir na gravação. "
+                             "O TXT original foi preservado.")
                 body += ["", "## Dúvidas técnicas e passagens inaudíveis", "",
-                         "> Hipóteses encontradas no SHA congelado; o áudio "
-                         "não foi conferido e o TXT original foi preservado."]
+                         "> "+note_text]
                 current = {row["question"].casefold():row for row in
                            self.db.uncertainties_for_source(src["id"])
                            if row["source_digest"]==src["digest"]}
@@ -984,10 +1101,11 @@ class Publisher:
                         for evidence in evidences:
                             if evidence and evidence.get("kind") == "codigo_congelado":
                                 body.extend(code_evidence_lines(evidence))
-            if analysis.get("nomes_a_conferir"):
+            person_warnings=self._person_warnings(src,analysis,text)
+            if person_warnings:
                 body += ["", "## Nomes e apelidos para conferir", "",
-                         "> Nomes próprios ou apelidos podem estar corretos; não são dúvidas de programação."] + [
-                             f"- {_escape_md(x)}" for x in analysis.get("nomes_a_conferir",[])]
+                         "> Grafias semelhantes são pistas para revisão, não confirmação de identidade."] + [
+                             f"- {_escape_md(x)}" for x in person_warnings]
         else:
             body += ["*Pendente: resumo ainda não gerado por IA. Se você configurou uma API gratuita em Ajustes, clique em Gerar Resumos para processar as transcrições pendentes. Os trechos abaixo não são síntese.*", "",
                      "## Trechos da transcrição para consulta (não são síntese)"]
@@ -996,12 +1114,32 @@ class Publisher:
             body += ["", "## Tipo e contexto do encontro", "",
                      f"- Classificação sugerida pela IA: **{_escape_md(analysis.get('tipo_aula', 'indefinida'))}**.",
                      "- Uma apresentação não comprova aprendizado de programação."]
+            people_entries=[]
+            for person in analysis.get("pessoas",[]):
+                if not isinstance(person,dict):
+                    continue
+                name=str(person.get("nome","")).strip()
+                if not name:
+                    continue
+                _,variant=self._reviewable_person_name(name,lesson)
+                if variant:
+                    continue  # variants appear only under Nomes a conferir
+                people_entries.append(person)
+            presenter=self._grounded_presenter(src,text)
+            if presenter and not any(self._person_key(p.get("nome","")) ==
+                                     self._person_key(presenter) for p in people_entries):
+                people_entries.append({
+                    "nome":presenter,
+                    "papel":"possível apresentador; confirmar função",
+                    "informacao":"Pista do título e nome encontrado no TXT ou no contexto do Classroom",
+                    "tempo":""})
             for key, heading in (("pessoas", "Pessoas citadas e papéis"),
                                  ("atividades", "Atividades mencionadas"),
                                  ("ferramentas", "Ferramentas e recursos citados"),
                                  ("marcos", "Metodologia, decisões e contexto")):
                 entries=[]
-                for entry in analysis.get(key, [])[:16]:
+                for entry in (people_entries if key == "pessoas"
+                              else analysis.get(key, []))[:16]:
                     if not isinstance(entry, dict):
                         continue
                     parts = [entry.get(name, "") for name in ("nome", "papel", "informacao", "descricao", "contexto") if entry.get(name)]
@@ -1246,30 +1384,42 @@ class Publisher:
             if analysis:
                 original = (self.vault / src["stored_path"]).read_text(encoding="utf-8-sig", errors="replace")
                 normalized = self._person_key(original)
+                names_seen=set()
                 for person in analysis.get("pessoas", []):
-                    name = person.get("nome", "").strip()
-                    # Must be a literal mention somewhere in the original transcript,
-                    # not just a fabricated name returned by an LLM.
+                    if not isinstance(person,dict):
+                        continue
+                    name = str(person.get("nome", "")).strip()
+                    # Must be literal in the TXT; do not promote spelling
+                    # variants to a new person or claim identity with a known name.
                     if not 3 <= len(name) <= 130 or self._person_key(name) not in normalized:
                         continue
                     canonical,warning=self._reviewable_person_name(name,src['lesson'] or '')
-                    details={**person}
                     if warning:
-                        details['informacao']=(str(person.get('informacao',''))+' — '+warning).strip(' —')
-                    person_map[slug(canonical)].append((canonical, src, note, details,
-                        'transcrição (nome a conferir)' if warning else 'transcrição (extração IA, revisar)'))
+                        continue  # only Nomes e apelidos para conferir
+                    person_map[slug(canonical)].append(
+                        (canonical, src, note, person, 'transcrição (extração IA, revisar)'))
+                    names_seen.add(self._person_key(canonical))
+                presenter=self._grounded_presenter(src,original)
+                if presenter and self._person_key(presenter) not in names_seen:
+                    person_map[slug(presenter)].append(
+                        (presenter, src, note, {
+                            'informacao':'Nome corroborado no TXT ou contexto; possível apresentador pelo título'},
+                         'título da gravação + TXT/contexto (função a confirmar)'))
             for m in modules:
                 module_map[m].append((src,note,analysis))
             if not analysis:
                 continue
-            for concept in concepts:
-                name = concept.get("nome", "").strip()
-                if name:
-                    canonical = self._corrected_concept(src, name, concept, original)
-                    stored_concept = ({**concept, "nome_original":name}
-                                      if canonical != name else concept)
-                    concept_map[concept_slug(canonical)].append(
-                        (canonical,src,note,stored_concept))
+            if analysis.get("tipo_aula") not in ("apresentacao","organizacional","atividade"):
+                for concept in concepts:
+                    if not isinstance(concept,dict):
+                        continue
+                    name = str(concept.get("nome", "")).strip()
+                    if name:
+                        canonical = self._corrected_concept(src, name, concept, original)
+                        stored_concept = ({**concept, "nome_original":name}
+                                          if canonical != name else concept)
+                        concept_map[concept_slug(canonical)].append(
+                            (canonical,src,note,stored_concept))
         # Classroom can contain names as explicitly user-provided text, even if there is
         # no transcript or code. It is a separate kind of evidence and must be labeled.
         lesson_to_note = {s['lesson']: n for s, n in lesson_links if s['lesson']}
