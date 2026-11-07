@@ -678,7 +678,7 @@ class Publisher:
                 if not isinstance(person,dict):
                     continue
                 name=str(person.get('nome','')).strip()
-                if len(name)<3 or self._person_key(name) not in normalized:
+                if len(name)<3 or self._nonperson_name(name) or self._person_key(name) not in normalized:
                     continue
                 name,warning=self._reviewable_person_name(name,lesson)
                 if warning:
@@ -1180,6 +1180,11 @@ class Publisher:
                 body += ["", "## Nomes e apelidos para conferir", "",
                          "> Grafias semelhantes são pistas para revisão, não confirmação de identidade."] + [
                              f"- {_escape_md(x)}" for x in person_warnings]
+            uncertain_terms=self._uncertain_nonperson_terms(analysis,text)
+            if uncertain_terms:
+                body += ["", "## Termos, siglas e instituições para conferir", "",
+                         "> Grafia e natureza a confirmar na fonte; não são perfis de pessoas."] + [
+                             f"- {_escape_md(x)}" for x in uncertain_terms]
         else:
             body += ["*Pendente: resumo ainda não gerado por IA. Se você configurou uma API gratuita em Ajustes, clique em Gerar Resumos para processar as transcrições pendentes. Os trechos abaixo não são síntese.*", "",
                      "## Trechos da transcrição para consulta (não são síntese)"]
@@ -1193,19 +1198,19 @@ class Publisher:
                 if not isinstance(person,dict):
                     continue
                 name=str(person.get("nome","")).strip()
-                if not name:
+                if not name or self._nonperson_name(name):
                     continue
                 _,variant=self._reviewable_person_name(name,lesson)
                 if variant:
-                    continue  # variants appear only under Nomes a conferir
+                    continue  # variant only appears in name review
                 people_entries.append(person)
-            presenter=self._grounded_presenter(src,text)
+            presenter,evidence=self._presenter_evidence(src,text)
             if presenter and not any(self._person_key(p.get("nome","")) ==
                                      self._person_key(presenter) for p in people_entries):
                 people_entries.append({
                     "nome":presenter,
                     "papel":"possível apresentador; confirmar função",
-                    "informacao":"Pista do título e nome encontrado no TXT ou no contexto do Classroom",
+                    "informacao":"Pista do título: "+evidence,
                     "tempo":""})
             for key, heading in (("pessoas", "Pessoas citadas e papéis"),
                                  ("atividades", "Atividades mencionadas"),
@@ -1465,7 +1470,8 @@ class Publisher:
                     name = str(person.get("nome", "")).strip()
                     # Must be literal in the TXT; do not promote spelling
                     # variants to a new person or claim identity with a known name.
-                    if not 3 <= len(name) <= 130 or self._person_key(name) not in normalized:
+                    if (not 3 <= len(name) <= 130 or self._nonperson_name(name)
+                            or self._person_key(name) not in normalized):
                         continue
                     canonical,warning=self._reviewable_person_name(name,src['lesson'] or '')
                     if warning:
@@ -1473,11 +1479,11 @@ class Publisher:
                     person_map[slug(canonical)].append(
                         (canonical, src, note, person, 'transcrição (extração IA, revisar)'))
                     names_seen.add(self._person_key(canonical))
-                presenter=self._grounded_presenter(src,original)
+                presenter,evidence=self._presenter_evidence(src,original)
                 if presenter and self._person_key(presenter) not in names_seen:
                     person_map[slug(presenter)].append(
                         (presenter, src, note, {
-                            'informacao':'Nome corroborado no TXT ou contexto; possível apresentador pelo título'},
+                            'informacao':'Pista do título: '+evidence},
                          'título da gravação + TXT/contexto (função a confirmar)'))
             for m in modules:
                 module_map[m].append((src,note,analysis))
@@ -1504,7 +1510,7 @@ class Publisher:
                     if not line:
                         continue
                     name = re.split(r"\s+[—–-]\s+|\s*:\s*", line, maxsplit=1)[0].strip()
-                    if not 3 <= len(name) <= 80:
+                    if not 3 <= len(name) <= 80 or self._nonperson_name(name):
                         continue
                     person_map[slug(name)].append((name, src, lesson_to_note.get(src["lesson"], f"02-Minhas-Aulas/{src['lesson']}/00-contexto-{slug(src['lesson'])}.md"),
                                                    {"informacao": line}, "Classroom (registrado pelo usuário)"))
