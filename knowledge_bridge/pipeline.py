@@ -348,15 +348,33 @@ class Application:
             context_rows = self.publisher._context_rows(src['lesson'] or '')
             context_payload = [item for _, item in context_rows]
             context_digest = hashlib.sha256(json.dumps(context_payload,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
-            # A cache from the 11.500-character layout cannot be reused for a
-            # now-larger 40.000-character chunk with the same index/source.
-            # Preserve old records, but never mistake them for valid new chunks.
-            segment_digest = hashlib.sha256(
-                (src['digest'] + context_digest + f":chunk-layout:v2:{CHUNK_MAX_CHARS}").encode()
-            ).hexdigest()
             done = self.store.conn.execute("SELECT digest,payload FROM analyses WHERE source_id=?",(src["id"],)).fetchone()
-            was_done = bool(done and done['digest']==src['digest'] and
-                json.loads(done['payload']).get('_context_revision')==context_digest)
+            previous = json.loads(done["payload"]) if done and done["digest"] == src["digest"] else {}
+            # Only invalidate old AI outputs affected by the presenter, short-name
+            # and nontechnical classification corrections. Publishing remains a
+            # local operation; merely importing Classroom context never schedules
+            # a reprocess of previously imported transcripts.
+            nontechnical = previous.get("tipo_aula") in ("apresentacao", "organizacional", "atividade")
+            short_person = any(
+                isinstance(person, dict) and
+                len(str(person.get("nome", "")).strip().split()) == 1
+                for person in previous.get("pessoas", [])
+                if isinstance(previous.get("pessoas"), list)
+            )
+            affected = (nontechnical or short_person or
+                        bool(previous.get("nomes_a_conferir")) or
+                        bool(re.search(r"\\bapresenta(?:ção|cao|ções|coes)\\b",
+                                       src["label"], re.I)))
+            rules_revision = "aula01-grounding-v1" if affected else ""
+            # The revision participates in the per-source chunk key, preventing
+            # reuse of stale extraction for only the affected recordings.
+            segment_digest = hashlib.sha256(
+                (src['digest'] + context_digest +
+                 f":chunk-layout:v2:{CHUNK_MAX_CHARS}:{rules_revision}").encode()
+            ).hexdigest()
+            was_done = bool(done and done['digest'] == src['digest'] and
+                previous.get('_context_revision') == context_digest and
+                previous.get('_rules_revision', '') == rules_revision)
             if was_done and not force:
                 self.log(f"Já analisada, ignorando: {src['label']}")
                 continue
@@ -482,6 +500,7 @@ class Application:
                     if caution not in combined["conceitos_a_conferir"]:
                         combined["conceitos_a_conferir"].append(caution)
             combined['_context_revision']=context_digest
+            combined['_rules_revision']=rules_revision
             # Preserve warnings from each analyzed segment for the published note.
             combined['qualidade_pendente']=list(dict.fromkeys(
                 warning for part in all_results for warning in
