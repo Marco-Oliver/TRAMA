@@ -136,6 +136,31 @@ class Aula01ExperimentalTests(unittest.TestCase):
         self.app.process(lesson_filter="Aula-001")
         self.assertEqual(self.app.ai.attempts, 1)
 
+    def test_unaffected_old_chunk_cache_keeps_its_original_key(self):
+        # A changed analysis context can require consolidation without
+        # paying for unchanged technical chunks. The original digest must work.
+        import hashlib
+        from knowledge_bridge.content import CHUNK_MAX_CHARS
+        row = self.source("A03 - V01 - Variaveis.txt",
+                          "00:01 Aprendemos variáveis em C#.")
+        ctx = hashlib.sha256(json.dumps([], ensure_ascii=False,
+                                        sort_keys=True).encode()).hexdigest()
+        legacy_chunk = hashlib.sha256((
+            row["digest"] + ctx + f":chunk-layout:v2:{CHUNK_MAX_CHARS}"
+        ).encode()).hexdigest()
+        fixture = {"resumo": "Variáveis na aula.", "tipo_aula": "tecnica",
+                   "conceitos": [], "pessoas": [], "nomes_a_conferir": [],
+                   "atividades": [], "ferramentas": [], "marcos": [],
+                   "duvidas": [], "exemplos": []}
+        self.app.store.save_chunk(row["id"], legacy_chunk, 0,
+                                  "fixture", "offline", fixture)
+        self.analysis(row, kind="tecnica", _context_revision="antigo")
+        self.app.ai = ContextRecorder()
+        self.app.process(lesson_filter="Aula-003")
+        self.assertEqual(self.app.ai.attempts, 0)
+        self.assertIn("Variáveis", self.app.store.analysis(
+            row["id"], row["digest"])["resumo"])
+
     def test_presenter_from_title_and_txt_is_grounded_without_ia_people(self):
         source = self.source(
             "A01 - V02 - Apresentação Alexandre Rech.txt",
