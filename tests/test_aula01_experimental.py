@@ -161,6 +161,18 @@ class Aula01ExperimentalTests(unittest.TestCase):
         self.assertIn("Variáveis", self.app.store.analysis(
             row["id"], row["digest"])["resumo"])
 
+    def test_fresh_presentation_keeps_first_pass_cache(self):
+        row = self.source("A04 - V01 - Abertura.txt",
+                          "00:01 Bem-vindos à apresentação do curso.")
+        self.app.ai = ContextRecorder()
+        self.app.process(lesson_filter="Aula-004")
+        self.assertEqual(self.app.ai.attempts, 1)
+        self.assertEqual(self.app.store.analysis(
+            row["id"], row["digest"])["tipo_aula"], "apresentacao")
+        # This must not invalidate an already-revised first-pass result.
+        self.app.process(lesson_filter="Aula-004")
+        self.assertEqual(self.app.ai.attempts, 1)
+
     def test_presenter_from_title_and_txt_is_grounded_without_ia_people(self):
         source = self.source(
             "A01 - V02 - Apresentação Alexandre Rech.txt",
