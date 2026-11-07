@@ -168,6 +168,12 @@ class AutoOrganizer:
         path=self.app.store.vault/rel
         raw=(json.dumps(payload,ensure_ascii=False,indent=2)+'\n').encode()
         digest=hashlib.sha256(raw).hexdigest()
+        if data.get('_pasted_classroom'):
+            # An earlier version of this *same post* must not be overwritten
+            # silently. Links and other Classroom sources are independent.
+            prior=self.app.store.get_source('autoctx-'+src_id)
+            if prior and prior['digest']!=digest:
+                return False
         if path.exists() and path.read_bytes()!=raw:
             # Guardar histórico dos dados extraídos antes de substituí-los.
             archive=folder/'Historico';archive.mkdir(exist_ok=True)
@@ -218,8 +224,6 @@ class AutoOrganizer:
                  'pending':list(pasted['warnings']), 'errors':[], 'calls':0, 'processed':False}
         seen_lessons={post['aula'] for post in pasted['posts']}
         fresh_lessons=set()
-        previous_context_lessons={
-            row['lesson'] for row in self.app.store.sources('classroom') if row['lesson']}
         candidates=[]
         for path in paths:
             path=Path(path).expanduser()
@@ -303,16 +307,12 @@ class AutoOrganizer:
                 self._save_extracted(source,lesson,extracted,reason=path.name)
             except (ValueError,OSError) as exc:
                 outcome['pending'].append(path.name+': contexto incompleto ('+str(exc)[:100]+').')
-        # Posts pasted from Classroom are local, untrusted sources. Do not
-        # overwrite ANY context already saved before this batch, including
-        # the user's manually entered Contexto +.
+        # Pasted posts have their own stable source/file identity. A context
+        # created only from links (or manual Contexto +) never blocks a post.
+        # _save_extracted guards edits to that exact post and publisher.write
+        # protects user-edited files.
         for post in pasted['posts']:
             lesson=post['aula']
-            if lesson in previous_context_lessons:
-                outcome['pending'].append(
-                    lesson+': Contexto já existente; não sobrescrito. '
-                    'Reprocesse a aula para a IA usar o contexto atualizado.')
-                continue
             post_id=hashlib.sha256(
                 ('classroom-post:'+lesson+':'+post['titulo'].casefold()).encode()
             ).hexdigest()[:24]
