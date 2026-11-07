@@ -366,7 +366,11 @@ class Application:
                         bool(previous.get("nomes_a_conferir")) or
                         bool(re.search(r"\bapresenta(?:ção|cao|ções|coes)\b",
                                        src["label"], re.I)))
-            rules_revision = "aula01-grounding-v1" if affected else ""
+            # Fresh/changed sources have no reusable legacy analysis: tag
+            # them on the first pass so a later nontechnical classification
+            # does not trigger a redundant second AI request.
+            new_source_revision = not done or done["digest"] != src["digest"]
+            rules_revision = "aula01-grounding-v1" if affected or new_source_revision else ""
             # The revision participates in the per-source chunk key, preventing
             # reuse of stale extraction for only the affected recordings.
             cache_identity = (src['digest'] + context_digest +
