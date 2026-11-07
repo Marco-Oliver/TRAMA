@@ -108,6 +108,34 @@ class Aula01ExperimentalTests(unittest.TestCase):
         self.assertEqual(len(parts), 1)
         return overview, parts[0].read_text(encoding="utf-8")
 
+    def test_old_ai_cache_refreshes_only_affected_lesson_when_explicitly_processed(self):
+        # Emulate two analyses created before the rule revision. The user has
+        # not requested reprocessing: publication alone never contacts AI.
+        import hashlib
+        digest = hashlib.sha256(json.dumps([], ensure_ascii=False,
+                                           sort_keys=True).encode()).hexdigest()
+        affected = self.source(
+            "A01 - V02 - Apresentação Alexandre Rech.txt",
+            "00:01 Alexandre Rech falou com a turma.\\n")
+        unaffected = self.source(
+            "A02 - V01 - Variaveis.txt",
+            "00:01 Hoje vamos ver variáveis de C#.\\n")
+        self.analysis(affected, kind="apresentacao", _context_revision=digest)
+        self.analysis(unaffected, kind="tecnica", _context_revision=digest)
+        self.app.ai = ContextRecorder()
+        self.app.publisher.rebuild()
+        self.assertEqual(self.app.ai.attempts, 0)
+
+        # The unrelated technical source stays cached, without an AI request.
+        self.app.process(lesson_filter="Aula-002")
+        self.assertEqual(self.app.ai.attempts, 0)
+        # This explicit user-style operation regenerates the affected analysis.
+        self.app.process(lesson_filter="Aula-001")
+        self.assertEqual(self.app.ai.attempts, 1)
+        # A second operation does not spend another request.
+        self.app.process(lesson_filter="Aula-001")
+        self.assertEqual(self.app.ai.attempts, 1)
+
     def test_presenter_from_title_and_txt_is_grounded_without_ia_people(self):
         source = self.source(
             "A01 - V02 - Apresentação Alexandre Rech.txt",
