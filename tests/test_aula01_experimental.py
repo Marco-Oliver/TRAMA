@@ -116,10 +116,10 @@ class Aula01ExperimentalTests(unittest.TestCase):
                                            sort_keys=True).encode()).hexdigest()
         affected = self.source(
             "A01 - V02 - Apresentação Alexandre Rech.txt",
-            "00:01 Alexandre Rech falou com a turma.\\n")
+            "00:01 Alexandre Rech falou com a turma.\n")
         unaffected = self.source(
             "A02 - V01 - Variaveis.txt",
-            "00:01 Hoje vamos ver variáveis de C#.\\n")
+            "00:01 Hoje vamos ver variáveis de C#.\n")
         self.analysis(affected, kind="apresentacao", _context_revision=digest)
         self.analysis(unaffected, kind="tecnica", _context_revision=digest)
         self.app.ai = ContextRecorder()
