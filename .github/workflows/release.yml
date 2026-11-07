@@ -78,7 +78,12 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./tools/windows_upgrade_smoke.ps1
+        run: ./tools/windows_upgrade_smoke.ps1 -LegacyVersion 'v2.1.0'
+      - name: Testar atualização 2.2.0 para versão candidata mantendo cofre
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./tools/windows_upgrade_smoke.ps1 -LegacyVersion 'v2.2.0'
       - name: Hash SHA-256 do instalador
         shell: pwsh
         run: |
