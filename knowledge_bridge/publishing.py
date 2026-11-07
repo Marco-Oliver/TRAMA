@@ -1205,8 +1205,10 @@ class Publisher:
                     continue  # variant only appears in name review
                 people_entries.append(person)
             presenter,evidence=self._presenter_evidence(src,text)
-            if presenter and not any(self._person_key(p.get("nome","")) ==
-                                     self._person_key(presenter) for p in people_entries):
+            if presenter and not any(
+                    self._person_key(p.get("nome","")) == self._person_key(presenter)
+                    or self._same_full_name_spelling(p.get("nome",""),presenter)
+                    for p in people_entries):
                 people_entries.append({
                     "nome":presenter,
                     "papel":"possível apresentador; confirmar função",
@@ -1480,7 +1482,10 @@ class Publisher:
                         (canonical, src, note, person, 'transcrição (extração IA, revisar)'))
                     names_seen.add(self._person_key(canonical))
                 presenter,evidence=self._presenter_evidence(src,original)
-                if presenter and self._person_key(presenter) not in names_seen:
+                if presenter and not any(
+                        self._person_key(presenter)==spoken or
+                        self._same_full_name_spelling(presenter,spoken)
+                        for spoken in names_seen):
                     person_map[slug(presenter)].append(
                         (presenter, src, note, {
                             'informacao':'Pista do título: '+evidence},
