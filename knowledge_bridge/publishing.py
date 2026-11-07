@@ -897,11 +897,40 @@ class Publisher:
                     continue
         return names
 
+    @staticmethod
+    def _nonperson_name(value: str) -> bool:
+        """Recognize institution/organization-shaped tokens conservatively.
+
+        A mixed-capitals abbreviation (FCVest, NDD) is not a person's name.
+        Unknown terms stay reviewable, not automatically resolved.
+        """
+        name=str(value).strip()
+        if re.match(r"^(?:universidade|faculdade|instituto|col[eé]gio|escola|fundação)\b",
+                    name, re.I):
+            return True
+        return bool(re.fullmatch(r"[A-Z]{2,}[A-Za-z]{1,24}|[A-Z]{3,12}",name))
+
+    @classmethod
+    def _same_full_name_spelling(cls, spoken: str, known: str) -> bool:
+        """Equivalent surname plus near-identical first name: no alias warning.
+
+        This compares spelling only, and never asserts two human identities
+        are the same person.
+        """
+        a=cls._person_key(spoken).split()
+        b=cls._person_key(known).split()
+        return bool(len(a)>=2 and len(a)==len(b) and a[1:]==b[1:]
+                    and a[0][0]==b[0][0]
+                    and SequenceMatcher(None,a[0],b[0]).ratio()>=0.85)
+
     def _reviewable_person_name(self, name: str, lesson: str) -> tuple[str,str]:
-        canonical=self._classroom_person_names(lesson)
-        for candidate in canonical:
+        for candidate in self._classroom_person_names(lesson):
             if self._person_key(candidate)==self._person_key(name):
                 return candidate,''
+            if self._same_full_name_spelling(name,candidate):
+                # "Thiago Santini" versus "Tiago Santini" is an orthographic
+                # uncertainty, not "Thiago (possibly Santini)".
+                return name,''
             if self._possible_spelling_variant(name,candidate):
                 surname=candidate.split()[-1]
                 return candidate,(f'{name} (possivelmente {surname}) — '
@@ -909,16 +938,43 @@ class Publisher:
                                    'nenhuma pessoa nova foi criada.')
         return name,''
 
-    def _grounded_presenter(self, src, raw: str) -> str:
+    def _presenter_evidence(self, src, raw: str) -> tuple[str,str]:
+        """Require more than a filename to suggest the presenter.
+
+        A full name in the TXT/Classroom is stronger evidence. A self-intro
+        using only a matching first name is reported as tentative, preserving
+        the title's spelling and explicitly flagging the unverified surname.
+        """
         candidate=self._title_person(Path(src["label"]).stem)
         if not candidate:
-            return ""
+            return "", ""
         context="\n".join(
             str(item.get(field,"")) for _,item in self._context_rows(src["lesson"] or "")
             for field in ("autor","pessoas","descricao","atividades"))
         key=self._person_key(candidate)
-        return candidate if key and (
-            key in self._person_key(raw) or key in self._person_key(context)) else ""
+        source_text=self._person_key(raw)
+        if key and (key in source_text or key in self._person_key(context)):
+            return candidate,"nome completo encontrado no TXT ou Classroom"
+        tokens=key.split()
+        if len(tokens)<2:
+            return "", ""
+        surname=re.escape(tokens[-1])
+        for match in re.finditer(r"\b([a-z]{3,35})\s+"+surname+r"\b",source_text):
+            first=match.group(1)
+            if (first[0]==tokens[0][0] and
+                    SequenceMatcher(None,first,tokens[0]).ratio()>=0.85):
+                return candidate,"nome com pequena divergência de grafia no TXT; conferir"
+        for match in re.finditer(
+                r"\b(?:eu\s+sou(?:\s+o)?|me\s+chamo|meu\s+nome\s+e)"
+                r"\s+([a-z]{3,35})\b",source_text):
+            first=match.group(1)
+            if (first[0]==tokens[0][0] and
+                    SequenceMatcher(None,first,tokens[0]).ratio()>=0.85):
+                return candidate,"apenas primeiro nome na apresentação; confirmar sobrenome"
+        return "", ""
+
+    def _grounded_presenter(self, src, raw: str) -> str:
+        return self._presenter_evidence(src,raw)[0]
 
     def _person_warnings(self, src, analysis, raw: str) -> list[str]:
         warnings=[]
