@@ -982,12 +982,14 @@ class Publisher:
             if not isinstance(item,dict):
                 continue
             name=str(item.get("nome","")).strip()
-            if name and self._person_key(name) in self._person_key(raw):
+            if (name and not self._nonperson_name(name) and
+                    self._person_key(name) in self._person_key(raw)):
                 _,warning=self._reviewable_person_name(name,src["lesson"] or "")
                 if warning and warning not in warnings:
                     warnings.append(warning)
         for value in analysis.get("nomes_a_conferir",[]):
             if (not isinstance(value,str) or not value.strip() or
+                    self._nonperson_name(value) or
                     self._person_key(value) not in self._person_key(raw)):
                 continue
             _,warning=self._reviewable_person_name(value,src["lesson"] or "")
@@ -995,6 +997,20 @@ class Publisher:
             if chosen not in warnings:
                 warnings.append(chosen)
         return warnings
+
+    def _uncertain_nonperson_terms(self, analysis, raw: str) -> list[str]:
+        """Keep organization-like references outside human name lists."""
+        names=[str(item.get("nome","")).strip()
+               for item in analysis.get("pessoas",[]) if isinstance(item,dict)]
+        names += [name for name in analysis.get("nomes_a_conferir",[])
+                  if isinstance(name,str)]
+        result=[]
+        for name in names:
+            if (self._nonperson_name(name) and
+                    self._person_key(name) in self._person_key(raw) and
+                    name not in result):
+                result.append(name)
+        return result[:10]
 
     def transcript_note(self, src, analysis: dict | None):
         lesson = src["lesson"] or "Aulas-Sem-Numero"
