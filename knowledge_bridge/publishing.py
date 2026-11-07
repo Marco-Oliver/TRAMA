@@ -856,7 +856,8 @@ class Publisher:
                 x,y=phoneme(spoken),phoneme(known)
                 skeleton_x=re.sub(r"[aeiou]", "", x)
                 skeleton_y=re.sub(r"[aeiou]", "", y)
-                if (len(skeleton_x)>=2 and skeleton_x==skeleton_y and
+                if (max(len(spoken),len(known))<=4 and
+                        len(skeleton_x)>=2 and skeleton_x==skeleton_y and
                         SequenceMatcher(None,x,y).ratio()>=0.60):
                     return True
                 if (min(len(spoken),len(known))>=4 and
@@ -930,7 +931,8 @@ class Publisher:
                 if warning and warning not in warnings:
                     warnings.append(warning)
         for value in analysis.get("nomes_a_conferir",[]):
-            if not isinstance(value,str) or not value.strip():
+            if (not isinstance(value,str) or not value.strip() or
+                    self._person_key(value) not in self._person_key(raw)):
                 continue
             _,warning=self._reviewable_person_name(value,src["lesson"] or "")
             chosen=warning or value

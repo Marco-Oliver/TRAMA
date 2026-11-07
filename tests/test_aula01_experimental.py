@@ -205,6 +205,7 @@ class Aula01ExperimentalTests(unittest.TestCase):
         self.assertEqual(post["data"], "02/03/2026")
         self.assertIn("Boas-vindas",post["descricao"])
         self.assertIn("Conversar",post["atividades"])
+        self.assertIn("Atividades:\nConversar",post["descricao"])
         self.assertEqual(post["gravacoes"], ["A01 - V01 - Boas-vindas da turma"])
         self.assertNotIn("editado:",post["descricao"])
         self.assertNotIn("Comentários da turma",str(post))
@@ -262,7 +263,7 @@ class Aula01ExperimentalTests(unittest.TestCase):
         self.assertFalse(result["processed"])
         self.assertEqual(original.read_bytes(),saved)
         self.assertTrue(any("reprocesse a aula" in x.lower() for x in result["pending"]))
-        self.assertFalse(any("Post do Classroom colado" in x.get("label","")
+        self.assertFalse(any("Post do Classroom colado" in x["label"]
                              for x in self.app.store.sources("classroom")))
 
     def test_untrusted_prompt_injection_is_data_not_an_instruction(self):

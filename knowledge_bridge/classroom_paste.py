@@ -67,8 +67,15 @@ def parse_import_paste(value: str) -> dict:
         nonlocal current
         if current is None:
             return
-        current["descricao"] = "\n".join(current.pop("_content", []))[:20000]
-        current["atividades"] = "\n".join(current.pop("_activities", []))[:6000]
+        content = "\n".join(current.pop("_content", []))
+        activities = "\n".join(current.pop("_activities", []))[:6000]
+        # Keep both Classroom sections in the same narrative description
+        # (the Contexto + 20k cap); retain activities as a structured field.
+        description = ("Conteúdo:\n" + content if content else "")
+        if activities:
+            description += ("\n" if description else "") + "Atividades:\n" + activities
+        current["descricao"] = description[:20000]
+        current["atividades"] = activities
         current["pessoas"] = (
             current["autor"] + " — autor do post do Classroom (não prova apresentação)"
             if current["autor"] else "")
