@@ -127,12 +127,35 @@ def extract_material(raw: str, path: str) -> dict:
         while len(excerpt)<3:excerpt.append("")
         terms.append({"name":name,"line":line,"snippet":"\n".join(excerpt),"origin":origin})
 
-    fenced=False
+    fenced=None
+    code_lines=[]
+    code_start=0
+    overflow=False
     for index,line in enumerate(lines,1):
-        if line.lstrip().startswith(("~~~","\x60\x60\x60")):
-            fenced=not fenced
+        fence=re.match(r"^\s*(\x60{3,}|~{3,})",line)
+        if fence:
+            marker=fence.group(1)[0]
+            if fenced is None:
+                fenced=marker
+                code_start=index+1
+                code_lines=[]
+                overflow=False
+            elif fenced==marker:
+                if not overflow and code_lines and len(terms)<MAX_TERMS-1:
+                    code="\n".join(code_lines).strip()
+                    if 7<=len(code)<=1800:
+                        terms.append({"name":code,"line":code_start,
+                                      "snippet":"\n".join(code_lines[:3]),
+                                      "origin":"bloco_codigo"})
+                fenced=None
             continue
-        if fenced or index<=front_end+1:
+        if fenced is not None:
+            if (len(code_lines)>=50 or len(line)>280 or
+                    sum(len(part)+1 for part in code_lines)+len(line)>1800):
+                overflow=True
+            if not overflow:code_lines.append(line)
+            continue
+        if index<=front_end+1:
             continue
         if (m:=re.match(r"^#{1,6}\s+(.+)",line)):
             add(m.group(1),index,"titulo")
@@ -153,6 +176,9 @@ def extract_material(raw: str, path: str) -> dict:
             (i for i,line in enumerate(lines,1) if tag in line),1)
         concepts.append({"tag":tag,"name":written,"line":lineno})
         add(written,lineno,"tag")
+    # Marker prevents repeated GitHub requests when a page has no fenced code.
+    terms.append({"name":"fences audited","origin":"codigo_fence_auditado",
+                  "line":0,"snippet":""})
     return {"route":route,"title":title,"tags":tags,
             "terms":terms[:MAX_TERMS],"concepts":concepts[:80]}
 
@@ -400,6 +426,32 @@ class AcademyDocs:
         if tag_hits:
             reason += "; tags: " + ", ".join(sorted(tag_hits)[:3])
         return lesson, reason
+
+    def hydrate_saved_fenced_code(self, lesson: str) -> int:
+        """Refresh OLD linked material at its immutable SHA; never call AI."""
+        updated=0
+        self.reader._privacy[DOCS_REPO]=False
+        for row in self.store.academy_docs_for_lesson(lesson):
+            if any(x.get("origin")=="codigo_fence_auditado"
+                   for x in row["terms"] if isinstance(x,dict)):
+                continue
+            sha,path,url=row["commit_sha"],row["path"],row["url"]
+            if (not SHA_RE.fullmatch(sha) or not path.startswith("docs/") or
+                    ".." in path.split("/") or official_route(url) is None):
+                continue
+            try:
+                parsed=extract_material(self.reader.read_file(
+                    DOCS_REPO,sha,path)["content"],path)
+                if parsed["route"]!=official_route(url):
+                    continue
+                code=[x for x in parsed["terms"] if
+                      x.get("origin") in ("bloco_codigo","codigo_fence_auditado")]
+                if self.store.add_academy_code_terms(lesson,url,sha,path,code):
+                    updated+=1
+            except (OSError,ValueError,RuntimeError):
+                # Preserve original classification; retry a later rebuild.
+                break
+        return updated
 
     def attach(self,lesson: str,url: str) -> tuple[bool,str]:
         route=official_route(url)

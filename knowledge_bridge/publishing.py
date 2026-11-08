@@ -614,6 +614,31 @@ class Publisher:
             body.extend(["", "**Correspondência com tags conceito-* (não prova aprendizado):**",
                          *matches[:30]])
 
+    def _literal_official_code_example(self, lesson: str, example: str):
+        """Return only a literal fenced-code match in the SAME lesson SHA."""
+        from urllib.parse import quote
+        if not isinstance(example,str) or not 7<=len(example)<=1000:
+            return None
+        candidates=[example.strip()]
+        candidates.extend(re.findall(r"\x60([^\x60\r\n]{7,500})\x60",example))
+        for material in self.db.academy_docs_for_lesson(lesson):
+            sha,path=material["commit_sha"],material["path"]
+            if (not re.fullmatch(r"[a-f0-9]{40}",sha) or
+                    not path.startswith("docs/") or ".." in path.split("/")):
+                continue
+            for term in material["terms"]:
+                if not isinstance(term,dict) or term.get("origin")!="bloco_codigo":
+                    continue
+                code=re.sub(r"\s+"," ",str(term.get("name",""))).strip()
+                line=term.get("line")
+                if not isinstance(line,int) or not 1<=line<=7000:
+                    continue
+                for candidate in candidates:
+                    needle=re.sub(r"\s+"," ",candidate).strip()
+                    if len(needle)>=7 and needle in code:
+                        return DOCS_REPO+"/blob/"+sha+"/"+quote(path,safe="/")+"#L"+str(line)
+        return None
+
     def _other_lesson_note(self, lesson: str, sources: list) -> str:
         """A lesson with only video, screenshots or Classroom is still a lesson."""
         rel = f"02-Minhas-Aulas/{lesson}/00-contexto-{slug(lesson)}.md"
@@ -1207,11 +1232,27 @@ class Publisher:
                 body += ["", "## Exemplos mencionados"] + [
                     f"- {_escape_md(x)}" for x in analysis.get("exemplos",[])]
             if analysis.get("exemplos_reconstruidos_a_conferir"):
-                body += ["", "## Exemplos reconstruídos pela IA, conferir", "",
-                         "> Estes exemplos NÃO foram encontrados literalmente no TXT. "
-                         "Não trate como código executado ou demonstrado."] + [
-                             f"- {_escape_md(x)}"
-                             for x in analysis.get("exemplos_reconstruidos_a_conferir", [])[:10]]
+                official_examples=[]
+                pending_examples=[]
+                for example in analysis["exemplos_reconstruidos_a_conferir"][:10]:
+                    matched=self._literal_official_code_example(lesson,example)
+                    if matched:
+                        official_examples.append((example,matched))
+                    else:
+                        pending_examples.append(example)
+                if official_examples:
+                    body += ["", "## Exemplos do material oficial", "",
+                             "> Código literal do Markdown no SHA congelado. "
+                             "Não comprova execução na gravação nem foi enviado à IA."]
+                    for example,ref in official_examples:
+                        body.append("- "+_escape_md(example)+
+                                    " — [Arquivo no SHA congelado]("+ref+").")
+                if pending_examples:
+                    body += ["", "## Exemplos reconstruídos pela IA, conferir", "",
+                             "> Estes exemplos NÃO foram encontrados literalmente no TXT "
+                             "nem em blocos oficiais verificados. "
+                             "Não trate como código executado ou demonstrado."]
+                    body.extend("- "+_escape_md(x) for x in pending_examples)
             # Only the analysis' explicit doubts become stateful doubts.
             # Never merge concepts or automatically suspected terms into this
             # list; a Portuguese concept is not a transcription error.
@@ -1534,6 +1575,20 @@ class Publisher:
         self._recent_official_attempts=set()
         self._official_recovery = recover_saved_official_material(
             self.db, skip_urls=just_attempted)
+        # Old v2.2.3 links predate fenced code indexing. Hydrate locally
+        # from the pinned SHA; no cached AI analysis is changed.
+        from .academy_material import AcademyDocs
+        doc_reader=None
+        for source in self.db.sources("transcript"):
+            analysis=self.db.analysis(source["id"],source["digest"]) or {}
+            if not analysis.get("exemplos_reconstruidos_a_conferir"):
+                continue
+            lesson=source["lesson"]
+            if not lesson or not self.db.academy_docs_for_lesson(lesson):
+                continue
+            if doc_reader is None:
+                doc_reader=AcademyDocs(self.db)
+            doc_reader.hydrate_saved_fenced_code(lesson)
         refresh_uncertainties(self.db, self.lesson_repo_index)
         self._prepare_concept_targets()
         self._atlas = make_atlas(self.db, concept_targets=self._concept_targets)

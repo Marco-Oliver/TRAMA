@@ -259,6 +259,32 @@ class Store:
                  json.dumps(concepts,ensure_ascii=False)))
         return True
 
+    def add_academy_code_terms(self, lesson: str, url: str, sha: str,
+                               path: str, code: list) -> bool:
+        row=self.conn.execute(
+            "SELECT commit_sha,path,terms_json FROM academy_docs_links "
+            "WHERE lesson=? AND url=?",(lesson,url)).fetchone()
+        if (row is None or row["commit_sha"]!=sha or row["path"]!=path or
+                not isinstance(code,list)):
+            return False
+        terms=json.loads(row["terms_json"])
+        if any(isinstance(x,dict) and x.get("origin")=="codigo_fence_auditado"
+               for x in terms):
+            return False
+        code=[x for x in code if isinstance(x,dict) and
+              x.get("origin") in ("bloco_codigo","codigo_fence_auditado") and
+              isinstance(x.get("name"),str) and len(x["name"])<=1800 and
+              isinstance(x.get("line"),int)][:40]
+        if not any(x.get("origin")=="codigo_fence_auditado" for x in code):
+            return False
+        revised=terms[:max(0,240-len(code))]+code
+        with self.conn:
+            self.conn.execute(
+                "UPDATE academy_docs_links SET terms_json=? "
+                "WHERE lesson=? AND url=? AND commit_sha=? AND path=?",
+                (json.dumps(revised,ensure_ascii=False),lesson,url,sha,path))
+        return True
+
     def github_ref(self, lesson: str, role: str, repository_id: str, slot="current"):
         row = self.conn.execute(
             "SELECT * FROM github_lesson_refs WHERE lesson=? AND role=? AND repository_id=? AND slot=?",
