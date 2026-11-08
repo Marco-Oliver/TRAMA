@@ -10,7 +10,7 @@
 
 ### Testes e atualização
 - Testes locais sintéticos, sem IA, abrangem material já salvo, repetição do rebuild, falha de acesso GitHub, sugestões e ausência de associações sem evidência.
-- Atualização 2.2.2 → 2.2.3 mantém o mesmo AppId, cofre Obsidian, banco SQLite, ajustes e chave local. Testes Ubuntu/Windows e instalador oficial são pré-requisitos para publicação.
+- Atualização 2.2.2 → 2.2.3 mantém o mesmo AppId, cofre Obsidian, banco SQLite, ajustes e chave local. A CI Windows também simula o upgrade do instalador oficial 2.2.2 com dados fictícios; testes Ubuntu/Windows e instalador são pré-requisitos para publicação.
 
 
 ## [2.2.2] — 2026-11-07
