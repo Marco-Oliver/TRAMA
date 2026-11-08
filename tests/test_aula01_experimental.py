@@ -180,11 +180,12 @@ class Aula01ExperimentalTests(unittest.TestCase):
         self.analysis(source)
         self.app.publisher.rebuild()
         overview, note = self.notes()
-        self.assertIn("[[alexandre-rech|Alexandre Rech]]", overview)
+        self.assertIn("Alexandre Rech", overview)
+        self.assertNotIn("[[alexandre-rech|Alexandre Rech]]", overview)
         self.assertIn("Pessoas citadas e papéis", note)
         self.assertIn("Alexandre Rech", note)
-        self.assertTrue((self.vault / "01-Meu-Conhecimento" /
-                         "Pessoas" / "alexandre-rech.md").exists())
+        self.assertFalse((self.vault / "01-Meu-Conhecimento" /
+                          "Pessoas" / "alexandre-rech.md").exists())
 
     def test_presenter_from_title_without_txt_or_context_is_not_a_person(self):
         source = self.source(
@@ -215,13 +216,14 @@ class Aula01ExperimentalTests(unittest.TestCase):
         self.analysis(row, pessoas=[])
         self.app.publisher.rebuild()
         overview,note=self.notes()
-        self.assertIn("[[tiago-santini|Tiago Santini]]",overview)
+        self.assertIn("Tiago Santini",overview)
+        self.assertNotIn("[[tiago-santini|Tiago Santini]]",overview)
         self.assertIn("## Pessoas citadas e papéis",note)
         self.assertIn("Tiago Santini",note)
         self.assertIn("apenas primeiro nome na apresentação; confirmar sobrenome",note)
         self.assertNotIn("possivelmente Santini",note)
-        self.assertTrue((self.vault/"01-Meu-Conhecimento"/"Pessoas"/
-                         "tiago-santini.md").exists())
+        self.assertFalse((self.vault/"01-Meu-Conhecimento"/"Pessoas"/
+                          "tiago-santini.md").exists())
 
     def test_full_spoken_thiago_and_title_tiago_do_not_duplicate_identity(self):
         row=self.source(
@@ -232,13 +234,14 @@ class Aula01ExperimentalTests(unittest.TestCase):
                       nomes_a_conferir=["Thiago Santini"])
         self.app.publisher.rebuild()
         overview,note=self.notes()
-        self.assertIn("[[thiago-santini|Thiago Santini]]",overview)
+        self.assertIn("Thiago Santini",overview)
+        self.assertNotIn("[[thiago-santini|Thiago Santini]]",overview)
         self.assertNotIn("possivelmente Santini",overview+note)
-        self.assertEqual(overview.count("[[thiago-santini|Thiago Santini]]"),1)
+        self.assertEqual(overview.count("Thiago Santini — confira"),1)
         self.assertFalse((self.vault/"01-Meu-Conhecimento"/"Pessoas"/
                           "tiago-santini.md").exists())
-        self.assertTrue((self.vault/"01-Meu-Conhecimento"/"Pessoas"/
-                         "thiago-santini.md").exists())
+        self.assertFalse((self.vault/"01-Meu-Conhecimento"/"Pessoas"/
+                          "thiago-santini.md").exists())
         self.assertEqual(note.count("- Thiago Santini —"),1)
 
     def test_organization_acronym_is_a_term_not_a_person(self):
@@ -296,12 +299,13 @@ class Aula01ExperimentalTests(unittest.TestCase):
         ], nomes_a_conferir=["Rash"])
         self.app.publisher.rebuild()
         overview, note = self.notes()
-        self.assertIn("Rash (possivelmente Rech)", note)
+        self.assertIn("Rash (possivelmente Alexandre Rech)", note)
         self.assertIn("Nomes e apelidos para conferir", note)
         self.assertNotIn("[[rash|Rash]]", overview)
         self.assertFalse((self.vault / "01-Meu-Conhecimento" /
                           "Pessoas" / "rash.md").exists())
-        self.assertIn("[[alexandre-rech|Alexandre Rech]]", overview)
+        self.assertIn("Alexandre Rech", overview)
+        self.assertNotIn("[[alexandre-rech|Alexandre Rech]]", overview)
         persons = note.split("## Pessoas citadas e papéis", 1)[1]
         persons = persons.split("\n## ", 1)[0]
         self.assertNotIn("- Rash", persons)

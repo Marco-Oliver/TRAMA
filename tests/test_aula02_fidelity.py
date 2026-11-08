@@ -82,6 +82,7 @@ class Aula02FidelityTests(unittest.TestCase):
              description="Conteúdo:\nInstalação do .NET SDK"):
         return {"aula": "Aula-002", "titulo": "Instalação do ambiente",
                 "autor": author, "data": "03/03/2026",
+                "pessoas": (author+" — autor do post do Classroom (não prova apresentação)" if author else ""),
                 "descricao": description, "atividades": "",
                 "gravacoes": [], "_pasted_classroom": True}
 
@@ -190,7 +191,7 @@ class Aula02FidelityTests(unittest.TestCase):
             "Aula-002",DOC_URL,SHA,DOC_PATH,parsed["title"],parsed["tags"],
             old_terms,parsed["concepts"])
         reader=FakeReader()
-        with patch("knowledge_bridge.publishing.AcademyDocs",
+        with patch("knowledge_bridge.academy_material.AcademyDocs",
                    side_effect=lambda store: AcademyDocs(store,reader=reader)):
             self.app.publisher.rebuild()
         note=self.note02()

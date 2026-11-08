@@ -84,7 +84,8 @@ class AutoIngestTests(TestCase):
         self.assertIn('Tiago Santini',notes)
         self.assertIn('Extração por IA',notes)
         self.assertIn('## Resumo da aula',notes)
-        self.assertIn('01-Meu-Conhecimento',str(list(self.vault.glob('01-Meu-Conhecimento/Pessoas/*.md'))))
+        # One-off extracted context does not qualify for a person profile.
+        self.assertFalse(list(self.vault.glob('01-Meu-Conhecimento/Pessoas/*.md')))
         self.assertIn('Contexto do Classroom',self.app.ai.last_context)
 
     def test_same_files_second_time_use_cache_and_no_duplicate(self):
