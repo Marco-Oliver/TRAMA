@@ -29,7 +29,7 @@ EDITED = re.compile(r"\s*\(\s*editado\s*:\s*[^)]{0,100}\)", re.I)
 # Require at least two capitalized words; do not treat ordinary post text as an author.
 AUTHOR = re.compile(
     r"^[A-ZÀ-Ý][A-Za-zÀ-ÿ'.-]{1,40}"
-    r"(?:\\s+(?:(?:de|da|do|dos|das|e)\\s+)?[A-ZÀ-Ý][A-Za-zÀ-ÿ'.-]{1,40}){1,5}$".replace(r"\\s", r"\s")
+    r"(?:\s+(?:(?:de|da|do|dos|das|e)\s+)?[A-ZÀ-Ý][A-Za-zÀ-ÿ'.-]{1,40}){1,5}$
 )
 URL = re.compile(r"(?:https?://)[^\s<>'\"\\]+", re.I)
 

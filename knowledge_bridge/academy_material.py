@@ -177,10 +177,11 @@ def extract_material(raw: str, path: str) -> dict:
         concepts.append({"tag":tag,"name":written,"line":lineno})
         add(written,lineno,"tag")
     # Marker prevents repeated GitHub requests when a page has no fenced code.
+    terms=terms[:MAX_TERMS-1]
     terms.append({"name":"fences audited","origin":"codigo_fence_auditado",
                   "line":0,"snippet":""})
     return {"route":route,"title":title,"tags":tags,
-            "terms":terms[:MAX_TERMS],"concepts":concepts[:80]}
+            "terms":terms,"concepts":concepts[:80]}
 
 
 def _compressed_alias(question: str, term: str) -> bool:

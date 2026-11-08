@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - fix/critical-audit-20261031
+      - fix/aula-02-local-fidelity
       - feat/official-academy-docs-material
   workflow_dispatch:
 

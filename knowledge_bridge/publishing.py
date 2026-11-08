@@ -841,8 +841,12 @@ class Publisher:
             for line in str(item.get('pessoas','')).splitlines():
                 name = re.split(r"\s+[—–-]\s+|\s*:\s*",line.strip(),maxsplit=1)[0].strip()
                 if 3<=len(name)<=80 and not self._nonperson_name(name):
-                    link=f"[[{slug(name)}|{_escape_md(name)}]]"
-                    if link not in person_links:person_links.append(link)
+                    canonical,variant=self._reviewable_person_name(name,lesson)
+                    if not variant and slug(canonical) in self._eligible_people:
+                        entry=f"[[{slug(canonical)}|{_escape_md(canonical)}]]"
+                    else:
+                        entry=_escape_md(name)
+                    if entry not in person_links:person_links.append(entry)
         for src, note in recordings:
             a=self.db.analysis(src['id'],src['digest']) or {}
             raw=(self.vault/src['stored_path']).read_text(encoding='utf-8-sig',errors='replace')
@@ -858,15 +862,18 @@ class Publisher:
                 if warning:
                     continue  # transcription alias gets review, not a person page
                 accepted_person_names.append(name)
-                link=f"[[{slug(name)}|{_escape_md(name)}]]"
-                if link not in person_links:person_links.append(link)
+                entry=(f"[[{slug(name)}|{_escape_md(name)}]]"
+                       if slug(name) in self._eligible_people else _escape_md(name))
+                if entry not in person_links:person_links.append(entry)
             presenter=self._grounded_presenter(src,raw)
             if presenter and not any(
                     self._person_key(presenter)==self._person_key(person_name) or
                     self._same_full_name_spelling(presenter,person_name)
                     for person_name in accepted_person_names):
-                link=f"[[{slug(presenter)}|{_escape_md(presenter)}]]"
-                if link not in person_links:person_links.append(link)
+                canonical,_=self._reviewable_person_name(presenter,lesson)
+                entry=(f"[[{slug(canonical)}|{_escape_md(canonical)}]]"
+                       if slug(canonical) in self._eligible_people else _escape_md(presenter))
+                if entry not in person_links:person_links.append(entry)
             if a.get("tipo_aula") not in ("apresentacao","organizacional","atividade"):
                 for c in a.get('conceitos',[]):
                     if not isinstance(c,dict):
@@ -1043,6 +1050,18 @@ class Publisher:
                 if (min(len(spoken),len(known))>=4 and
                         SequenceMatcher(None,x,y).ratio()>=0.81):
                     return True
+                # Longer spoken nicknames may compress vowel sounds (Thagão,
+                # Thago, Thaago -> Tiago). Require same consonant signature,
+                # a full-name anchor, and the same initial before even
+                # suggesting the link; never assert confirmed identity.
+                if (len(a)==1 and len(b)>=2 and min(len(spoken),len(known))>=5
+                        and spoken[0]==known[0]):
+                    sx=re.sub(r"[aeiou]", "", x.replace("th","t"))
+                    sy=re.sub(r"[aeiou]", "", y.replace("th","t"))
+                    if (len(sx)>=2 and sx==sy and
+                            SequenceMatcher(None,x.replace("th","t"),
+                                            y.replace("th","t")).ratio()>=0.67):
+                        return True
         return False
 
     def _classroom_person_names(self, lesson: str) -> list[str]:
