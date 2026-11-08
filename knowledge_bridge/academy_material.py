@@ -165,7 +165,7 @@ def _compressed_alias(question: str, term: str) -> bool:
         return False
     word=heard[0][1]
     whole="".join(x[1] for x in expected)
-    if (len(word)<6 or len(whole)<8 or len(expected[0][1])<4
+    if (len(heard[0][0])<6 or len(whole)<8 or len(expected[0][1])<4
             or is_generic_code_term(term) or word[:2]!=whole[:2]):
         return False
     a,b=_consonants(word),_consonants(whole)
