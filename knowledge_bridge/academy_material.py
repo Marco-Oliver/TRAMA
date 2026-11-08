@@ -209,6 +209,82 @@ def match_material_question(question: str, materials: list[dict]) -> dict | None
             "lesson":m["lesson"],"similarity":round(score[2],3)}
 
 
+
+
+_CONTEXT_NAME = re.compile(r"^(Aula-\d{3,4})(?:-auto-[A-Za-z0-9]+)?\.json$")
+_CONTEXT_URL = re.compile(r"https://[^\s<>'\"\\]+", re.I)
+
+
+def saved_official_context_urls(store) -> list[tuple[str, str]]:
+    """Find legacy official URLs in saved Classroom JSON, without modifying it.
+
+    Only the context's explicit lesson, verified against the filename, may be
+    used. The original JSON is never rewritten or interpreted as instructions.
+    """
+    folder = store.vault / "99-Anexos" / "Contexto-Classroom"
+    if not folder.is_dir() or folder.is_symlink():
+        return []
+    found = set()
+    for path in sorted(folder.glob("*.json")):
+        match = _CONTEXT_NAME.fullmatch(path.name)
+        if not match or path.is_symlink():
+            continue
+        try:
+            if path.stat().st_size > 256_000:
+                continue
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError):
+            continue
+        lesson = match.group(1)
+        if not isinstance(payload, dict) or payload.get("aula") != lesson:
+            continue
+        values = []
+        for field in ("links", "descricao", "atividades", "videos"):
+            value = payload.get(field)
+            if isinstance(value, str):
+                values.append(value[:22_000])
+            elif isinstance(value, list):
+                for item in value[:50]:
+                    if isinstance(item, str):
+                        values.append(item[:1_800])
+                    elif isinstance(item, dict) and isinstance(item.get("url"), str):
+                        values.append(item["url"][:1_800])
+        for value in values:
+            for candidate in _CONTEXT_URL.findall(value):
+                url = candidate.rstrip(").,;]}")
+                if official_route(url) is not None:
+                    found.add((lesson, url))
+    return sorted(found)
+
+
+def recover_saved_official_material(store) -> dict:
+    """Idempotent rebuild-time recovery, with deferred retry on GitHub errors."""
+    candidates = saved_official_context_urls(store)
+    if not candidates:
+        return {"linked": 0, "paused": False, "pending": 0}
+    existing = {}
+    pending = []
+    for lesson, url in candidates:
+        if lesson not in existing:
+            existing[lesson] = {row["url"] for row in store.academy_docs_for_lesson(lesson)}
+        if url not in existing[lesson]:
+            pending.append((lesson, url))
+    if not pending:
+        return {"linked": 0, "paused": False, "pending": 0}
+    resolver = AcademyDocs(store)
+    linked = 0
+    for index, (lesson, url) in enumerate(pending):
+        try:
+            created, _ = resolver.attach(lesson, url)
+        except (OSError, ValueError, RuntimeError):
+            # A rate limit, permission issue or GitHub outage must not block
+            # rebuilding other notes. Leave the URLs intact for the next run.
+            return {"linked": linked, "paused": True, "pending": len(pending) - index}
+        if created:
+            linked += 1
+    return {"linked": linked, "paused": False, "pending": 0}
+
+
 class AcademyDocs:
     """Resolve URLs via slugs and freeze the public docs main SHA once/lesson."""
     def __init__(self, store, reader=None, cache=None):

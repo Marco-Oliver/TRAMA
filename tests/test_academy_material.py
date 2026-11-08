@@ -272,5 +272,58 @@ class AcademyMaterialTests(unittest.TestCase):
             "EXPLICADA_PELO_CODIGO")
 
 
+    def test_legacy_context_docs_inicio_recovered_on_rebuild_without_ai(self):
+        # Context was saved before the official material feature existed.
+        url="https://academiadoprogramador-fullstack.github.io/docs/inicio/"
+        self.reader.files["docs/00 - Início.md"]="# Início\n\nIntrodução ao curso.\n"
+        self.transcript("00:01 Apresentação da aula.\n", [])
+        folder=self.app.store.vault/"99-Anexos"/"Contexto-Classroom"
+        folder.mkdir(parents=True,exist_ok=True)
+        path=folder/"Aula-001.json"
+        before=json.dumps({"aula":"Aula-001","links":[url]},
+                          ensure_ascii=False).encode("utf-8")
+        path.write_bytes(before)
+        with patch("knowledge_bridge.academy_material.AcademyDocs",
+                   return_value=self.docs):
+            self.app.publisher.rebuild()
+            self.assertEqual(len(self.app.store.academy_docs_for_lesson("Aula-001")),1)
+            self.app.publisher.rebuild()
+        note=next((self.app.store.vault/"02-Minhas-Aulas"/"Aula-001").glob("a01-*.md"))
+        self.assertIn("## Material oficial da aula",note.read_text(encoding="utf-8"))
+        self.assertEqual(path.read_bytes(),before)
+        self.assertEqual(self.app.ai.attempts,0)
+        self.assertEqual(self.app.publisher._official_recovery["linked"],0)
+
+    def test_legacy_context_rate_limit_defers_until_next_rebuild(self):
+        from knowledge_bridge.github_mapping import GithubRateLimitError
+        url="https://academiadoprogramador-fullstack.github.io/docs/inicio/"
+        self.reader.files["docs/00 - Início.md"]="# Início\n"
+        self.transcript("00:01 Introdução.\n", [])
+        folder=self.app.store.vault/"99-Anexos"/"Contexto-Classroom"
+        folder.mkdir(parents=True,exist_ok=True)
+        (folder/"Aula-001-auto-abc123.json").write_text(
+            json.dumps({"aula":"Aula-001","descricao":"Material: "+url}),
+            encoding="utf-8")
+        actual=self.docs.attach
+        with patch("knowledge_bridge.academy_material.AcademyDocs",
+                   return_value=self.docs):
+            with patch.object(self.docs,"attach",side_effect=GithubRateLimitError()):
+                self.app.publisher.rebuild()
+                self.assertTrue(self.app.publisher._official_recovery["paused"])
+                self.assertFalse(self.app.store.academy_docs_for_lesson("Aula-001"))
+            self.app.publisher.rebuild()
+        self.assertEqual(len(self.app.store.academy_docs_for_lesson("Aula-001")),1)
+        self.assertEqual(self.app.ai.attempts,0)
+
+    def test_legacy_context_wrong_lesson_and_symlink_ignored(self):
+        from knowledge_bridge.academy_material import saved_official_context_urls
+        url="https://academiadoprogramador-fullstack.github.io/docs/inicio/"
+        folder=self.app.store.vault/"99-Anexos"/"Contexto-Classroom"
+        folder.mkdir(parents=True,exist_ok=True)
+        (folder/"Aula-001.json").write_text(
+            json.dumps({"aula":"Aula-002","links":[url]}),encoding="utf-8")
+        self.assertEqual(saved_official_context_urls(self.app.store),[])
+
+
 if __name__=="__main__":
     unittest.main()

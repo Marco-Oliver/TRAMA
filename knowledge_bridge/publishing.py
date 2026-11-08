@@ -1527,6 +1527,10 @@ class Publisher:
                 self.db.update_status(source["id"], "NEEDS_REVIEW")
                 raise ValueError("Fonte do cofre alterada ou ausente: " +
                                  source["label"] + ". Reimporte o original.")
+        # Legacy Classroom JSONs can predate AcademyDocs. Recover their
+        # official links without AI, rewriting the contexts, or changing SHAs.
+        from .academy_material import recover_saved_official_material
+        self._official_recovery = recover_saved_official_material(self.db)
         refresh_uncertainties(self.db, self.lesson_repo_index)
         self._prepare_concept_targets()
         self._atlas = make_atlas(self.db, concept_targets=self._concept_targets)
