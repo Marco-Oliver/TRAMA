@@ -300,7 +300,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
  if(app.view==='settings'){
   el.innerHTML=`<div class="wide-header"><h2>Ajustes</h2><p>O cofre do Obsidian é a fonte principal. O TRAMA não cria outra biblioteca.</p></div>
   <div class="settings-grid"><div class="setting-block"><h3>Atualizações do TRAMA</h3>
-    <p><strong>Versão instalada: 2.2.2.</strong> Para atualizar: clique em Verificar, depois em Baixar e confirme a instalação. Você não precisa reinstalar Python nem baixar arquivos ZIP.</p>
+    <p><strong>Versão instalada: 2.2.3.</strong> Para atualizar: clique em Verificar, depois em Baixar e confirme a instalação. Você não precisa reinstalar Python nem baixar arquivos ZIP.</p>
     <button id="check-updates">Verificar atualizações</button>
     <p id="update-message" class="setting-status">Clique em “Verificar atualizações” para consultar o GitHub.</p>
     <button id="install-update" class="hidden">Baixar e instalar nova versão</button>
