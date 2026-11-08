@@ -81,6 +81,19 @@ CREATE TABLE IF NOT EXISTS github_auto_decisions (
  decision TEXT NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
  PRIMARY KEY(repo_url, lesson)
 );
+-- Official public course docs, one immutable SHA per lesson.
+-- This extends the existing catalog; cached Git bytes remain in GithubCache.
+CREATE TABLE IF NOT EXISTS academy_docs_locks (
+ lesson TEXT PRIMARY KEY, commit_sha TEXT NOT NULL,
+ frozen_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS academy_docs_links (
+ lesson TEXT NOT NULL, url TEXT NOT NULL, commit_sha TEXT NOT NULL,
+ path TEXT NOT NULL, title TEXT NOT NULL, tags_json TEXT NOT NULL,
+ terms_json TEXT NOT NULL, concepts_json TEXT NOT NULL,
+ PRIMARY KEY(lesson, url),
+ FOREIGN KEY(lesson) REFERENCES academy_docs_locks(lesson)
+);
 CREATE INDEX IF NOT EXISTS idx_uncertainties_source ON uncertainties(source_id);
 CREATE INDEX IF NOT EXISTS idx_uncertainty_events_lookup ON uncertainty_events(uncertainty_id, id);
 """
@@ -191,6 +204,60 @@ class Store:
 
     def repositories(self):
         return self.conn.execute("SELECT * FROM repositories ORDER BY name").fetchall()
+
+    def academy_docs_sha(self, lesson: str):
+        row=self.conn.execute(
+            "SELECT commit_sha FROM academy_docs_locks WHERE lesson=?",
+            (lesson,)).fetchone()
+        return row["commit_sha"] if row else None
+
+    def freeze_academy_docs(self, lesson: str, sha: str):
+        """First immutable revision wins; never silently repoint an old lesson."""
+        if (not re.fullmatch(r"Aula-\\d{3,4}", lesson or "") or
+                not re.fullmatch(r"[a-fA-F0-9]{40}", sha or "")):
+            raise ValueError("Aula ou SHA do material inválido.")
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO academy_docs_locks(lesson,commit_sha) VALUES (?,?)",
+                (lesson,sha.lower()))
+        return self.academy_docs_sha(lesson)
+
+    def academy_docs_for_lesson(self, lesson: str):
+        rows=self.conn.execute(
+            "SELECT * FROM academy_docs_links WHERE lesson=? ORDER BY path, url",
+            (lesson,)).fetchall()
+        return [{**dict(row),
+                 "tags":json.loads(row["tags_json"]),
+                 "terms":json.loads(row["terms_json"]),
+                 "concepts":json.loads(row["concepts_json"])} for row in rows]
+
+    def register_academy_doc(self, lesson: str, url: str, sha: str,
+                             path: str, title: str, tags: list,
+                             terms: list, concepts: list):
+        """Immutable data for pinned-doc publication, not raw LLM instructions."""
+        if (self.academy_docs_sha(lesson)!=sha or
+                not url.startswith("https://academiadoprogramador-fullstack.github.io/docs/") or
+                not path.startswith("docs/") or ".." in path.split("/") or
+                len(url)>1700 or len(path)>300 or len(title)>180 or
+                len(tags)>80 or len(terms)>240 or len(concepts)>80):
+            raise ValueError("Material oficial sem SHA ou metadados válidos.")
+        previous=self.conn.execute(
+            "SELECT commit_sha,path FROM academy_docs_links WHERE lesson=? AND url=?",
+            (lesson,url)).fetchone()
+        if previous:
+            if previous["commit_sha"]!=sha or previous["path"]!=path:
+                raise ValueError("Material já vinculado com outro SHA/caminho; revisão explícita necessária.")
+            return False
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO academy_docs_links
+                (lesson,url,commit_sha,path,title,tags_json,terms_json,concepts_json)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (lesson,url,sha,path,title,
+                 json.dumps(tags,ensure_ascii=False),
+                 json.dumps(terms,ensure_ascii=False),
+                 json.dumps(concepts,ensure_ascii=False)))
+        return True
 
     def github_ref(self, lesson: str, role: str, repository_id: str, slot="current"):
         row = self.conn.execute(
