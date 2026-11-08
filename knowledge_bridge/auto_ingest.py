@@ -174,7 +174,26 @@ class AutoOrganizer:
             # silently. Links and other Classroom sources are independent.
             prior=self.app.store.get_source('autoctx-'+src_id)
             if prior and prior['digest']!=digest:
-                return False
+                # Safe parser-only re-extraction of the SAME pasted post:
+                # previously unrecognized author/people may now be recognized.
+                # Never accept a changed body, manual file edit or new recordings.
+                try:
+                    previous_bytes=path.read_bytes()
+                    previous=json.loads(previous_bytes)
+                except (OSError,ValueError,UnicodeError):
+                    return False
+                parser_fields={'autor','pessoas'}
+                protected_keys=set(previous) | set(payload)
+                if (not isinstance(previous,dict) or
+                        hashlib.sha256(previous_bytes).hexdigest()!=prior['digest'] or
+                        any(previous.get(key)!=payload.get(key)
+                            for key in protected_keys-parser_fields) or
+                        str(previous.get('autor','')).strip() or
+                        str(previous.get('pessoas','')).strip() or
+                        not payload.get('autor') or
+                        payload.get('pessoas')!=payload['autor']+
+                            ' — autor do post do Classroom (não prova apresentação)'):
+                    return False
         if path.exists() and path.read_bytes()!=raw:
             # Guardar histórico dos dados extraídos antes de substituí-los.
             archive=folder/'Historico';archive.mkdir(exist_ok=True)
