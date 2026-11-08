@@ -245,6 +245,8 @@ class Publisher:
         self._lesson_repo_memo = {}
         self._frozen_question_memo = {}
         self._concept_aliases = {}
+        self._lesson_concept_names = {}
+        self._global_concept_names = {}
         for folder in ["00-Inicio", "01-Meu-Conhecimento", "02-Minhas-Aulas", "03-Meus-Projetos",
                        "05-Anotacoes-Pessoais", "90-Sistema", "99-Anexos/Videos", "99-Anexos/Transcricoes-Originais",
                        "99-Anexos/Materiais-Originais", "99-Anexos/Contexto-Classroom"]:
@@ -349,7 +351,8 @@ class Publisher:
 
     def _concept_target(self, name: str, source_id: str = "") -> str:
         """Keep the spoken label in text; optionally link its verified alias."""
-        corrected = self._concept_aliases.get((source_id, name.casefold()), name)
+        corrected = self._concept_aliases.get((source_id, name.casefold()),
+                  self._canonical_concept_name(name))
         return self._concept_targets.get(concept_slug(corrected), concept_file_slug(corrected))
 
     @staticmethod
@@ -360,6 +363,82 @@ class Publisher:
             warning = ("Nome possivelmente distorcido pela transcrição; sugestão: "
                        + suggestion + ". Conferir no áudio; não corrigido automaticamente.")
         return warning
+
+    @staticmethod
+    def _concept_core(name: str) -> tuple[str,...]:
+        """Comparison key only; technical punctuation is never erased."""
+        plain=unicodedata.normalize("NFKD",str(name)).encode(
+            "ascii","ignore").decode().casefold()
+        words=re.findall(r"\.[a-z0-9]{1,8}|[a-z0-9]+(?:[#]+)?",plain)
+        generic={"extensao","arquivo","comando","atalho","ferramenta"}
+        return tuple(word for word in words if word not in generic)
+
+    def _prepare_lesson_concept_names(self):
+        """Choose one stable label per actual lesson, without touching AI cache."""
+        all_names=defaultdict(list)
+        for src in self.db.sources("transcript"):
+            analysis=self.db.analysis(src["id"],src["digest"]) or {}
+            if analysis.get("tipo_aula") in ("apresentacao","organizacional","atividade"):
+                continue
+            for item in analysis.get("conceitos",[]):
+                if isinstance(item,dict):
+                    name=str(item.get("nome","")).strip()
+                    if name and name not in all_names[src["lesson"]]:
+                        all_names[src["lesson"]].append(name)
+        self._lesson_concept_names={}
+        candidates=defaultdict(set)
+        for lesson,names in all_names.items():
+            clusters=defaultdict(list)
+            for name in names:
+                core=self._concept_core(name)
+                clusters[core or (name.casefold(),)].append(name)
+            for core,variants in clusters.items():
+                def count_generic(name):
+                    plain=unicodedata.normalize("NFKD",name).encode(
+                        "ascii","ignore").decode().casefold()
+                    return sum(bool(re.search(r"\b"+word+r"\b",plain))
+                               for word in ("extensao","arquivo","comando","atalho","ferramenta"))
+                preferred=min(variants,key=lambda n:(count_generic(n),len(n),n.casefold()))
+                if (len(variants)>1 and len(core)==1 and
+                        core[0].startswith(".") and
+                        all(count_generic(n)>0 for n in variants)):
+                    preferred=core[0]
+                aliases=list(dict.fromkeys(n for n in variants if n!=preferred))
+                for name in variants:
+                    self._lesson_concept_names[(lesson,name.casefold())]=(preferred,aliases)
+                    candidates[name.casefold()].add(preferred)
+        self._global_concept_names={
+            name:next(iter(values)) for name,values in candidates.items()
+            if len(values)==1}
+
+    def _canonical_concept_name(self, name: str, lesson: str = "") -> str:
+        target=self._lesson_concept_names.get((lesson,name.casefold()))
+        return (target[0] if target else
+                self._global_concept_names.get(name.casefold(),name))
+
+    def _deduplicate_lesson_concepts(self, lesson: str, rows: list) -> list:
+        result={}
+        for item in rows:
+            if not isinstance(item,dict):
+                continue
+            raw=str(item.get("nome","")).strip()
+            if not raw:
+                continue
+            name=self._canonical_concept_name(raw,lesson)
+            key=self._concept_core(name) or (name.casefold(),)
+            if key not in result:
+                result[key]={**item,"nome":name,"aliases":[]}
+            existing=result[key]
+            associated=self._lesson_concept_names.get((lesson,raw.casefold()))
+            for alias in ([raw] if raw!=name else []) + (associated[1] if associated else []):
+                if alias!=name and alias not in existing["aliases"]:
+                    existing["aliases"].append(alias)
+            if item is not result[key] and item.get("explicacao") and (
+                    item.get("explicacao")!=existing.get("explicacao")):
+                extras=existing.setdefault("explicacoes_adicionais",[])
+                if item["explicacao"] not in extras:
+                    extras.append(item["explicacao"])
+        return list(result.values())
 
     def _prepare_concept_targets(self):
         """Retain legacy files on existing vaults; clean vaults use readable slugs.
@@ -375,11 +454,12 @@ class Publisher:
             for concept in analysis.get("conceitos", []):
                 if not isinstance(concept, dict):
                     continue
-                name = str(concept.get("nome", "")).strip()
+                original = str(concept.get("nome", "")).strip()
+                name = self._canonical_concept_name(original,src["lesson"] or "")
                 if name:
                     names = candidates.setdefault(concept_slug(name), [])
-                    if name not in names:
-                        names.append(name)
+                    for option in (name,original):
+                        if option not in names:names.append(option)
         folder = self.vault / "01-Meu-Conhecimento" / "Conceitos"
         self._concept_targets = {}
         for key, names in candidates.items():
@@ -749,9 +829,10 @@ class Publisher:
                         rows.append(f"- Material publicado: <{link}>")
         else:
             rows.append('*Nenhuma publicação do Classroom relacionada a esta aula foi cadastrada.*')
-        merged_concepts=[concept for src,_note in recordings
-                         for concept in (self.db.analysis(src['id'],src['digest']) or {}).get('conceitos',[])
-                         if isinstance(concept,dict)]
+        merged_concepts=self._deduplicate_lesson_concepts(lesson,[
+            concept for src,_note in recordings
+            for concept in (self.db.analysis(src['id'],src['digest']) or {}).get('conceitos',[])
+            if isinstance(concept,dict)])
         self._append_official_material(rows,lesson,{"conceitos":merged_concepts})
         rows += ['', '## Pessoas citadas', '']
         person_links=[]; concept_links=[]
@@ -1115,7 +1196,7 @@ class Publisher:
         video = src["video"] or "Sem-V"
         fname = f"{slug(Path(src['label']).stem, 52)}-{src['id'][:7]}.md"
         rel = f"02-Minhas-Aulas/{lesson}/{fname}"
-        concepts = analysis.get("conceitos",[]) if analysis else []
+        concepts = self._deduplicate_lesson_concepts(lesson,analysis.get("conceitos",[])) if analysis else []
         lesson_kind=analysis.get("tipo_aula","indefinida") if analysis else "indefinida"
         nontechnical = lesson_kind in ("apresentacao","organizacional","atividade")
         raw = self.vault / src["stored_path"]
@@ -1176,6 +1257,12 @@ class Publisher:
                         continue
                     tempo = f" ({c['tempo']})" if c.get("tempo") else ""
                     body.append(f"- **{_escape_md(name)}**{tempo}: {_escape_md(c.get('explicacao',''))}")
+                    if c.get("aliases"):
+                        body.append("  - **Nomes alternativos unificados:** "+
+                                    ", ".join(_escape_md(a) for a in c["aliases"]))
+                    for explanation in c.get("explicacoes_adicionais",[])[:5]:
+                        body.append("  - **Outra explicação extraída (conferir):** "+
+                                    _escape_md(explanation))
                     warning = self._asr_concept_warning(c)
                     if warning:
                         body.append("  - **Nome possivelmente distorcido pela transcrição:** "
@@ -1590,6 +1677,7 @@ class Publisher:
                 doc_reader=AcademyDocs(self.db)
             doc_reader.hydrate_saved_fenced_code(lesson)
         refresh_uncertainties(self.db, self.lesson_repo_index)
+        self._prepare_lesson_concept_names()
         self._prepare_concept_targets()
         self._atlas = make_atlas(self.db, concept_targets=self._concept_targets)
         concept_map = defaultdict(list)
@@ -1801,6 +1889,9 @@ class Publisher:
                 if warning:
                     body.append("- **Nome possivelmente distorcido pela transcrição:** "
                                 + _escape_md(warning))
+                if concept.get("aliases"):
+                    body.append("- **Aliases do conceito:** "+
+                                ", ".join(_escape_md(alias) for alias in concept["aliases"]))
                 if concept.get("nome_original"):
                     body.append("- **Nome original mantido no TXT:** "
                                 + _escape_md(concept["nome_original"])
