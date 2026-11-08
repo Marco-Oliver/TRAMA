@@ -225,5 +225,52 @@ class AcademyMaterialTests(unittest.TestCase):
         self.assertEqual(self.app.ai.attempts,0)
 
 
+    def test_source_terms_include_inline_code_bold_and_tag_evidence(self):
+        from knowledge_bridge.academy_material import extract_material
+        doc=("---\nslug: /conteudo/seeding\n"
+             "tags:\n  - conceito-seeding\n---\n"
+             "# Início\n\n**Seeding** é importante.\n"
+             "Use \x60dotnet --version\x60 para conferir.\n")
+        result=extract_material(doc,"docs/01 - Seeding.md")
+        names={(r["name"],r["origin"]) for r in result["terms"]}
+        self.assertIn(("Seeding","negrito"),names)
+        self.assertIn(("dotnet --version","codigo"),names)
+        self.assertIn("conceito-seeding",result["tags"])
+        self.assertEqual(result["concepts"][0]["name"],"Seeding")
+
+    def test_official_material_only_matches_the_original_lesson(self):
+        from knowledge_bridge.learning_review import refresh_uncertainties
+        self.docs.attach("Aula-002",BRUTE_URL)
+        row=self.transcript('00:01 Foi citado "brotce".\n',
+                            ['Ouvi "brotce" na apresentação.'])
+        refresh_uncertainties(self.app.store)
+        self.assertEqual(
+            self.app.store.uncertainties_for_source(row["id"])[0]["status"],
+            "PENDENTE")
+
+    def test_frozen_code_evidence_wins_over_material_even_if_both_match(self):
+        from knowledge_bridge.learning_review import refresh_uncertainties
+        self.docs.attach("Aula-001",BRUTE_URL)
+        row=self.transcript('00:01 A explicação mencionou brute force.\n',
+                            ['Dúvida sobre brute force.'])
+        class FrozenCode:
+            def for_lesson(self,lesson):
+                return [({
+                    "frozen":True,"sha":SHA_ONE,
+                    "url":"https://github.com/example/test",
+                    "version":"v1",
+                },{
+                    "identifiers":[{
+                        "name":"BruteForce","path":"src/Test.cs","line":4,
+                        "snippet":"class BruteForce {}",
+                        "line_text":"class BruteForce {}",
+                    }]
+                })]
+        refresh_uncertainties(self.app.store,FrozenCode())
+        self.assertEqual(
+            self.app.store.uncertainties_for_source(row["id"])[0]["status"],
+            "EXPLICADA_PELO_CODIGO")
+
+
 if __name__=="__main__":
     unittest.main()
