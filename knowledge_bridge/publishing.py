@@ -17,9 +17,10 @@ from .content import MODULES, evidence_excerpt, guess_modules, lesson_identity, 
 from .store import Store
 from .memory_atlas import make_atlas, render_atlas, lesson_order, norm, note_for, literal_technical_mention
 from .code_intel import match_lesson_to_repository, potential_transcript_corrections, is_generic_code_term
-from .learning_review import refresh_uncertainties, render_uncertainties, code_evidence_lines
+from .learning_review import refresh_uncertainties, render_uncertainties, code_evidence_lines, material_evidence_lines
 from .frozen_code_resolution import match_frozen_question
 from .github_lesson_index import LessonRepositoryIndex
+from .academy_material import official_route, _key as academy_term_key, DOCS_REPO
 
 
 def _escape_md(s: object) -> str:
@@ -553,6 +554,61 @@ class Publisher:
         body.extend(["", "> Prints e PDFs são preservados como fontes. Somente arquivos com contexto automático "
                      "identificado acima foram analisados visualmente; hipóteses não são fatos confirmados."])
 
+    def _append_official_material(self, body: list[str], lesson: str, analysis=None):
+        """Separate verified Git revision, untrusted source text and AI claims."""
+        materials=self.db.academy_docs_for_lesson(lesson)
+        if not materials:
+            return
+        from urllib.parse import quote
+        from .learning_review import _safe
+        body.extend(["", "## Material oficial da aula", "",
+                     "> Referência documental do professor, congelada no GitHub. "
+                     "Não comprova o que foi dito na gravação e não é enviada à IA."])
+        associated=[]
+        for material in materials[:30]:
+            sha,path=material["commit_sha"],material["path"]
+            url=material["url"]
+            if (not re.fullmatch(r"[0-9a-f]{40}",sha) or not path.startswith("docs/")
+                    or ".." in path.split("/") or official_route(url) is None):
+                continue
+            link=DOCS_REPO+"/blob/"+sha+"/"+quote(path,safe="/")
+            title=_safe(material["title"],160)
+            body.append("- **"+title+"** — [Abrir material oficial]("+url+")"
+                        +" · [Arquivo no SHA congelado]("+link+")"
+                        +" · commit "+chr(96)+sha[:12]+chr(96))
+            tags=[tag for tag in material["tags"] if isinstance(tag,str)]
+            if tags:
+                body.append("  - Tags: "+", ".join(
+                    chr(96)+_safe(tag,70).replace(chr(96),"")+chr(96)
+                    for tag in tags[:30]))
+            for concept in material["concepts"][:60]:
+                if isinstance(concept,dict):
+                    associated.append((concept,link))
+        if not isinstance(analysis,dict):
+            return
+        matches=[]
+        for concept in analysis.get("conceitos",[])[:30]:
+            if not isinstance(concept,dict):
+                continue
+            label=str(concept.get("nome","")).strip()
+            if not label:
+                continue
+            for official,link in associated:
+                tag=official.get("tag","")
+                if not isinstance(tag,str) or not tag.startswith("conceito-"):
+                    continue
+                key=academy_term_key(tag[len("conceito-"):])
+                if key and academy_term_key(label)==key:
+                    name=_safe(official.get("name",""),100)
+                    row=("- **"+_safe(label,90)+"** → nome no material: "
+                         +chr(96)+name.replace(chr(96),"")+chr(96)
+                         +" ([fonte congelada]("+link+")).")
+                    if row not in matches:
+                        matches.append(row)
+        if matches:
+            body.extend(["", "**Correspondência com tags conceito-* (não prova aprendizado):**",
+                         *matches[:30]])
+
     def _other_lesson_note(self, lesson: str, sources: list) -> str:
         """A lesson with only video, screenshots or Classroom is still a lesson."""
         rel = f"02-Minhas-Aulas/{lesson}/00-contexto-{slug(lesson)}.md"
@@ -567,6 +623,7 @@ class Publisher:
                 "Aula cadastrada mesmo sem transcrição. Não presumir que houve conteúdo técnico.", "",
                 "## Transcrição", "", "*Ainda não fornecida. Não gerar resumo de vídeo só pelo nome do arquivo.*"]
         self._append_context(body, lesson)
+        self._append_official_material(body, lesson)
         self.write(rel, "\n".join(body) + "\n")
         return rel
 
@@ -662,6 +719,10 @@ class Publisher:
                         rows.append(f"- Material publicado: <{link}>")
         else:
             rows.append('*Nenhuma publicação do Classroom relacionada a esta aula foi cadastrada.*')
+        merged_concepts=[concept for src,_note in recordings
+                         for concept in (self.db.analysis(src['id'],src['digest']) or {}).get('conceitos',[])
+                         if isinstance(concept,dict)]
+        self._append_official_material(rows,lesson,{"conceitos":merged_concepts})
         rows += ['', '## Pessoas citadas', '']
         person_links=[]; concept_links=[]
         for item in contexts:
@@ -1176,12 +1237,13 @@ class Publisher:
                     status = row["status"] if row is not None else (
                         "EXPLICADA_PELO_CODIGO" if match else "PENDENTE")
                     body.append(f"- {_escape_md(question)} — **Estado:** `{status}`")
-                    if status == "EXPLICADA_PELO_CODIGO":
-                        # A later follow-up may have a DIFFERENT frozen SHA.
+                    if status in ("EXPLICADA_PELO_CODIGO","EXPLICADA_PELO_MATERIAL"):
                         evidences = json.loads(row["evidence_json"]) if row else [match]
                         for evidence in evidences:
                             if evidence and evidence.get("kind") == "codigo_congelado":
                                 body.extend(code_evidence_lines(evidence))
+                            elif evidence and evidence.get("kind") == "material_oficial_congelado":
+                                body.extend(material_evidence_lines(evidence))
             person_warnings=self._person_warnings(src,analysis,text)
             if person_warnings:
                 body += ["", "## Nomes e apelidos para conferir", "",
@@ -1254,7 +1316,8 @@ class Publisher:
                     body.append(f"### {question}")
                     body.append(f"- Estado: `{status}`.")
                     body.append(f"- [[{row['id']}|Abrir registro e histórico desta dúvida]]")
-                    if status not in ("NOVA_EVIDENCIA_PARA_REVISAR", "EXPLICADA_PELO_CODIGO"):
+                    if status not in ("NOVA_EVIDENCIA_PARA_REVISAR", "EXPLICADA_PELO_CODIGO",
+                                       "EXPLICADA_PELO_MATERIAL"):
                         body.append("- Nenhuma explicação posterior identificada nas fontes cadastradas.")
                         body.append("")
                         continue
@@ -1280,6 +1343,9 @@ class Publisher:
                         elif evidence.get("kind") == "codigo_congelado":
                             body.append("- **Código da versão congelada:** "
                                         "ver dúvida técnica acima (pista, não prova do áudio).")
+                        elif evidence.get("kind") == "material_oficial_congelado":
+                            body.append("- **Material oficial do SHA congelado:** "
+                                        "ver evidência documentada acima (pista, não prova do áudio).")
                         elif evidence.get("kind") == "codigo":
                             ref = _code_ref({"url":evidence.get("repo", ""),
                                              "sha":evidence.get("sha", "")},
@@ -1289,6 +1355,7 @@ class Publisher:
                                         " (relação candidata, sem comprovar autoria ou aprendizagem).")
                     body.append("")
         self._append_context(body, lesson)
+        self._append_official_material(body, lesson, analysis)
         # Source-grounded anchors make timestamps navigable without
         # modifying the preserved transcript in 99-Anexos.
         # Only publish anchored excerpts that help review the notes.
