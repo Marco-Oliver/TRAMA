@@ -18,6 +18,7 @@ from defusedxml import ElementTree
 from .ai import BudgetStopped, NoFreeProvider, ProviderError
 from .classroom import lesson_number, normalize_context
 from .classroom_paste import parse_import_paste
+from .academy_material import AcademyDocs, official_route
 from .content import lesson_identity
 from .pipeline import Application, MATERIAL_EXTS, TEXT_EXTS, VIDEO_EXTS
 
@@ -372,6 +373,25 @@ class AutoOrganizer:
             synthetic={'id':src_id,'stored_path':'(URLs informadas pelo usuário)'}
             try:self._save_extracted(synthetic,lesson,data,reason='Links fornecidos no lote')
             except (ValueError,OSError) as exc:outcome['pending'].append(f'{lesson}: {exc}')
+        # The Academy docs are a THIRD source: freeze the official Git SHA
+        # once per lesson and link only .md files at that immutable revision.
+        # Network is solely GitHub's read-only source, never an AI endpoint.
+        official=[(lesson,entry["url"])
+                  for lesson,entries in by_lesson.items() for entry in entries
+                  if official_route(entry["url"]) is not None]
+        if official:
+            resolver=AcademyDocs(self.app.store)
+            for lesson,url in list(dict.fromkeys(official))[:60]:
+                try:
+                    created,notice=resolver.attach(lesson,url)
+                    if not created:
+                        outcome["pending"].append(lesson+": "+notice)
+                except (OSError,ValueError,RuntimeError) as exc:
+                    outcome["pending"].append(
+                        lesson+": material oficial indisponível no SHA fixado ("+
+                        str(exc)[:140]+"). Link preservado.")
+            if len(official)>60:
+                outcome["pending"].append("Limite de 60 URLs oficiais por lote; restantes não vinculadas.")
         # Version association does not require an AI provider or user-by-user
         # Git mapping; operate after all TXT and repository links are imported.
         automatic = self.app.assign_github_versions()
