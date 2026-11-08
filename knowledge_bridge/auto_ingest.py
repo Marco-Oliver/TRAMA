@@ -333,6 +333,8 @@ class AutoOrganizer:
                     'reprocesse a aula para a IA usar.')
         # Links sem identificação são vinculados somente se existir uma aula única.
         by_lesson={}
+        unassigned_docs=None
+        docs_suggestion_paused=False
         for entry in links:
             if entry['repo']:
                 try:
@@ -342,6 +344,23 @@ class AutoOrganizer:
                 continue
             lesson=entry['lesson'] or (next(iter(seen_lessons)) if len(seen_lessons)==1 else None)
             if lesson is None:
+                if official_route(entry['url']) is not None and not docs_suggestion_paused:
+                    try:
+                        if unassigned_docs is None:
+                            unassigned_docs=AcademyDocs(self.app.store)
+                        guess=unassigned_docs.suggest_unassigned_lesson(entry['url'])
+                        if guess:
+                            candidate,reason=guess
+                            outcome['pending'].append(
+                                'Link oficial sem aula: provável '+candidate+
+                                ' ('+reason+'). Confirme reenviando como '+
+                                candidate.replace('-', ' ')+ ' | '+entry['url'])
+                            continue
+                    except (OSError,ValueError,RuntimeError) as exc:
+                        docs_suggestion_paused=True
+                        outcome['pending'].append(
+                            'Sugestão de aula pausada por acesso/cota GitHub; '+
+                            'tente novamente depois. '+str(exc)[:120])
                 outcome['pending'].append('Link sem aula identificada: '+entry['url'])
                 continue
             by_lesson.setdefault(lesson,[]).append(entry)

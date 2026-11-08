@@ -325,5 +325,24 @@ class AcademyMaterialTests(unittest.TestCase):
         self.assertEqual(saved_official_context_urls(self.app.store),[])
 
 
+    def test_unassigned_official_link_suggests_only_analyzed_txt_without_ai(self):
+        self.transcript("00:01 O seeding prepara roles e interfaces no projeto.\n", [])
+        with patch("knowledge_bridge.auto_ingest.AcademyDocs", return_value=self.docs):
+            result=AutoOrganizer(self.app).run([],CONTENT_URL,authorized=True)
+        self.assertTrue(any("provável Aula-001" in line for line in result["pending"]))
+        self.assertFalse(self.app.store.academy_docs_for_lesson("Aula-001"))
+        self.assertIsNone(self.app.store.academy_docs_sha("Aula-001"))
+        self.assertEqual(self.app.ai.attempts,0)
+
+    def test_unassigned_official_link_avoids_weak_guess(self):
+        self.transcript("00:01 Hoje vamos falar de outras coisas.\n", [])
+        with patch("knowledge_bridge.auto_ingest.AcademyDocs", return_value=self.docs):
+            result=AutoOrganizer(self.app).run([],CONTENT_URL,authorized=True)
+        self.assertTrue(any("Link sem aula identificada:" in line
+                            for line in result["pending"]))
+        self.assertFalse(any("provável Aula-" in line for line in result["pending"]))
+        self.assertEqual(self.app.ai.attempts,0)
+
+
 if __name__=="__main__":
     unittest.main()

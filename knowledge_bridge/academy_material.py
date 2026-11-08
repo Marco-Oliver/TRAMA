@@ -334,6 +334,73 @@ class AcademyDocs:
             raise MappingError("Não foi possível confirmar o SHA main dos docs.")
         return sha.lower()
 
+
+    def suggest_unassigned_lesson(self, url: str) -> tuple[str, str] | None:
+        """Read-only hint from an analyzed TXT; NEVER attach without confirmation."""
+        route = official_route(url)
+        if route is None:
+            return None
+        sha = self._head()
+        self.reader._privacy[DOCS_REPO] = False
+        path = self._index(sha).get(route)
+        if not path:
+            return None
+        doc = extract_material(self.reader.read_file(DOCS_REPO, sha, path)["content"], path)
+        if doc["route"] != route:
+            return None
+        ignored = {"sobre", "aula", "conteudo", "introducao", "exemplo", "curso",
+                   "com", "uma", "para", "dos", "das", "pelo", "pela", "como",
+                   "este", "esta", "seus", "suas", "que", "de", "do", "da", "em"}
+        def keywords(value):
+            return {w for w in _key(value).split() if len(w) >= 4 and w not in ignored}
+        title_words = keywords(doc["title"])
+        tag_words = set()
+        for tag in doc["tags"]:
+            if tag.startswith(("conceito-", "tech-", "projeto-")):
+                tag_words.update(keywords(tag.split("-", 1)[1]))
+        term_words = set()
+        for item in doc["terms"][:MAX_TERMS]:
+            if isinstance(item, dict) and isinstance(item.get("name"), str):
+                term_words.update(keywords(item["name"]))
+        if not title_words:
+            return None
+        by_lesson = {}
+        for src in self.store.sources("transcript"):
+            lesson = src["lesson"]
+            if not re.fullmatch(r"Aula-\d{3,4}", lesson or ""):
+                continue
+            if not isinstance(self.store.analysis(src["id"], src["digest"]), dict):
+                continue
+            target = self.store.vault / (src["stored_path"] or "")
+            try:
+                if (target.is_symlink() or not target.resolve().is_relative_to(self.store.vault)
+                        or not target.is_file() or target.stat().st_size > 600_000):
+                    continue
+                content = target.read_text(encoding="utf-8-sig", errors="replace")
+            except (OSError, ValueError):
+                continue
+            by_lesson.setdefault(lesson, set()).update(keywords(content))
+        ranked = []
+        for lesson, words in by_lesson.items():
+            title_hits = title_words & words
+            tag_hits = tag_words & words
+            term_hits = term_words & words
+            if (len(title_hits | tag_hits | term_hits) < 2 or
+                    not (len(title_hits) >= 2 or
+                         len(title_hits) >= 1 and len(tag_hits) >= 1)):
+                continue
+            score = 3 * len(title_hits) + 2 * len(tag_hits) + min(3, len(term_hits))
+            if score >= 6:
+                ranked.append((score, lesson, title_hits, tag_hits))
+        ranked.sort(key=lambda item: (-item[0], item[1]))
+        if not ranked or (len(ranked) > 1 and ranked[0][0] - ranked[1][0] < 3):
+            return None
+        _, lesson, title_hits, tag_hits = ranked[0]
+        reason = "termos do título: " + ", ".join(sorted(title_hits)[:4])
+        if tag_hits:
+            reason += "; tags: " + ", ".join(sorted(tag_hits)[:3])
+        return lesson, reason
+
     def attach(self,lesson: str,url: str) -> tuple[bool,str]:
         route=official_route(url)
         if route is None:
