@@ -1,5 +1,18 @@
 # Histórico de versões do TRAMA
 
+## [2.2.3] — 2026-11-08
+
+### Adicionado — documentação oficial da Academia como terceira fonte
+- Links oficiais de https://academiadoprogramador-fullstack.github.io/docs/ são resolvidos para arquivos Markdown por slug ou rota Docusaurus e vinculados a um SHA GitHub congelado por aula.
+- Evidências de conteúdo têm proveniência e limites; dúvidas podem receber a indicação EXPLICADA_PELO_MATERIAL sem serem confundidas com prova do áudio. Nenhum trecho dos documentos é enviado à IA.
+- **Recuperação de contextos antigos:** importação ou rebuild encontra URLs oficiais existentes em 99-Anexos/Contexto-Classroom/*.json e vincula apenas à aula explícita no JSON e no nome do arquivo, mantendo intactos os contextos originais, análises e SHAs já congelados. Se o GitHub ficar indisponível ou atingir a cota, a operação não bloqueia o rebuild e é retomada na próxima tentativa.
+- **Sugestões sem aula:** URLs oficiais sem aula explícita podem apresentar uma provável Aula-0XX usando correspondências conservadoras entre título, tags, termos e TXT previamente analisados. A sugestão nunca cria vínculo automaticamente e exige confirmação do usuário.
+
+### Testes e atualização
+- Testes locais sintéticos, sem IA, abrangem material já salvo, repetição do rebuild, falha de acesso GitHub, sugestões e ausência de associações sem evidência.
+- Atualização 2.2.2 → 2.2.3 mantém o mesmo AppId, cofre Obsidian, banco SQLite, ajustes e chave local. Testes Ubuntu/Windows e instalador oficial são pré-requisitos para publicação.
+
+
 ## [2.2.2] — 2026-11-07
 
 ### Corrigido — Aula 01 e organização de pessoas
