@@ -213,7 +213,7 @@ class Store:
 
     def freeze_academy_docs(self, lesson: str, sha: str):
         """First immutable revision wins; never silently repoint an old lesson."""
-        if (not re.fullmatch(r"Aula-\\d{3,4}", lesson or "") or
+        if (not re.fullmatch(r"Aula-\d{3,4}", lesson or "") or
                 not re.fullmatch(r"[a-fA-F0-9]{40}", sha or "")):
             raise ValueError("Aula ou SHA do material inválido.")
         with self.conn:
