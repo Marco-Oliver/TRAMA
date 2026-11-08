@@ -38,7 +38,9 @@ class ClassroomLinkTests(unittest.TestCase):
         self.assertIn('https://academiadoprogramador-fullstack.github.io/docs/inicio/',md)
         self.assertEqual(len(list(self.vault.rglob('*.mp4'))),0)
         people=list((self.vault/'01-Meu-Conhecimento/Pessoas').glob('*.md'))
-        self.assertEqual(len(people),2)
+        # Manual context can mention people but is not itself a Classroom
+        # post author or evidence across three distinct lessons.
+        self.assertEqual(len(people),0)
         b=Bridge()
         b.settings={'vault':str(self.vault)}
         n=b.note(notes[0].relative_to(self.vault).as_posix())

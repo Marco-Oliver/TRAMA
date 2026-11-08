@@ -370,7 +370,7 @@ class Publisher:
         """Comparison key only; technical punctuation is never erased."""
         plain=unicodedata.normalize("NFKD",str(name)).encode(
             "ascii","ignore").decode().casefold()
-        words=re.findall(r"\.[a-z0-9]{1,8}|[a-z0-9]+(?:[#]+)?",plain)
+        words=re.findall(r"\.[a-z0-9]{1,8}|[a-z0-9]+(?:\+\+|#)?",plain)
         generic={"extensao","arquivo","comando","atalho","ferramenta"}
         return tuple(word for word in words if word not in generic)
 
@@ -1808,16 +1808,24 @@ class Publisher:
             if not analysis:
                 continue
             if analysis.get("tipo_aula") not in ("apresentacao","organizacional","atividade"):
-                for concept in concepts:
+                # Keep every distinct source explanation / timestamp on the
+                # concept page. Group duplicate LABELS on the lesson note only.
+                for concept in analysis.get("conceitos",[]):
                     if not isinstance(concept,dict):
                         continue
-                    name = str(concept.get("nome", "")).strip()
-                    if name:
-                        canonical = self._corrected_concept(src, name, concept, original)
-                        stored_concept = ({**concept, "nome_original":name}
-                                          if canonical != name else concept)
-                        concept_map[concept_slug(canonical)].append(
-                            (canonical,src,note,stored_concept))
+                    original_name=str(concept.get("nome","")).strip()
+                    if not original_name:
+                        continue
+                    name=self._canonical_concept_name(original_name,src["lesson"] or "")
+                    canonical=self._corrected_concept(src,name,concept,original)
+                    stored_concept={**concept,"nome":canonical}
+                    if canonical != original_name:
+                        stored_concept["nome_original"]=original_name
+                        aliases=self._lesson_concept_names.get(
+                            (src["lesson"],original_name.casefold()))
+                        if aliases:stored_concept["aliases"]=aliases[1]
+                    concept_map[concept_slug(canonical)].append(
+                        (canonical,src,note,stored_concept))
         # Classroom can contain names as explicitly user-provided text, even if there is
         # no transcript or code. It is a separate kind of evidence and must be labeled.
         lesson_to_note = {s['lesson']: n for s, n in lesson_links if s['lesson']}
