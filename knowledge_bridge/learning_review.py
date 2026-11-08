@@ -152,35 +152,38 @@ def refresh_uncertainties(store, lesson_index=None) -> dict:
                      lesson_order(s["lesson"]) > lesson_order(src["lesson"])]
             evidence = []
             if lesson_index is not None and src["lesson"]:
-                # Never use the global/HEAD index here, even for an
-                # unregistered lesson. Refuse non-frozen references.
+                # Never use the moving/global index: only current lesson SHA.
                 frozen = [item for item in lesson_index.for_lesson(src["lesson"])
                           if item[0].get("frozen")]
                 matched = match_frozen_question(question, frozen)
                 if matched is not None:
                     evidence.append({**matched, "lesson":src["lesson"]})
-            if not evidence and src["lesson"]:
-                # Material of the ORIGINAL lesson is a third, independent
-                # source. Do not consult material from other lessons or HEAD.
-                match = match_material_question(
-                    question,store.academy_docs_for_lesson(src["lesson"]))
-                if match is not None:
-                    evidence=[match]
             if evidence:
-                state = ("EXPLICADA_PELO_CODIGO" if evidence[0]["kind"]=="codigo_congelado"
-                         else "EXPLICADA_PELO_MATERIAL")
+                state = "EXPLICADA_PELO_CODIGO"
                 candidate = evidence[0]["candidate"]
             else:
-                evidence = _later_evidence(
+                later_evidence = _later_evidence(
                     question, candidate, question, later, lesson_index, store)
-                later_code = next((item for item in evidence
+                later_code = next((item for item in later_evidence
                                    if item.get("kind") == "codigo_congelado"), None)
                 if later_code:
-                    candidate = later_code["candidate"]
-                    state = "EXPLICADA_PELO_CODIGO"
+                    evidence=later_evidence
+                    candidate=later_code["candidate"]
+                    state="EXPLICADA_PELO_CODIGO"
                 else:
-                    state = "NOVA_EVIDENCIA_PARA_REVISAR" if evidence else (
-                        "HIPOTESE_SEM_CONFIRMACAO" if candidate else "PENDENTE")
+                    # After BOTH frozen-code checks, consult only the linked
+                    # official material of THIS lesson at its pinned SHA.
+                    material=(match_material_question(
+                        question,store.academy_docs_for_lesson(src["lesson"]))
+                        if src["lesson"] else None)
+                    if material is not None:
+                        evidence=[material,*later_evidence][:8]
+                        candidate=material["candidate"]
+                        state="EXPLICADA_PELO_MATERIAL"
+                    else:
+                        evidence=later_evidence
+                        state = "NOVA_EVIDENCIA_PARA_REVISAR" if evidence else (
+                            "HIPOTESE_SEM_CONFIRMACAO" if candidate else "PENDENTE")
             store.upsert_uncertainty(uid, src["id"], src["digest"], src["label"],
                                      question, candidate, state, evidence)
 
