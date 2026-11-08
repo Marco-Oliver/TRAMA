@@ -191,7 +191,7 @@ class AcademyMaterialTests(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(match["candidate"].lower(),"brute force")
         self.assertEqual(match["sha"],SHA_ONE)
-        self.assertEqual(len(match["snippet"].splitlines()),3)
+        self.assertEqual(len(match["snippet"].split("\n")),3)
         self.assertIsNone(match_material_question("A aula começou sem atrasos.",materials))
         self.assertIsNone(match_material_question("Foi uma boa apresentação.",materials))
 
