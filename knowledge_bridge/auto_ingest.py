@@ -18,6 +18,7 @@ from defusedxml import ElementTree
 from .ai import BudgetStopped, NoFreeProvider, ProviderError
 from .classroom import lesson_number, normalize_context
 from .classroom_paste import parse_import_paste
+from .academy_material import AcademyDocs, official_route
 from .content import lesson_identity
 from .pipeline import Application, MATERIAL_EXTS, TEXT_EXTS, VIDEO_EXTS
 
@@ -332,6 +333,8 @@ class AutoOrganizer:
                     'reprocesse a aula para a IA usar.')
         # Links sem identificação são vinculados somente se existir uma aula única.
         by_lesson={}
+        unassigned_docs=None
+        docs_suggestion_paused=False
         for entry in links:
             if entry['repo']:
                 try:
@@ -339,8 +342,28 @@ class AutoOrganizer:
                 except (OSError,ValueError,RuntimeError) as exc:
                     outcome['pending'].append('GitHub '+entry['url']+': '+str(exc)[:100])
                 continue
-            lesson=entry['lesson'] or (next(iter(seen_lessons)) if len(seen_lessons)==1 else None)
+            # Official documentation with no explicit lesson always needs consent.
+            lesson=entry['lesson']
+            if lesson is None and official_route(entry['url']) is None and len(seen_lessons)==1:
+                lesson=next(iter(seen_lessons))
             if lesson is None:
+                if official_route(entry['url']) is not None and not docs_suggestion_paused:
+                    try:
+                        if unassigned_docs is None:
+                            unassigned_docs=AcademyDocs(self.app.store)
+                        guess=unassigned_docs.suggest_unassigned_lesson(entry['url'])
+                        if guess:
+                            candidate,reason=guess
+                            outcome['pending'].append(
+                                'Link oficial sem aula: provável '+candidate+
+                                ' ('+reason+'). Confirme reenviando como '+
+                                candidate.replace('-', ' ')+ ' | '+entry['url'])
+                            continue
+                    except (OSError,ValueError,RuntimeError) as exc:
+                        docs_suggestion_paused=True
+                        outcome['pending'].append(
+                            'Sugestão de aula pausada por acesso/cota GitHub; '+
+                            'tente novamente depois. '+str(exc)[:120])
                 outcome['pending'].append('Link sem aula identificada: '+entry['url'])
                 continue
             by_lesson.setdefault(lesson,[]).append(entry)
@@ -372,6 +395,29 @@ class AutoOrganizer:
             synthetic={'id':src_id,'stored_path':'(URLs informadas pelo usuário)'}
             try:self._save_extracted(synthetic,lesson,data,reason='Links fornecidos no lote')
             except (ValueError,OSError) as exc:outcome['pending'].append(f'{lesson}: {exc}')
+        # The Academy docs are a THIRD source: freeze the official Git SHA
+        # once per lesson and link only .md files at that immutable revision.
+        # Network is solely GitHub's read-only source, never an AI endpoint.
+        official=[(lesson,entry["url"])
+                  for lesson,entries in by_lesson.items() for entry in entries
+                  if official_route(entry["url"]) is not None]
+        if official:
+            resolver=AcademyDocs(self.app.store)
+            attempts=list(dict.fromkeys(official))[:60]
+            # Avoid retrying the same failed link immediately in this import's
+            # rebuild; a later import/rebuild may retry after quota reset.
+            self.app.publisher._recent_official_attempts=set(attempts)
+            for lesson,url in attempts:
+                try:
+                    created,notice=resolver.attach(lesson,url)
+                    if not created:
+                        outcome["pending"].append(lesson+": "+notice)
+                except (OSError,ValueError,RuntimeError) as exc:
+                    outcome["pending"].append(
+                        lesson+": material oficial indisponível no SHA fixado ("+
+                        str(exc)[:140]+"). Link preservado.")
+            if len(official)>60:
+                outcome["pending"].append("Limite de 60 URLs oficiais por lote; restantes não vinculadas.")
         # Version association does not require an AI provider or user-by-user
         # Git mapping; operate after all TXT and repository links are imported.
         automatic = self.app.assign_github_versions()

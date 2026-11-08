@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .code_intel import CONCEPTS, is_generic_code_term
 from .frozen_code_resolution import match_frozen_question
+from .academy_material import match_material_question
 from urllib.parse import quote
 from .content import timed_lines
 from .memory_atlas import lesson_order, norm
@@ -151,8 +152,7 @@ def refresh_uncertainties(store, lesson_index=None) -> dict:
                      lesson_order(s["lesson"]) > lesson_order(src["lesson"])]
             evidence = []
             if lesson_index is not None and src["lesson"]:
-                # Never use the global/HEAD index here, even for an
-                # unregistered lesson. Refuse non-frozen references.
+                # Never use the moving/global index: only current lesson SHA.
                 frozen = [item for item in lesson_index.for_lesson(src["lesson"])
                           if item[0].get("frozen")]
                 matched = match_frozen_question(question, frozen)
@@ -162,16 +162,28 @@ def refresh_uncertainties(store, lesson_index=None) -> dict:
                 state = "EXPLICADA_PELO_CODIGO"
                 candidate = evidence[0]["candidate"]
             else:
-                evidence = _later_evidence(
+                later_evidence = _later_evidence(
                     question, candidate, question, later, lesson_index, store)
-                later_code = next((item for item in evidence
+                later_code = next((item for item in later_evidence
                                    if item.get("kind") == "codigo_congelado"), None)
                 if later_code:
-                    candidate = later_code["candidate"]
-                    state = "EXPLICADA_PELO_CODIGO"
+                    evidence=later_evidence
+                    candidate=later_code["candidate"]
+                    state="EXPLICADA_PELO_CODIGO"
                 else:
-                    state = "NOVA_EVIDENCIA_PARA_REVISAR" if evidence else (
-                        "HIPOTESE_SEM_CONFIRMACAO" if candidate else "PENDENTE")
+                    # After BOTH frozen-code checks, consult only the linked
+                    # official material of THIS lesson at its pinned SHA.
+                    material=(match_material_question(
+                        question,store.academy_docs_for_lesson(src["lesson"]))
+                        if src["lesson"] else None)
+                    if material is not None:
+                        evidence=[material,*later_evidence][:8]
+                        candidate=material["candidate"]
+                        state="EXPLICADA_PELO_MATERIAL"
+                    else:
+                        evidence=later_evidence
+                        state = "NOVA_EVIDENCIA_PARA_REVISAR" if evidence else (
+                            "HIPOTESE_SEM_CONFIRMACAO" if candidate else "PENDENTE")
             store.upsert_uncertainty(uid, src["id"], src["digest"], src["label"],
                                      question, candidate, state, evidence)
 
@@ -182,7 +194,8 @@ def refresh_uncertainties(store, lesson_index=None) -> dict:
                 item["id"], item["source_id"], item["source_digest"], item["label"],
                 item["question"], item["candidate"], "ARQUIVADA_FONTE_ALTERADA", [])
     return {"questions": len(active), "with_evidence": sum(
-        row["status"] in ("NOVA_EVIDENCIA_PARA_REVISAR", "EXPLICADA_PELO_CODIGO")
+        row["status"] in ("NOVA_EVIDENCIA_PARA_REVISAR", "EXPLICADA_PELO_CODIGO",
+                          "EXPLICADA_PELO_MATERIAL")
         for row in store.uncertainties())}
 
 
@@ -230,6 +243,34 @@ def code_evidence_lines(item):
     ]
 
 
+def material_evidence_lines(item: dict) -> list[str]:
+    """Bounded three-line quotation plus GitHub source at immutable SHA."""
+    if item.get("kind")!="material_oficial_congelado":
+        return []
+    sha,path=item.get("sha",""),item.get("path","")
+    if (not isinstance(sha,str) or not re.fullmatch(r"[a-f0-9]{40}",sha)
+            or not isinstance(path,str) or not path.startswith("docs/")
+            or ".." in path.split("/") or len(path)>300):
+        return []
+    line=item.get("line")
+    if type(line) is not int or line<1:
+        return []
+    link=("https://github.com/academiadoprogramador-fullstack/docs/blob/"
+          +sha+"/"+quote(path,safe="/")+"#L"+str(line))
+    raw=str(item.get("snippet","")).split("\n")[:3]
+    # No executable markup, instructions or Markdown fences from the source.
+    preview=[s.replace("<","&lt;").replace(">","&gt;")
+             .replace("&#","&amp;#").replace("\x60\x60\x60","\x60 \x60 \x60")[:210]
+             for s in raw]
+    return ["- **Provável no material oficial:** "
+            +chr(96)+_safe(item.get("candidate",""),90).replace(chr(96),"")+chr(96)
+            +" — ["+_safe(path,160)+":"+str(line)+"]("+link+")"
+            +" — SHA "+chr(96)+sha[:12]+chr(96)
+            +" (**pista documental; não comprova áudio ou execução**).",
+            "", "  **Trecho de 3 linhas do documento congelado:**", "",
+            "\x60\x60\x60text",*preview,"\x60\x60\x60",""]
+
+
 def render_uncertainties(store) -> tuple[str, list[tuple[str, str]]]:
     rows = store.uncertainties()
     output = ["# Dúvidas para revisar", "",
@@ -261,6 +302,8 @@ def render_uncertainties(store) -> tuple[str, list[tuple[str, str]]]:
                             f"transcrição `{_safe(e['label'],80)}` — {_safe(e['excerpt'],200)}.")
             elif e["kind"] == "codigo_congelado":
                 body.extend(code_evidence_lines(e))
+            elif e["kind"] == "material_oficial_congelado":
+                body.extend(material_evidence_lines(e))
             else:
                 body.append(f"- Repositório: `{_safe(e['repo'],180)}`, "
                             f"commit `{_safe(e['sha'][:12])}`, "

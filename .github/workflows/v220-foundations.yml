@@ -5,6 +5,7 @@ on:
       - feat/v2.2.0-automation-foundations
       - feat/github-por-aula
       - fix/v220-classroom-people-nontechnical-a01
+      - feat/official-academy-docs-material
   workflow_dispatch:
 
 permissions:

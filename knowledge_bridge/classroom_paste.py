@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 import re
 from urllib.parse import urlsplit
+from .academy_material import official_route
 
 MAX_PASTE = 20000
 HEADER = re.compile(r"^\s*Aula\s*0*(\d{1,4})\s*[-–—]\s*(.{2,220})$", re.I)
@@ -154,7 +155,22 @@ def parse_import_paste(value: str) -> dict:
             recording = ""
             continue
         if "http://" in line or "https://" in line:
-            # Do not execute text disguised as a URL. Invalid URLs stay reviewable.
+            # Post text may embed an official link in a labeled sentence or
+            # Markdown link. Extract ONLY our exact trusted docs host here.
+            # Keep the surrounding text as Classroom data, never commands.
+            found=[]
+            for embedded in URL.findall(line)[:12]:
+                embedded=embedded.rstrip(").,;]")
+                if official_route(embedded) is None:
+                    continue
+                record=_url_row(embedded,current["aula"] if current else None,recording)
+                if record and record["url"] not in [x["url"] for x in found]:
+                    found.append(record)
+            if found:
+                links.extend(found)
+                if current and section:
+                    current["_"+section].append(line[:1500])
+                continue
             warnings.append(f"Linha {number}: URL ou formato inválido; não foi importado.")
             continue
         if current and section:
