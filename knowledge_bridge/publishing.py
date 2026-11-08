@@ -1530,7 +1530,10 @@ class Publisher:
         # Legacy Classroom JSONs can predate AcademyDocs. Recover their
         # official links without AI, rewriting the contexts, or changing SHAs.
         from .academy_material import recover_saved_official_material
-        self._official_recovery = recover_saved_official_material(self.db)
+        just_attempted=getattr(self, "_recent_official_attempts", set())
+        self._recent_official_attempts=set()
+        self._official_recovery = recover_saved_official_material(
+            self.db, skip_urls=just_attempted)
         refresh_uncertainties(self.db, self.lesson_repo_index)
         self._prepare_concept_targets()
         self._atlas = make_atlas(self.db, concept_targets=self._concept_targets)

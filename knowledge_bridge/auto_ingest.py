@@ -342,7 +342,10 @@ class AutoOrganizer:
                 except (OSError,ValueError,RuntimeError) as exc:
                     outcome['pending'].append('GitHub '+entry['url']+': '+str(exc)[:100])
                 continue
-            lesson=entry['lesson'] or (next(iter(seen_lessons)) if len(seen_lessons)==1 else None)
+            # Official documentation with no explicit lesson always needs consent.
+        lesson=entry['lesson']
+        if lesson is None and official_route(entry['url']) is None and len(seen_lessons)==1:
+            lesson=next(iter(seen_lessons))
             if lesson is None:
                 if official_route(entry['url']) is not None and not docs_suggestion_paused:
                     try:
@@ -400,7 +403,11 @@ class AutoOrganizer:
                   if official_route(entry["url"]) is not None]
         if official:
             resolver=AcademyDocs(self.app.store)
-            for lesson,url in list(dict.fromkeys(official))[:60]:
+            attempts=list(dict.fromkeys(official))[:60]
+            # Avoid retrying the same failed link immediately in this import's
+            # rebuild; a later import/rebuild may retry after quota reset.
+            self.app.publisher._recent_official_attempts=set(attempts)
+            for lesson,url in attempts:
                 try:
                     created,notice=resolver.attach(lesson,url)
                     if not created:

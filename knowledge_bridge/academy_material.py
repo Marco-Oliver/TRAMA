@@ -257,7 +257,7 @@ def saved_official_context_urls(store) -> list[tuple[str, str]]:
     return sorted(found)
 
 
-def recover_saved_official_material(store) -> dict:
+def recover_saved_official_material(store, *, skip_urls=()) -> dict:
     """Idempotent rebuild-time recovery, with deferred retry on GitHub errors."""
     candidates = saved_official_context_urls(store)
     if not candidates:
@@ -267,7 +267,7 @@ def recover_saved_official_material(store) -> dict:
     for lesson, url in candidates:
         if lesson not in existing:
             existing[lesson] = {row["url"] for row in store.academy_docs_for_lesson(lesson)}
-        if url not in existing[lesson]:
+        if url not in existing[lesson] and (lesson, url) not in skip_urls:
             pending.append((lesson, url))
     if not pending:
         return {"linked": 0, "paused": False, "pending": 0}

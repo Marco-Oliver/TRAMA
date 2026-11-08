@@ -344,5 +344,16 @@ class AcademyMaterialTests(unittest.TestCase):
         self.assertEqual(self.app.ai.attempts,0)
 
 
+    def test_official_url_without_lesson_stays_pending_in_single_lesson_batch(self):
+        self.transcript("00:01 O seeding prepara roles e interfaces.\n", [])
+        path=self.root/"A01 - V01 - Exemplo.txt"
+        with patch("knowledge_bridge.auto_ingest.AcademyDocs",return_value=self.docs):
+            result=AutoOrganizer(self.app).run([path],CONTENT_URL,authorized=True)
+        self.assertTrue(any("provável Aula-001" in p for p in result["pending"]))
+        self.assertFalse(self.app.store.academy_docs_for_lesson("Aula-001"))
+        self.assertIsNone(self.app.store.academy_docs_sha("Aula-001"))
+        self.assertEqual(self.app.ai.attempts,0)
+
+
 if __name__=="__main__":
     unittest.main()
