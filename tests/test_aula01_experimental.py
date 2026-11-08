@@ -234,15 +234,15 @@ class Aula01ExperimentalTests(unittest.TestCase):
                       nomes_a_conferir=["Thiago Santini"])
         self.app.publisher.rebuild()
         overview,note=self.notes()
-        self.assertIn("Thiago Santini",overview)
+        self.assertIn("Tiago Santini",overview)
         self.assertNotIn("[[thiago-santini|Thiago Santini]]",overview)
         self.assertNotIn("possivelmente Santini",overview+note)
-        self.assertEqual(overview.count("Thiago Santini — confira"),1)
+        self.assertEqual(overview.count("Tiago Santini — confira"),1)
         self.assertFalse((self.vault/"01-Meu-Conhecimento"/"Pessoas"/
                           "tiago-santini.md").exists())
         self.assertFalse((self.vault/"01-Meu-Conhecimento"/"Pessoas"/
                           "thiago-santini.md").exists())
-        self.assertEqual(note.count("- Thiago Santini —"),1)
+        self.assertEqual(note.count("- Tiago Santini —"),1)
 
     def test_organization_acronym_is_a_term_not_a_person(self):
         row=self.source(
