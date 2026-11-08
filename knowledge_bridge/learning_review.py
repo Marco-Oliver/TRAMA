@@ -254,7 +254,7 @@ def material_evidence_lines(item: dict) -> list[str]:
         return []
     link=("https://github.com/academiadoprogramador-fullstack/docs/blob/"
           +sha+"/"+quote(path,safe="/")+"#L"+str(line))
-    raw=str(item.get("snippet","")).splitlines()[:3]
+    raw=str(item.get("snippet","")).split("\n")[:3]
     # No executable markup, instructions or Markdown fences from the source.
     preview=[s.replace("<","&lt;").replace(">","&gt;")
              .replace("&#","&amp;#").replace("\x60\x60\x60","\x60 \x60 \x60")[:210]
