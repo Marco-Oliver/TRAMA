@@ -343,9 +343,9 @@ class AutoOrganizer:
                     outcome['pending'].append('GitHub '+entry['url']+': '+str(exc)[:100])
                 continue
             # Official documentation with no explicit lesson always needs consent.
-        lesson=entry['lesson']
-        if lesson is None and official_route(entry['url']) is None and len(seen_lessons)==1:
-            lesson=next(iter(seen_lessons))
+            lesson=entry['lesson']
+            if lesson is None and official_route(entry['url']) is None and len(seen_lessons)==1:
+                lesson=next(iter(seen_lessons))
             if lesson is None:
                 if official_route(entry['url']) is not None and not docs_suggestion_paused:
                     try:
