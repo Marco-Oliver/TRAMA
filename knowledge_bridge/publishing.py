@@ -561,6 +561,11 @@ class Publisher:
             return
         from urllib.parse import quote
         from .learning_review import _safe
+        def safe_doc(value, limit=160):
+            # Never let remote title/tag fragments create Markdown links,
+            # wikilinks, raw HTML, code fences or formatting instructions.
+            return (_safe(value,limit).replace("[", "［").replace("]", "］")
+                    .replace(chr(96), "'").replace("*", "∗"))
         body.extend(["", "## Material oficial da aula", "",
                      "> Referência documental do professor, congelada no GitHub. "
                      "Não comprova o que foi dito na gravação e não é enviada à IA."])
@@ -572,14 +577,14 @@ class Publisher:
                     or ".." in path.split("/") or official_route(url) is None):
                 continue
             link=DOCS_REPO+"/blob/"+sha+"/"+quote(path,safe="/")
-            title=_safe(material["title"],160)
+            title=safe_doc(material["title"],160)
             body.append("- **"+title+"** — [Abrir material oficial]("+url+")"
                         +" · [Arquivo no SHA congelado]("+link+")"
                         +" · commit "+chr(96)+sha[:12]+chr(96))
             tags=[tag for tag in material["tags"] if isinstance(tag,str)]
             if tags:
                 body.append("  - Tags: "+", ".join(
-                    chr(96)+_safe(tag,70).replace(chr(96),"")+chr(96)
+                    chr(96)+safe_doc(tag,70)+chr(96)
                     for tag in tags[:30]))
             for concept in material["concepts"][:60]:
                 if isinstance(concept,dict):
@@ -599,8 +604,8 @@ class Publisher:
                     continue
                 key=academy_term_key(tag[len("conceito-"):])
                 if key and academy_term_key(label)==key:
-                    name=_safe(official.get("name",""),100)
-                    row=("- **"+_safe(label,90)+"** → nome no material: "
+                    name=safe_doc(official.get("name",""),100)
+                    row=("- **"+safe_doc(label,90)+"** → nome no material: "
                          +chr(96)+name.replace(chr(96),"")+chr(96)
                          +" ([fonte congelada]("+link+")).")
                     if row not in matches:
