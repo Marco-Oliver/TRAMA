@@ -975,6 +975,8 @@ class Bridge:
         env.update(secure)
         env['FREE_TIER_CONFIRMED']='YES' if secure else 'NO'
         app.ai=FreeAIRouter(env)
+        # Novas aulas analisadas no app ganham o resumo de estudo (+1 chamada).
+        app.auto_study=True
         return app
 
     @staticmethod
@@ -1827,6 +1829,166 @@ class Bridge:
         elif action=='close':self._window.destroy()
         return {'ok':True}
 
+    # ------------------------------------------------------------------
+    # Resumos de estudo (04-Resumos). Leitura e CRUD são locais, sem IA.
+    def _study(self, vault):
+        from .store import Store
+        from .study_notes import StudyNotes
+        store=Store(vault)
+        return store, StudyNotes(store, log=lambda _text: None)
+
+    def _publish_study(self, store, study):
+        from .publishing import Publisher
+        from .study_notes import publish
+        study.invalidate()
+        publish(study, Publisher(store))
+
+    def _study_call(self, action, *, write=False):
+        vault=self._vault()
+        if not vault:
+            return {'ok':False,'message':'Selecione o cofre do Obsidian primeiro.'}
+        if write and not self._write_lock.acquire(blocking=False):
+            return {'ok':False,'message':'Outro processamento está em andamento. Tente em instantes.'}
+        store=None
+        try:
+            store,study=self._study(vault)
+            result=action(store,study)
+            return {'ok':True,**result}
+        except ValueError as exc:
+            return {'ok':False,'message':str(exc)[:240]}
+        except (OSError,sqlite3.Error,KeyError,TypeError):
+            return {'ok':False,'message':'Não foi possível acessar os resumos deste cofre.'}
+        finally:
+            try:
+                if store is not None:
+                    store.close()
+            finally:
+                if write:
+                    self._write_lock.release()
+
+    def study_overview(self):
+        return self._study_call(lambda _store,study: study.overview())
+
+    def study_lesson(self, lesson):
+        if not isinstance(lesson,str) or not re.fullmatch(r'Aula-\d{3,4}',lesson):
+            return {'ok':False,'message':'Aula inválida.'}
+        return self._study_call(lambda _store,study: study.lesson_view(lesson))
+
+    def study_module(self, module_id):
+        if not isinstance(module_id,str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,60}',module_id):
+            return {'ok':False,'message':'Módulo inválido.'}
+        return self._study_call(lambda _store,study: study.module_view(module_id))
+
+    def study_save_module(self, record):
+        if not isinstance(record,dict) or len(json.dumps(record,ensure_ascii=False,default=str))>4000:
+            return {'ok':False,'message':'Dados do módulo inválidos.'}
+        def action(store,study):
+            module=study.save_module(record)
+            self._publish_study(store,study)
+            return {'module':module}
+        return self._study_call(action,write=True)
+
+    def study_delete_module(self, module_id, confirmed=False):
+        if confirmed is not True:
+            return {'ok':False,'message':'Confirme a exclusão do módulo.'}
+        if not isinstance(module_id,str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,60}',module_id):
+            return {'ok':False,'message':'Módulo inválido.'}
+        def action(store,study):
+            study.delete_module(module_id)
+            self._publish_study(store,study)
+            return {}
+        return self._study_call(action,write=True)
+
+    def study_move_module(self, module_id, direction):
+        if not isinstance(module_id,str) or direction not in (-1,1):
+            return {'ok':False,'message':'Movimento inválido.'}
+        def action(store,study):
+            modules=study.move_module(module_id,direction)
+            self._publish_study(store,study)
+            return {'modules':modules}
+        return self._study_call(action,write=True)
+
+    def study_set_lesson_modules(self, lesson, module_ids=None):
+        if not isinstance(lesson,str) or not re.fullmatch(r'Aula-\d{3,4}',lesson):
+            return {'ok':False,'message':'Aula inválida.'}
+        if module_ids is not None and (not isinstance(module_ids,list) or len(module_ids)>10):
+            return {'ok':False,'message':'Seleção de módulos inválida.'}
+        def action(store,study):
+            chosen=study.set_lesson_modules(lesson,module_ids)
+            self._publish_study(store,study)
+            return {'modules':chosen,'origin':study.module_origin(lesson)}
+        return self._study_call(action,write=True)
+
+    def study_generate(self, confirmed=False, lesson=None):
+        """Gera resumos pendentes/desatualizados (ou de uma aula). Usa IA Free."""
+        if confirmed is not True:
+            return {'ok':False,'message':'Confirme o envio dos resumos das gravações à API configurada.'}
+        if lesson is not None and (not isinstance(lesson,str) or not re.fullmatch(r'Aula-\d{3,4}',lesson)):
+            return {'ok':False,'message':'Aula inválida.'}
+        if not self.settings.get('confirmed_free') or not any(self._key_vault.configured().values()):
+            return {'ok':False,'message':'Configure e confirme sua chave Free em Ajustes.'}
+        return self._study_ai(lambda app,study: study.run(
+            app.ai,[lesson] if lesson else study.pending_lessons(),pace_seconds=5.0))
+
+    def study_update_module(self, module_id, confirmed=False):
+        if confirmed is not True:
+            return {'ok':False,'message':'Confirme o envio dos resumos das aulas à API configurada.'}
+        if not isinstance(module_id,str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,60}',module_id):
+            return {'ok':False,'message':'Módulo inválido.'}
+        if not self.settings.get('confirmed_free') or not any(self._key_vault.configured().values()):
+            return {'ok':False,'message':'Configure e confirme sua chave Free em Ajustes.'}
+        def action(app,study):
+            if module_id!='a-classificar' and not study.module(module_id):
+                raise ValueError('Módulo não encontrado.')
+            if not study.module_status(module_id)['summarized']:
+                raise ValueError('Este módulo ainda não tem aulas com resumo. Gere os resumos das aulas primeiro.')
+            return study.run(app.ai,[],explicit_modules=[module_id])
+        return self._study_ai(action)
+
+    def _study_ai(self, action):
+        vault=self._vault()
+        if not vault:
+            return {'ok':False,'message':'Selecione o cofre do Obsidian primeiro.'}
+        if not self._write_lock.acquire(blocking=False):
+            return {'ok':False,'message':'Outro processamento está em andamento.'}
+        logs=[]
+        app=None
+        try:
+            from .study_notes import StudyNotes
+            app=self._make_application(vault,log=lambda text:logs.append(redact_sensitive(str(text))[:300]))
+            # Batch of small study requests: spaced to stay under 15 req/min.
+            app.ai.max_requests=min(100,max(app.ai.max_requests,30))
+            study=StudyNotes(app.store,log=app.log)
+            result=action(app,study)
+            self._publish_study(app.store,study)
+            remaining=len(study.pending_lessons())
+            if result['stopped']:
+                message=('Pausado: '+result['stopped']+' Os resumos já gerados foram salvos; '
+                         'clique de novo depois para continuar.')
+            elif result['failed']:
+                message=(f"{len(result['lessons'])} resumo(s) gerado(s); "
+                         f"{len(result['failed'])} aula(s) falharam e podem ser tentadas de novo.")
+            elif not result['lessons'] and not result['modules']:
+                message='Todos os resumos já estão em dia.'
+            else:
+                message=(f"{len(result['lessons'])} resumo(s) de aula e "
+                         f"{len(result['modules'])} de módulo gerado(s).")
+            return {'ok':not result['stopped'] and not result['failed'],'message':message,
+                    'generated':result['lessons'],'failed':result['failed'],
+                    'modules':result['modules'],'remaining':remaining,
+                    'calls':getattr(app.ai,'attempts',0),'logs':logs[-6:]}
+        except ValueError as exc:
+            return {'ok':False,'message':str(exc)[:240]}
+        except Exception:
+            return {'ok':False,'message':'Não foi possível gerar os resumos. Nada foi apagado.'}
+        finally:
+            try:
+                if app is not None:
+                    app.close()
+            finally:
+                self._write_lock.release()
+
+
 class PublicApi:
     """Small explicit JS API; avoids exposing native WebView/GUI objects.
 
@@ -1840,6 +2002,33 @@ class PublicApi:
 
     def __init__(self, bridge: Bridge):
         self._bridge = bridge
+
+    def study_overview(self):
+        return self._bridge.study_overview()
+
+    def study_lesson(self, lesson):
+        return self._bridge.study_lesson(lesson)
+
+    def study_module(self, module_id):
+        return self._bridge.study_module(module_id)
+
+    def study_save_module(self, record):
+        return self._bridge.study_save_module(record)
+
+    def study_delete_module(self, module_id, confirmed=False):
+        return self._bridge.study_delete_module(module_id, confirmed)
+
+    def study_move_module(self, module_id, direction):
+        return self._bridge.study_move_module(module_id, direction)
+
+    def study_set_lesson_modules(self, lesson, module_ids=None):
+        return self._bridge.study_set_lesson_modules(lesson, module_ids)
+
+    def study_generate(self, confirmed=False, lesson=None):
+        return self._bridge.study_generate(confirmed, lesson)
+
+    def study_update_module(self, module_id, confirmed=False):
+        return self._bridge.study_update_module(module_id, confirmed)
 
     def snapshot(self):
         return self._bridge.snapshot()

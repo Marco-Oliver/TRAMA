@@ -249,7 +249,7 @@ class Publisher:
         self._global_concept_names = {}
         self._eligible_people = set()
         for folder in ["00-Inicio", "01-Meu-Conhecimento", "02-Minhas-Aulas", "03-Meus-Projetos",
-                       "05-Anotacoes-Pessoais", "90-Sistema", "99-Anexos/Videos", "99-Anexos/Transcricoes-Originais",
+                       "04-Resumos", "05-Anotacoes-Pessoais", "90-Sistema", "99-Anexos/Videos", "99-Anexos/Transcricoes-Originais",
                        "99-Anexos/Materiais-Originais", "99-Anexos/Contexto-Classroom"]:
             (self.vault / folder).mkdir(parents=True, exist_ok=True)
 
@@ -2305,6 +2305,9 @@ class Publisher:
         states = defaultdict(int)
         for src in self.db.sources():
             states[src["status"]] += 1
+        # Camada de estudo (04-Resumos): somente dados já salvos, sem IA.
+        from .study_notes import StudyNotes, publish as publish_study
+        publish_study(StudyNotes(self.db, log=lambda _text: None), self)
         self.write("90-Sistema/Processamento.md", "# Status do processamento\n\n" +
                    "\n".join(f"- **{status}:** {count}" for status,count in sorted(states.items())) + "\n")
         return {"aulas":len({s["lesson"] for s in self.db.sources() if s["lesson"]}), "conceitos":len(concept_map), "pessoas":len(self._eligible_people), "projetos":len(repo_info)}

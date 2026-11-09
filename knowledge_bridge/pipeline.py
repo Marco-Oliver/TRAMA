@@ -31,6 +31,9 @@ class Application:
         self.env = read_env(config or Path(__file__).resolve().parent.parent / "config.env")
         self.ai = FreeAIRouter(self.env)
         self.log = log
+        # The desktop app enables the study layer (one extra call per newly
+        # analyzed lesson). CLI/tests keep the historical request budget.
+        self.auto_study = False
 
     def close(self):
         self.store.close()
@@ -341,6 +344,7 @@ class Application:
         if not sources:
             self.log("Nenhuma transcrição cadastrada. Adicione .txt ou .md à pasta de entrada.")
             return {"aulas":0, "conceitos":0, "projetos":len(self.store.repositories())}
+        analyzed_lessons: set[str] = set()
         for src in sources:
             # Validate even already-cached analyses before reusing their notes.
             text = self._verified_transcript(src)
@@ -530,6 +534,8 @@ class Application:
                                      meta["model"] if meta else "unknown", combined)
             self.store.update_status(src["id"], "PUBLISHED")
             self.log(f"Concluída: {src['label']}")
+            if src["lesson"]:
+                analyzed_lessons.add(src["lesson"])
             # SQLite analysis and status already committed after each lesson.
             # One final rebuild avoids O(n²) Markdown rewrites for large batches.
             # If interrupted, rebuilding on the next run recovers saved results.
@@ -537,9 +543,26 @@ class Application:
         # cached by transcript digest + commit SHA, and opt-in via process().
         # A single-lesson refresh must not silently spend more API calls on
         # unrelated repositories and lessons.
+        self.study_after_analysis(analyzed_lessons)
         if lesson_filter is None:
             self.enrich_context()
         return self.publisher.rebuild()
+
+    def study_after_analysis(self, lessons) -> dict:
+        """Resumo de estudo automático só das aulas analisadas nesta execução.
+
+        Aulas antigas sem resumo NÃO são processadas aqui: isso é feito pelo
+        botão "Gerar resumos" (consumo explícito de cota).
+        """
+        from .study_notes import StudyNotes
+        lessons = sorted(l for l in lessons if l)
+        if (not self.auto_study or not lessons or
+                not callable(getattr(self.ai, "study_lesson", None))):
+            return {"lessons": [], "failed": [], "modules": [], "stopped": ""}
+        study = StudyNotes(self.store, log=self.log)
+        due = [l for l in lessons if study.lesson_ready(l) and
+               study.lesson_status(l) in ("pendente", "desatualizado")]
+        return study.run(self.ai, due)
 
     @staticmethod
     def _check_comparison(payload: dict, transcript: str, repository: dict) -> dict:
