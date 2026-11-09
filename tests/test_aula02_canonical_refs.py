@@ -119,8 +119,17 @@ class Aula02CanonicalReferencesTests(unittest.TestCase):
                         for m in modules
                         if "## Conceitos e explicações encontrados nas fontes" in m)
         self.assertGreater(len(sections),3)
-        for section in sections:
-            names=re.findall(r"\[\[([^|#\]]+)\|([^\]]+)\]\]",section)
+        for index,section in enumerate(sections):
+            # Each generated view also contains links to lesson recordings.
+            # Validate only the syntactic positions reserved for concepts:
+            # overview/context lines, atlas headings, module concept bullets.
+            if index==1:
+                pattern=r"^### \[\[([^|#\]]+)\|([^\]]+)\]\]"
+            elif index>=3:
+                pattern=r"^- \*\*\[\[([^|#\]]+)\|([^\]]+)\]\]\*\*"
+            else:
+                pattern=r"^- \[\[([^|#\]]+)\|([^\]]+)\]\]"
+            names=re.findall(pattern,section,re.M)
             self.assertTrue(names,section[:250])
             for target,label in names:
                 self.assertIn(target,pages,
