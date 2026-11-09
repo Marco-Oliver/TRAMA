@@ -4,7 +4,8 @@
    tudo passa por escapeHTML. Sem atributos style inline (CSP). */
 const studyState={kind:'lesson',lesson:null,module:null,activity:null,dev:null,overview:null,view:null,search:'',
   open:{lessons:true,modules:true,activities:true},busy:false};
-const STUDY_KIND_ICON={atividade:'✎',trabalho:'⚒',prova:'✓'};
+const STUDY_KIND_ICON={atividade:'',trabalho:'',prova:''};
+const KIND_NAME={atividade:'Atividade',trabalho:'Trabalho',prova:'Prova'};
 const STUDY_ACT_STATUS={ok:['✓','Resumo da entrega em dia','ok'],desatualizado:['!','Entrega mudou — atualize o resumo','warn'],
   pendente:['•','Resumo da entrega ainda não gerado','pending'],'sem-repositorio':['○','Sem repositório entregue','off']};
 const STUDY_OWNER={meu:'Meu',dupla:'Dupla',professor:'Professor',outro:'Outro'};
@@ -20,8 +21,11 @@ function studyModuleName(id){
 function studyVideos(codes){
   return (codes||[]).length?`<span class="study-videos">${codes.map(c=>`<span class="study-video">${escapeHTML(c)}</span>`).join('')}</span>`:'';
 }
+// Same look as the Library notes: section title with the app's icons, plain text below.
+const STUDY_ICONS={'◎':'network','✓':'check','⌨':'file','⇄':'link','⚠':'clock','☐':'check','?':'search','✎':'file',
+  '◆':'book','➜':'arrow','⚒':'folder','✉':'file','⚙':'gear','▤':'file'};
 function studyCard(title,icon,body,extra=''){
-  return `<section class="study-card ${extra}"><h3><span class="study-card-ico">${icon}</span>${escapeHTML(title)}</h3><div class="study-card-body">${body}</div></section>`;
+  return `<section class="study-sec lib-md ${extra}"><h2><span class="lib-section-icon">${libIcon(STUDY_ICONS[icon]||'file','section-file')}</span>${escapeHTML(title)}</h2><div class="study-sec-body">${body}</div></section>`;
 }
 function studyEmpty(text){return `<p class="study-empty">${escapeHTML(text)}</p>`;}
 
@@ -58,7 +62,7 @@ async function renderStudyView(){
   else studyState.view=null;
   const tabLabel={module:'Resumo do Módulo',activity:'Atividade',dev:'Aula de desenvolvimento'}[studyState.kind]||'Resumo da Aula';
   root.innerHTML=`<section class="lib-tree-panel study-tree">${studyTreeHTML()}</section>
-    <section class="lib-note-panel"><div class="lib-tab-strip"><div class="lib-open-tab"><span>▤</span><span class="lib-tab-text">${escapeHTML(tabLabel)}</span></div></div>
+    <section class="lib-note-panel"><div class="lib-tab-strip"><div class="lib-open-tab">${libIcon('file','link-icon')}<span class="lib-tab-text">${escapeHTML(tabLabel)}</span></div></div>
     <div class="lib-note-scroll" id="study-content">${studyContentHTML()}</div></section>
     <aside class="lib-right-panel" id="study-side">${studySideHTML()}</aside>`;
   studyWire(root);
@@ -71,26 +75,26 @@ function studyTreeHTML(){
   const lessonRow=(l,depth)=>{
     const st=STUDY_STATUS[l.status]||STUDY_STATUS.pendente;
     const selected=studyState.kind==='lesson'&&studyState.lesson===l.lesson;
-    return `<button type="button" class="lib-file-row depth-${depth}${selected?' selected':''}" data-study-lesson="${escapeHTML(l.lesson)}" title="${escapeHTML(st[1])}"><span class="study-dot ${st[2]}">${st[0]}</span><span class="file-label">${escapeHTML(studyLessonLabel(l.lesson))}${l.title?' — '+escapeHTML(l.title):''}</span></button>`;
+    return `<button type="button" class="lib-file-row depth-${depth}${selected?' selected':''}" data-study-lesson="${escapeHTML(l.lesson)}" title="${escapeHTML(st[1])}"><span class="lib-file-icon" aria-hidden="true"></span><span class="file-label">${escapeHTML(studyLessonLabel(l.lesson))}${l.title?' — '+escapeHTML(l.title):''}</span><span class="study-dot ${st[2]}" aria-hidden="true">●</span></button>`;
   };
   const folder=(key,label,count,open,depth,top=false)=>`<button type="button" class="lib-folder-row depth-${depth}" data-study-toggle="${escapeHTML(key)}"><span class="lib-chevron${open?' expanded':''}">▶</span><span class="lib-folder-icon${top?' top':''}">${top?'▰':'▱'}</span><strong>${escapeHTML(label)}</strong><small class="study-count">${count}</small></button>`;
   const devMatches=d=>!q||(d.lesson+' '+d.title+' '+d.activity_title).toLowerCase().includes(q);
   const devRow=(d,depth)=>{
     const selected=studyState.kind==='dev'&&studyState.dev===d.lesson;
-    return `<button type="button" class="lib-file-row depth-${depth}${selected?' selected':''}" data-study-dev="${escapeHTML(d.lesson)}" title="Aula sem gravação${d.activity_title?' — '+escapeHTML(d.activity_title):''}"><span class="study-dot dev">⚒</span><span class="file-label">${escapeHTML(studyLessonLabel(d.lesson))}${d.title?' — '+escapeHTML(d.title):''}</span><span class="study-tag">Desenvolvimento</span></button>`;
+    return `<button type="button" class="lib-file-row depth-${depth}${selected?' selected':''}" data-study-dev="${escapeHTML(d.lesson)}" title="Aula sem gravação${d.activity_title?' — '+escapeHTML(d.activity_title):''}"><span class="lib-file-icon" aria-hidden="true"></span><span class="file-label">${escapeHTML(studyLessonLabel(d.lesson))}${d.title?' — '+escapeHTML(d.title):''}</span><span class="study-tag">Desenvolvimento</span></button>`;
   };
   const actMatches=a=>!q||(a.title+' '+a.kind_label+' '+a.module_name).toLowerCase().includes(q);
   const actRow=(a,depth)=>{
     const st=STUDY_ACT_STATUS[a.status]||STUDY_ACT_STATUS.pendente;
     const selected=studyState.kind==='activity'&&studyState.activity===a.id;
-    return `<button type="button" class="lib-file-row depth-${depth}${selected?' selected':''}" data-study-activity="${escapeHTML(a.id)}" title="${escapeHTML(a.kind_label+' · '+st[1])}"><span class="study-dot ${st[2]}">${STUDY_KIND_ICON[a.kind]||'✎'}</span><span class="file-label">${escapeHTML(a.title)}</span>${a.grade?`<span class="study-tag grade">${escapeHTML(a.grade)}</span>`:''}</button>`;
+    return `<button type="button" class="lib-file-row depth-${depth}${selected?' selected':''}" data-study-activity="${escapeHTML(a.id)}" title="${escapeHTML(a.kind_label+' · '+st[1])}"><span class="lib-file-icon" aria-hidden="true"></span><span class="file-label">${escapeHTML(a.title)}</span>${a.grade?`<span class="study-tag grade">${escapeHTML(a.grade)}</span>`:''}<span class="study-dot ${st[2]}" aria-hidden="true">●</span></button>`;
   };
   const lessons=(o.lessons||[]).filter(matches);
   const devs=(o.development||[]).filter(devMatches);
   const acts=(o.activities||[]).filter(actMatches);
   const allLessons=[...lessons.map(l=>({n:studyLessonNumber(l.lesson),html:d=>lessonRow(l,d)})),
     ...devs.map(x=>({n:studyLessonNumber(x.lesson),html:d=>devRow(x,d)}))].sort((a,b)=>a.n-b.n);
-  let html=`<div class="lib-tree-head"><span class="study-head-ico">▤</span><div><strong>Resumos</strong><small>Área de estudo com resumos das aulas e dos módulos.</small></div></div>
+  let html=`<div class="lib-tree-head"><span class="study-head-ico">${libIcon('book')}</span><div><strong>Resumos</strong><small>Área de estudo com resumos das aulas e dos módulos.</small></div></div>
    <div class="study-tree-actions"><button type="button" id="study-generate" class="study-primary"${o.pending?'':' disabled'}>${o.pending?`Gerar resumos (${o.pending})`:'Resumos em dia'}</button></div>
    <div class="lib-search"><span>⌕</span><input id="study-search" maxlength="80" placeholder="Buscar nos resumos..." value="${escapeHTML(studyState.search)}" aria-label="Buscar nos resumos"></div>
    <div class="lib-tree-scroll">`;
@@ -147,7 +151,7 @@ function studyLessonHTML(v){
   const origin={manual:'escolhido por você',ia:'sugerido pela IA',automatico:'por palavras-chave'}[v.module_origin]||'';
   let html=`<div class="lib-breadcrumb">Resumos <b>›</b> Aulas <b>›</b> ${escapeHTML(studyLessonLabel(v.lesson))}</div>
    <h1 class="lib-title">${escapeHTML(studyLessonLabel(v.lesson))}${v.title?' — '+escapeHTML(v.title):''}</h1>
-   <div class="lib-note-meta"><span class="study-status ${st[2]}">${st[0]} ${escapeHTML(st[1])}</span>${v.date?`<span>▦ Agenda ${escapeHTML(v.date)}</span>`:''}${v.generated?`<span>◷ Gerado em ${escapeHTML(v.generated)}</span>`:''}</div>
+   <div class="lib-note-meta"><span class="chip study-status ${st[2]}">${escapeHTML(st[1])}</span>${v.date?`<span>▦ Agenda ${escapeHTML(v.date)}</span>`:''}${v.generated?`<span>◷ Gerado em ${escapeHTML(v.generated)}</span>`:''}</div>
    <div class="study-modules-line"><span>Módulos:</span>${mods}<button type="button" class="study-link-btn" id="study-edit-lesson-modules">Alterar</button>${origin?`<small>${escapeHTML(origin)}</small>`:''}</div>`;
   const s=v.summary;
   if(!s){
@@ -159,7 +163,7 @@ function studyLessonHTML(v){
   if(v.status==='desatualizado'){
     html+=`<div class="study-alert">As fontes desta aula mudaram depois deste resumo. <button type="button" class="study-link-btn" id="study-generate-one">Atualizar resumo</button></div>`;
   }
-  html+=`<div class="study-phrase"><strong>Em poucas palavras:</strong> ${escapeHTML(s.em_uma_frase)}</div>`;
+  html+=`<div class="study-phrase lib-md"><blockquote><strong>Em poucas palavras:</strong> ${escapeHTML(s.em_uma_frase)}</blockquote></div>`;
   if((s.mapa_mental||[]).length){
     html+=studyCard('Mapa mental','◎',`<div class="study-mind">${s.mapa_mental.map(t=>`<div class="study-mind-theme"><h4>${escapeHTML(t.tema)}</h4><ul>${t.pontos.map(p=>`<li>${escapeHTML(p.texto)}${studyVideos(p.videos)}</li>`).join('')}</ul></div>`).join('')}</div>`,'wide');
   }
@@ -193,7 +197,7 @@ function studyModuleHTML(v){
       <button type="button" id="study-edit-module">Editar</button><button type="button" id="study-move-up" title="Mover para cima">↑</button><button type="button" id="study-move-down" title="Mover para baixo">↓</button><button type="button" id="study-delete-module" class="study-danger">Excluir</button></div>`;
   }
   if(s){
-    html+=`<div class="study-phrase"><strong>Visão geral:</strong> ${escapeHTML(s.visao_geral)}</div>`;
+    html+=`<div class="study-phrase lib-md"><blockquote><strong>Visão geral:</strong> ${escapeHTML(s.visao_geral)}</blockquote></div>`;
     if((s.trilha||[]).length)html+=studyCard('Trilha do aprendizado','➜',`<ol class="study-know">${s.trilha.map(t=>`<li><strong>${escapeHTML(t.etapa)}</strong> — ${escapeHTML(t.resumo)} ${t.aulas.map(a=>`<button type="button" class="study-chip" data-study-lesson="${escapeHTML(a)}">${escapeHTML(studyLessonLabel(a))}</button>`).join('')}</li>`).join('')}</ol>`,'wide');
     html+='<div class="study-grid">';
     if((s.conceitos_chave||[]).length)html+=studyCard('Conceitos-chave','◆',`<ul>${s.conceitos_chave.map(c=>`<li><strong>${escapeHTML(c.conceito)}</strong> — ${escapeHTML(c.explicacao)}</li>`).join('')}</ul>`);
@@ -205,7 +209,7 @@ function studyModuleHTML(v){
     html+=`<div class="study-alert">O resumo do módulo pela IA é gerado automaticamente depois de 3 aulas com resumo, e atualizado a cada 5 aulas novas. A página viva abaixo é atualizada a cada aula, sem IA.</div>`;
   }
   const deliveries=living.entregas||[];
-  if(deliveries.length)html+=studyCard('Entregas do módulo','⚒',deliveries.map(d=>`<div class="study-living-row"><button type="button" class="study-link-btn" data-study-activity="${escapeHTML(d.id)}">${STUDY_KIND_ICON[d.tipo]||'✎'} ${escapeHTML(d.titulo)}</button>${d.prazo?` <small>prazo ${escapeHTML(d.prazo)}</small>`:''}${d.nota?` <span class="study-tag grade">${escapeHTML(d.nota)}</span>`:''}${d.em_uma_frase?`<p>${escapeHTML(d.em_uma_frase)}</p>`:''}</div>`).join(''),'wide');
+  if(deliveries.length)html+=studyCard('Entregas do módulo','⚒',deliveries.map(d=>`<div class="study-living-row"><button type="button" class="study-link-btn" data-study-activity="${escapeHTML(d.id)}">${escapeHTML(KIND_NAME[d.tipo]||'Atividade')}: ${escapeHTML(d.titulo)}</button>${d.prazo?` <small>prazo ${escapeHTML(d.prazo)}</small>`:''}${d.nota?` <span class="study-tag grade">${escapeHTML(d.nota)}</span>`:''}${d.em_uma_frase?`<p>${escapeHTML(d.em_uma_frase)}</p>`:''}</div>`).join(''),'wide');
   const devLessons=living.desenvolvimento||[];
   if(devLessons.length)html+=studyCard('Aulas de desenvolvimento','⚒',`<div class="study-chips">${devLessons.map(d=>`<button type="button" class="study-chip" data-study-dev="${escapeHTML(d.aula)}">${escapeHTML(studyLessonLabel(d.aula))}${d.titulo?' — '+escapeHTML(d.titulo):''}</button>`).join('')}</div>`,'wide');
   html+=studyCard('Página viva — aulas do módulo','▤',living.aulas.length?living.aulas.map(a=>`<div class="study-living-row"><button type="button" class="study-link-btn" data-study-lesson="${escapeHTML(a.aula)}">${escapeHTML(studyLessonLabel(a.aula))}${a.titulo?' — '+escapeHTML(a.titulo):''}</button>${a.em_uma_frase?`<p>${escapeHTML(a.em_uma_frase)}</p>`:'<p class="study-empty">Resumo da aula ainda não gerado.</p>'}${a.pontos.length?`<ul>${a.pontos.map(p=>`<li>${escapeHTML(p)}</li>`).join('')}</ul>`:''}</div>`).join(''):studyEmpty('Nenhuma aula neste módulo ainda.'),'wide');
@@ -221,33 +225,33 @@ function studySideHTML(){
   if(!v?.ok)return '';
   const note=v.note;
   const fav=libraryState.favorites?.has?.(note);
-  let html=`<section class="lib-side-card"><h3><span class="card-heading-ico">⚙</span>Ações do resumo</h3><div class="side-body">
-    <button type="button" class="lib-side-button" id="study-open-obsidian"><span class="action-left">↗ Abrir nota no Obsidian</span></button>
-    <button type="button" class="lib-side-button" id="study-copy-link"><span class="action-left">▤ Copiar link interno</span></button>
-    <button type="button" class="lib-side-button" id="study-favorite"><span class="action-left">${fav?'★ Remover dos favoritos':'☆ Adicionar aos favoritos'}</span></button>`;
-  if(studyState.kind==='lesson'||studyState.kind==='dev')html+=`<button type="button" class="lib-side-button" id="study-open-evidence"><span class="action-left">◈ Abrir aula completa (evidências)</span></button>`;
-  if(studyState.kind==='activity')html+=`<button type="button" class="lib-side-button" id="study-edit-activity"><span class="action-left">✎ Editar atividade</span></button>
-    <button type="button" class="lib-side-button study-danger" id="study-delete-activity"><span class="action-left">✕ Excluir atividade</span></button>`;
+  let html=`<section class="lib-side-card"><h3><span class="card-heading-ico">${libIcon('gear','heading-icon')}</span>Ações do resumo</h3><div class="side-body">
+    <button type="button" class="lib-side-button" id="study-open-obsidian"><span class="action-left">${libIcon('arrow','action-icon')}Abrir nota no Obsidian</span>${libIcon('arrow','action-end')}</button>
+    <button type="button" class="lib-side-button" id="study-copy-link"><span class="action-left">${libIcon('file','action-icon')}Copiar link interno</span>${libIcon('arrow','action-end')}</button>
+    <button type="button" class="lib-side-button" id="study-favorite"><span class="action-left">${libIcon('star','action-icon')}${fav?'Remover dos favoritos':'Adicionar aos favoritos'}</span>${libIcon('arrow','action-end')}</button>`;
+  if(studyState.kind==='lesson'||studyState.kind==='dev')html+=`<button type="button" class="lib-side-button" id="study-open-evidence"><span class="action-left">${libIcon('book','action-icon')}Abrir aula completa (evidências)</span>${libIcon('arrow','action-end')}</button>`;
+  if(studyState.kind==='activity')html+=`<button type="button" class="lib-side-button" id="study-edit-activity"><span class="action-left">${libIcon('file','action-icon')}Editar atividade</span>${libIcon('arrow','action-end')}</button>
+    <button type="button" class="lib-side-button study-danger" id="study-delete-activity"><span class="action-left">Excluir atividade</span>${libIcon('arrow','action-end')}</button>`;
   html+='</div></section>';
   if(studyState.kind==='activity'){
     const repos=(v.repos||[]).map(r=>{const name=r.repo_url.replace('https://github.com/','');
       return `<div class="study-repo"><div class="study-repo-head"><span class="owner-badge owner-${escapeHTML(r.owner_class)}">${escapeHTML(STUDY_OWNER[r.owner_class]||'Outro')}</span><strong>${escapeHTML(name)}</strong></div>
       <small>${r.sha?`Versão entregue <code>${escapeHTML(r.sha.slice(0,7))}</code>${r.ref_name?' · '+escapeHTML(r.ref_name):''}`:escapeHTML(r.message||'Versão entregue ainda não congelada.')}</small>
-      <div class="study-repo-actions"><button type="button" class="lib-link" data-open-project="${escapeHTML(r.repo_url)}" data-open-sha="${escapeHTML(r.sha||'')}"><span>▤</span><span>Ver no TRAMA</span></button>
-      <button type="button" class="lib-link" data-study-link="${escapeHTML(r.sha?r.repo_url+'/tree/'+r.sha:r.repo_url)}"><span>↗</span><span>GitHub</span></button>
-      <button type="button" class="lib-link" data-study-refreeze="${escapeHTML(r.repo_url)}" title="Buscar de novo o último commit até o prazo"><span>⟳</span><span>${r.sha?'Recalcular':'Congelar'}</span></button></div></div>`;}).join('');
-    html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">⌥</span>Repositórios</h3><div class="side-body">${repos||studyEmpty('Nenhum repositório. Edite a atividade e cole o link do GitHub.')}</div></section>`;
-    if(v.link)html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">↗</span>Link</h3><div class="side-body"><button type="button" class="lib-link" data-study-link="${escapeHTML(v.link)}"><span>↗</span><span>${escapeHTML(v.link)}</span></button></div></section>`;
+      <div class="study-repo-actions"><button type="button" class="lib-link" data-open-project="${escapeHTML(r.repo_url)}" data-open-sha="${escapeHTML(r.sha||'')}">${libIcon('file','link-icon')}<span>Ver no TRAMA</span></button>
+      <button type="button" class="lib-link" data-study-link="${escapeHTML(r.sha?r.repo_url+'/tree/'+r.sha:r.repo_url)}">${libIcon('arrow','link-icon')}<span>GitHub</span></button>
+      <button type="button" class="lib-link" data-study-refreeze="${escapeHTML(r.repo_url)}" title="Buscar de novo o último commit até o prazo">${libIcon('refresh','link-icon')}<span>${r.sha?'Recalcular':'Congelar'}</span></button></div></div>`;}).join('');
+    html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">${libIcon('folder','heading-icon')}</span>Repositórios</h3><div class="side-body">${repos||studyEmpty('Nenhum repositório. Edite a atividade e cole o link do GitHub.')}</div></section>`;
+    if(v.link)html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">${libIcon('arrow','heading-icon')}</span>Link</h3><div class="side-body"><button type="button" class="lib-link" data-study-link="${escapeHTML(v.link)}">${libIcon('arrow','link-icon')}<span>${escapeHTML(v.link)}</span></button></div></section>`;
     return html;
   }
   if(studyState.kind==='dev'){
-    if(v.activity)html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">⚒</span>Trabalho em andamento</h3><div class="side-body"><button type="button" class="lib-link" data-study-activity="${escapeHTML(v.activity.id)}"><span>${escapeHTML(v.activity.kind_label)}</span><span>${escapeHTML(v.activity.title)}</span></button></div></section>`;
+    if(v.activity)html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">${libIcon('folder','heading-icon')}</span>Trabalho em andamento</h3><div class="side-body"><button type="button" class="lib-link" data-study-activity="${escapeHTML(v.activity.id)}"><span>${escapeHTML(v.activity.kind_label)}</span><span>${escapeHTML(v.activity.title)}</span></button></div></section>`;
     return html;
   }
   if(studyState.kind==='lesson'){
     const vids=(v.videos||[]).map(x=>`<div class="lib-stat"><span class="stat-label">▶ ${escapeHTML(x.code||'')}</span><span class="stat-value muted">${escapeHTML(x.label)}</span></div>`).join('');
-    html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">▶</span>Gravações</h3><div class="side-body">${vids||studyEmpty('Sem gravações.')}</div></section>`;
-    if((v.materials||[]).length)html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">▤</span>Material oficial</h3><div class="side-body">${v.materials.map((m,i)=>`<button type="button" class="lib-link" data-study-material="${i}"><span>↗</span><span>${escapeHTML(m.title||m.url)}</span></button>`).join('')}</div></section>`;
+    html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">${libIcon('video','heading-icon')}</span>Gravações</h3><div class="side-body">${vids||studyEmpty('Sem gravações.')}</div></section>`;
+    if((v.materials||[]).length)html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">${libIcon('file','heading-icon')}</span>Material oficial</h3><div class="side-body">${v.materials.map((m,i)=>`<button type="button" class="lib-link" data-study-material="${i}">${libIcon('arrow','link-icon')}<span>${escapeHTML(m.title||m.url)}</span></button>`).join('')}</div></section>`;
   }
   return html;
 }
@@ -328,15 +332,15 @@ function studyActivityHTML(v){
     v.author?`<span>Professor: ${escapeHTML(v.author)}</span>`:'',v.posted_at?`<span>Postada ${escapeHTML(v.posted_at)}</span>`:'',
     v.due_at?`<span>Prazo ${escapeHTML(v.due_at)}</span>`:'',v.grade?`<span class="study-tag grade">Nota ${escapeHTML(v.grade)}</span>`:''].filter(Boolean).join('');
   let html=`<div class="lib-breadcrumb">Resumos <b>›</b> Atividades <b>›</b> ${escapeHTML(v.kind_label)}</div>
-   <h1 class="lib-title">${STUDY_KIND_ICON[v.kind]||'✎'} ${escapeHTML(v.title)}</h1>
-   <div class="lib-note-meta"><span class="study-status ${st[2]}">${st[0]} ${escapeHTML(st[1])}</span>${v.generated?`<span>◷ Resumo em ${escapeHTML(v.generated)}</span>`:''}</div>
+   <h1 class="lib-title">${escapeHTML(v.title)}</h1>
+   <div class="lib-note-meta"><span class="chip study-status ${st[2]}">${escapeHTML(st[1])}</span>${v.generated?`<span>◷ Resumo em ${escapeHTML(v.generated)}</span>`:''}</div>
    <div class="study-modules-line">${facts}</div>`;
   const canGen=(v.repos||[]).length>0;
   const s=v.summary;
   html+=`<div class="study-module-tools"><button type="button" class="study-primary" id="study-generate-activity"${canGen?'':' disabled'}>${s?'Atualizar resumo da entrega':'Gerar resumo da entrega'}</button><button type="button" id="study-edit-activity-top">Editar</button></div>`;
   if(v.status==='desatualizado')html+=`<div class="study-alert">A versão entregue ou o enunciado mudou depois deste resumo.</div>`;
   if(s){
-    html+=`<div class="study-phrase"><strong>Em poucas palavras:</strong> ${escapeHTML(s.em_uma_frase)}</div>`;
+    html+=`<div class="study-phrase lib-md"><blockquote><strong>Em poucas palavras:</strong> ${escapeHTML(s.em_uma_frase)}</blockquote></div>`;
     const file=p=>`<code class="study-path">${escapeHTML(p)}</code>`;
     if(s.pedido)html+=studyCard('O que foi pedido','✎',`<p>${escapeHTML(s.pedido)}</p>`,'wide');
     html+='<div class="study-grid">';
@@ -364,8 +368,8 @@ function studyActivityHTML(v){
 function studyDevHTML(v){
   let html=`<div class="lib-breadcrumb">Resumos <b>›</b> Aulas <b>›</b> ${escapeHTML(studyLessonLabel(v.lesson))}</div>
    <h1 class="lib-title">${escapeHTML(studyLessonLabel(v.lesson))}${v.title?' — '+escapeHTML(v.title):''}</h1>
-   <div class="lib-note-meta"><span class="study-status dev">⚒ Desenvolvimento</span>${v.date?`<span>▦ Agenda ${escapeHTML(v.date)}</span>`:''}${v.author?`<span>${escapeHTML(v.author)}</span>`:''}</div>`;
-  html+=`<div class="study-phrase">Aula sem gravação: encontro de desenvolvimento, dúvidas ou apoio ao trabalho. Não gasta IA.</div>`;
+   <div class="lib-note-meta"><span class="chip study-status dev">Desenvolvimento</span>${v.date?`<span>▦ Agenda ${escapeHTML(v.date)}</span>`:''}${v.author?`<span>${escapeHTML(v.author)}</span>`:''}</div>`;
+  html+=`<div class="study-phrase lib-md"><blockquote>Aula sem gravação: encontro de desenvolvimento, dúvidas ou apoio ao trabalho. Não gasta IA.</blockquote></div>`;
   html+=studyCard('Trabalho em andamento','⚒',v.activity?`<button type="button" class="study-link-btn" data-study-activity="${escapeHTML(v.activity.id)}">${escapeHTML(v.activity.kind_label)}: ${escapeHTML(v.activity.title)}</button>`:
     studyEmpty('Nenhum trabalho com prazo nesta data. Cadastre o trabalho em Atividades e ele se liga sozinho pela data ou pelo nome.'),'wide');
   if(v.description)html+=studyCard('Post do Classroom','✉',`<p class="study-pre">${escapeHTML(v.description)}</p>`,'wide');

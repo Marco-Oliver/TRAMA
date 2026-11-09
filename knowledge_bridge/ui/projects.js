@@ -139,7 +139,7 @@ function projVersionOptions(){
 function projPaint(){
   const root=$('projects-workspace');
   root.innerHTML=`<section class="lib-tree-panel proj-tree" id="proj-tree"></section>
-   <section class="lib-note-panel"><div class="lib-tab-strip"><div class="lib-open-tab"><span>⌥</span><span class="lib-tab-text" id="proj-tab">${escapeHTML(projState.file?.path?.split('/').at(-1)||(projState.view?projState.view.name:'Projetos'))}</span></div></div>
+   <section class="lib-note-panel"><div class="lib-tab-strip"><div class="lib-open-tab"><span>${libIcon('folder')}</span><span class="lib-tab-text" id="proj-tab">${escapeHTML(projState.file?.path?.split('/').at(-1)||(projState.view?projState.view.name:'Projetos'))}</span></div></div>
    <div class="lib-note-scroll" id="proj-main"></div></section>
    <aside class="lib-right-panel" id="proj-side"></aside>`;
   projPaintTree();projPaintMain();projPaintSide();
@@ -150,17 +150,17 @@ function projPaintTree(){
   if(!projState.repo){
     const groups=projState.overview?.groups||[];
     const q=projState.search.trim().toLowerCase();
-    let html=`<div class="lib-tree-head"><span class="study-head-ico">⌥</span><div><strong>Projetos</strong><small>Seus repositórios, os da dupla e os do professor.</small></div></div>
+    let html=`<div class="lib-tree-head"><span class="study-head-ico">${libIcon('folder')}</span><div><strong>Projetos</strong><small>Seus repositórios, os da dupla e os do professor.</small></div></div>
      <div class="study-tree-actions"><button type="button" id="proj-add" class="study-primary">＋ Adicionar repositório</button></div>
      <div class="lib-search"><span>⌕</span><input id="proj-search" maxlength="80" placeholder="Buscar repositório..." value="${escapeHTML(projState.search)}" aria-label="Buscar repositório"></div><div class="lib-tree-scroll">`;
     for(const g of groups){
       const repos=g.repos.filter(r=>!q||(r.owner+'/'+r.name).toLowerCase().includes(q));
       const open=projState.open[g.klass]!==false;
-      html+=`<button type="button" class="lib-folder-row depth-0" data-proj-group="${escapeHTML(g.klass)}"><span class="lib-chevron${open?' expanded':''}">▶</span>${projOwnerBadge(g.klass)}<strong>${escapeHTML(g.label)}</strong><small class="study-count">${repos.length}</small></button>`;
+      html+=`<button type="button" class="lib-folder-row depth-0" data-proj-group="${escapeHTML(g.klass)}"><span class="lib-chevron${open?' expanded':''}">▶</span><span class="lib-folder-icon top" aria-hidden="true"></span><strong>${escapeHTML(g.label)}</strong><small class="study-count">${repos.length}</small></button>`;
       if(!open)continue;
       for(const r of repos){
-        html+=`<button type="button" class="lib-file-row depth-1 proj-repo-row" data-proj-repo="${escapeHTML(r.url)}" title="${escapeHTML(r.owner+'/'+r.name)}">${projFolderIcon('repo',false)}<span class="file-label">${escapeHTML(r.name)}</span>${r.activities?`<span class="study-tag">${r.activities} entrega(s)</span>`:''}</button>`;
-        for(const p of r.pairs)html+=`<button type="button" class="lib-file-row depth-2 proj-pair-row" data-proj-repo="${escapeHTML(p.url)}" title="Par: ${escapeHTML(p.owner+'/'+p.name)}"><span class="proj-pair-ico">⇄</span>${projOwnerBadge(p.owner_class)}<span class="file-label">${escapeHTML(p.name)}</span></button>`;
+        html+=`<button type="button" class="lib-file-row depth-1 proj-repo-row" data-proj-repo="${escapeHTML(r.url)}" title="${escapeHTML(r.owner+'/'+r.name)}"><span class="lib-folder-icon" aria-hidden="true"></span><span class="file-label">${escapeHTML(r.name)}</span>${r.activities?`<span class="study-tag">${r.activities} entrega(s)</span>`:''}</button>`;
+        for(const p of r.pairs)html+=`<button type="button" class="lib-file-row depth-2 proj-pair-row" data-proj-repo="${escapeHTML(p.url)}" title="Par: ${escapeHTML(p.owner+'/'+p.name)}"><span class="lib-file-icon" aria-hidden="true"></span><span class="file-label">par: ${escapeHTML(p.name)}</span>${projOwnerBadge(p.owner_class)}</button>`;
       }
     }
     if(!groups.length)html+=`<p class="study-empty study-indent">Nenhum repositório ainda. Adicione o link do GitHub aqui ou numa atividade em Resumos.</p>`;
@@ -195,7 +195,7 @@ function projPaintMain(){
     el.innerHTML=`<div class="lib-breadcrumb">Projetos</div><h1 class="lib-title">Meus projetos</h1>
      <p class="lib-note-intro">Abra um repositório para navegar pelas pastas e arquivos de qualquer versão: a entregue na atividade, a atual (main), branches, tags e pastas V0/V1/V2 do professor.</p>
      ${projPairsHTML(groups)}
-     <div class="proj-cards">${groups.map(g=>`<section class="study-card"><h3>${projOwnerBadge(g.klass)} ${escapeHTML(g.label)} <small class="study-count">${g.repos.length}</small></h3><div class="study-card-body">${g.repos.map(r=>`<button type="button" class="proj-card-repo" data-proj-repo="${escapeHTML(r.url)}">${projFolderIcon('repo',false)}<span><strong>${escapeHTML(r.name)}</strong><small>${escapeHTML(r.owner)}${r.description?' · '+escapeHTML(r.description):''}</small></span>${r.pairs.length?`<span class="study-tag">⇄ ${r.pairs.length} par</span>`:''}</button>`).join('')}</div></section>`).join('')}</div>
+     ${groups.map(g=>studyCard(g.label+' ('+g.repos.length+')','⚒',`<ul class="proj-list">${g.repos.map(r=>`<li><button type="button" class="study-link-btn proj-list-link" data-proj-repo="${escapeHTML(r.url)}">${escapeHTML(r.name)}</button> <small>${escapeHTML(r.owner)}${r.description?' · '+escapeHTML(r.description):''}</small>${r.pairs.length?' <span class="study-tag">par</span>':''}</li>`).join('')}</ul>`)).join('')}
      ${total?'':'<p class="study-empty">Nenhum repositório ainda.</p>'}`;
     projWireMain(el);return;
   }
@@ -240,23 +240,23 @@ function projPaintSide(){
   const el=$('proj-side');if(!el)return;
   const v=projState.view;
   if(!projState.repo||!v){
-    el.innerHTML=`<section class="lib-side-card"><h3><span class="card-heading-ico">ℹ</span>Como funciona</h3><div class="side-body"><p class="study-empty">Os repositórios vêm das atividades (Resumos), das aulas com código e dos que você adicionar aqui. O dono (Meu, Dupla, Professor) vem da lista em Ajustes.</p><p class="study-empty">Só leitura: o TRAMA não faz commit nem altera nada no GitHub.</p></div></section>`;
+    el.innerHTML=`<section class="lib-side-card"><h3><span class="card-heading-ico">${libIcon('book','heading-icon')}</span>Como funciona</h3><div class="side-body"><p class="study-empty">Os repositórios vêm das atividades (Resumos), das aulas com código e dos que você adicionar aqui. O dono (Meu, Dupla, Professor) vem da lista em Ajustes.</p><p class="study-empty">Só leitura: o TRAMA não faz commit nem altera nada no GitHub.</p></div></section>`;
     return;
   }
   const version=(v.versions||[]).find(x=>x.sha===projState.version);
   const ghUrl=projState.file?.path&&projState.version?`${v.url}/blob/${projState.version}/${projState.file.path.split('/').map(encodeURIComponent).join('/')}`:
     (projState.version?`${v.url}/tree/${projState.version}`:v.url);
-  let html=`<section class="lib-side-card"><h3><span class="card-heading-ico">⌥</span>Repositório</h3><div class="side-body">
+  let html=`<section class="lib-side-card"><h3><span class="card-heading-ico">${libIcon('folder','heading-icon')}</span>Repositório</h3><div class="side-body">
     <div class="lib-stat"><span class="stat-label">Dono</span><span class="stat-value"><select id="proj-owner-class" aria-label="Dono do repositório">${['meu','dupla','professor','outro'].map(k=>`<option value="${k}"${v.owner_class===k?' selected':''}>${PROJ_OWNER[k]}</option>`).join('')}</select></span></div>
     <div class="lib-stat"><span class="stat-label">GitHub</span><span class="stat-value muted">${escapeHTML(v.owner)}</span></div>
     <div class="lib-stat"><span class="stat-label">Versão</span><span class="stat-value muted">${escapeHTML(version?version.label:'—')}${projState.folder?' · pasta '+escapeHTML(projState.folder):''}</span></div>
-    <button type="button" class="lib-side-button" id="proj-open-github" data-url="${escapeHTML(ghUrl)}"><span class="action-left">↗ Abrir no GitHub${projState.file?.path?' (este arquivo)':''}</span></button>
-    <button type="button" class="lib-side-button" id="proj-refresh"><span class="action-left">⟳ Atualizar versões</span></button>
-    <button type="button" class="lib-side-button" id="proj-open-note"><span class="action-left">▤ Abrir nota no Obsidian</span></button>
-    <button type="button" class="lib-side-button study-danger" id="proj-remove"><span class="action-left">✕ Tirar da lista</span></button></div></section>`;
-  if((v.pairs||[]).length)html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">⇄</span>Par</h3><div class="side-body">${v.pairs.map(p=>`<button type="button" class="lib-link" data-proj-repo="${escapeHTML(p.url)}">${projOwnerBadge(p.owner_class)}<span>${escapeHTML(p.owner+'/'+p.name)}</span></button>`).join('')}</div></section>`;
-  html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">⚒</span>Atividades</h3><div class="side-body">${(v.activities||[]).length?v.activities.map(a=>`<button type="button" class="lib-link" data-proj-activity="${escapeHTML(a.id)}"><span>${escapeHTML(STUDY_KIND_ICON?.[a.kind]||'✎')}</span><span>${escapeHTML(a.title)}${a.sha?` · entregue ${escapeHTML(a.sha.slice(0,7))}`:''}</span></button>`).join(''):'<p class="study-empty">Nenhuma atividade usa este repositório.</p>'}</div></section>`;
-  html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">▤</span>Aulas ligadas</h3><div class="side-body">${(v.lessons||[]).length?v.lessons.map(l=>`<button type="button" class="lib-link" data-proj-lesson="${escapeHTML(l.lesson)}"><span>${escapeHTML(studyLessonLabel(l.lesson))}</span><span>${escapeHTML(l.title||'')}</span></button>`).join(''):'<p class="study-empty">Nenhuma aula ligada ainda.</p>'}</div></section>`;
+    <button type="button" class="lib-side-button" id="proj-open-github" data-url="${escapeHTML(ghUrl)}"><span class="action-left">${libIcon('arrow','action-icon')}Abrir no GitHub${projState.file?.path?' (este arquivo)':''}</span>${libIcon('arrow','action-end')}</button>
+    <button type="button" class="lib-side-button" id="proj-refresh"><span class="action-left">${libIcon('refresh','action-icon')}Atualizar versões</span>${libIcon('arrow','action-end')}</button>
+    <button type="button" class="lib-side-button" id="proj-open-note"><span class="action-left">${libIcon('file','action-icon')}Abrir nota no Obsidian</span>${libIcon('arrow','action-end')}</button>
+    <button type="button" class="lib-side-button study-danger" id="proj-remove"><span class="action-left">Tirar da lista</span>${libIcon('arrow','action-end')}</button></div></section>`;
+  if((v.pairs||[]).length)html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">${libIcon('link','heading-icon')}</span>Par</h3><div class="side-body">${v.pairs.map(p=>`<button type="button" class="lib-link" data-proj-repo="${escapeHTML(p.url)}">${projOwnerBadge(p.owner_class)}<span>${escapeHTML(p.owner+'/'+p.name)}</span></button>`).join('')}</div></section>`;
+  html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">${libIcon('folder','heading-icon')}</span>Atividades</h3><div class="side-body">${(v.activities||[]).length?v.activities.map(a=>`<button type="button" class="lib-link" data-proj-activity="${escapeHTML(a.id)}"><span>${escapeHTML(STUDY_KIND_ICON?.[a.kind]||'✎')}</span><span>${escapeHTML(a.title)}${a.sha?` · entregue ${escapeHTML(a.sha.slice(0,7))}`:''}</span></button>`).join(''):'<p class="study-empty">Nenhuma atividade usa este repositório.</p>'}</div></section>`;
+  html+=`<section class="lib-side-card"><h3><span class="card-heading-ico">${libIcon('file','heading-icon')}</span>Aulas ligadas</h3><div class="side-body">${(v.lessons||[]).length?v.lessons.map(l=>`<button type="button" class="lib-link" data-proj-lesson="${escapeHTML(l.lesson)}"><span>${escapeHTML(studyLessonLabel(l.lesson))}</span><span>${escapeHTML(l.title||'')}</span></button>`).join(''):'<p class="study-empty">Nenhuma aula ligada ainda.</p>'}</div></section>`;
   el.innerHTML=html;projWireSide(el);
 }
 

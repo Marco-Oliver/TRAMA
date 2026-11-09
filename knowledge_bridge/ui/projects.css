@@ -73,3 +73,20 @@
 .proj-pair-cell strong{font-size:12px;color:#1c2f3d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .proj-pair-cell small{font-size:10.5px;color:#6f7f88}
 .setting-block .owners-add select{padding:0 6px;line-height:28px}
+
+/* ---- Visual antigo do TRAMA: selos .chip, pastas amarelas na lista, seções iguais à Biblioteca ---- */
+.owner-badge{height:auto;min-width:0;padding:2px 8px;border-radius:16px;font-size:9.5px;font-weight:600;border:1px solid #d9e8dd}
+.owner-meu{background:#e9f3ea;color:#27683e;border-color:#d9e8dd}
+.owner-dupla{background:#eef4f7;color:#44769b;border-color:#dae7ef}
+.owner-professor{background:#f8f4e8;color:#6d5a2b;border-color:#e6dcc0}
+.owner-outro{background:#f1f3f1;color:#5d6b63;border-color:#dfe4e0}
+.proj-pair-row .owner-badge{margin-left:auto}
+.proj-list{list-style:disc}
+.proj-list li small{color:#6b7a83;font-size:12.5px}
+.proj-list-link{font-size:15px}
+.proj-pair-cell{border:1px solid #b5c0bf;border-radius:5px;background:linear-gradient(#fff,#eef1ef)}
+.proj-pair-cell:hover{border-color:#91aea0;background:linear-gradient(#fff,#e6f0e8)}
+.proj-version select{border-radius:3px;border-color:#b6c9b9}
+.pv-code{border-radius:5px;background:#f5f7f6;border-color:#dfe7e1}
+.pv-num{background:#eef2ef}
+.pv-head strong{font-size:15px}
