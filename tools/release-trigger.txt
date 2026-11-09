@@ -1,1 +1,1 @@
-Publish TRAMA v2.2.7 from main following user-approved PR (feat/2.2.7-atividades-projetos: atividades/trabalhos/provas, aulas de desenvolvimento, aba Projetos, lacunas retomadas, grafo dos resumos).
+Publish TRAMA v2.2.8 from main following user-approved PR (fix/2.2.8-importar-atividades: post de atividade colado em Importar vira atividade em Resumos).

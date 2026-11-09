@@ -350,6 +350,38 @@ class AutoOrganizer:
                 outcome['pending'].append(
                     lesson+': Contexto registrado sem alterar a análise anterior; '
                     'reprocesse a aula para a IA usar.')
+        # Posts de atividade/trabalho/prova ("[M01] Atividade 01 - ...") viram
+        # atividades em Resumos. Com uma única atividade no lote, os links do
+        # GitHub colados fora do post (campo Repositórios) também são dela.
+        outcome['activities']=0
+        if pasted.get('activities'):
+            from .study_notes import StudyNotes
+            acts=StudyNotes(self.app.store,log=lambda _t:None).activities
+            loose=[e['url'] for e in links if e['repo']] if len(pasted['activities'])==1 else []
+            if loose:
+                links=[e for e in links if not e['repo']]
+            client=None
+            for text in pasted['activities']:
+                try:
+                    activity,created=acts.import_post(text,loose)
+                except ValueError as exc:
+                    outcome['pending'].append('Atividade não cadastrada: '+str(exc)[:120])
+                    continue
+                outcome['activities']+=1
+                for repo in activity['repos']:
+                    if repo['sha']:
+                        continue
+                    try:
+                        if client is None:
+                            from .github_mapping import GithubMapping
+                            client=GithubMapping()
+                        acts.freeze_repo(activity['id'],repo['repo_url'],client)
+                    except (ValueError,OSError,RuntimeError) as exc:
+                        acts.mark_repo_pending(activity['id'],repo['repo_url'],str(exc))
+                        outcome['pending'].append(activity['title'][:60]+': versão entregue pendente ('+str(exc)[:90]+').')
+                if not activity['repos']:
+                    outcome['pending'].append(activity['title'][:60]+': cadastrada sem link do GitHub; '
+                                              'edite em Resumos para adicionar o repositório.')
         # Links sem identificação são vinculados somente se existir uma aula única.
         by_lesson={}
         unassigned_docs=None

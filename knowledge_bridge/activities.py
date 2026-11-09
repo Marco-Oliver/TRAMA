@@ -191,11 +191,11 @@ def parse_date(text: str, reference: date | None = None) -> str:
     try:
         if year is None:
             # Classroom omits the current year; pick the nearest plausible year.
+            # Posts are pasted after they happen: a date more than ~2 months
+            # ahead of today belongs to the previous year (Dec post read in Jan).
             guess = date(reference.year, month, day)
-            if guess - reference > timedelta(days=200):
+            if guess - reference > timedelta(days=60):
                 guess = date(reference.year - 1, month, day)
-            elif reference - guess > timedelta(days=200):
-                guess = date(reference.year + 1, month, day)
             return guess.isoformat()
         return date(year, month, day).isoformat()
     except ValueError:
@@ -211,6 +211,14 @@ def suggest_kind(title: str) -> str:
     return "atividade"
 
 
+# A name line right after the title ("Alexandre Rech"): 2-6 capitalized words.
+AUTHOR_LINE = re.compile(r"[A-ZÀ-Ý][A-Za-zÀ-ÿ'.-]{1,40}(?:\s+(?:(?:de|da|do|dos|das|e)\s+)?"
+                         r"[A-ZÀ-Ý][A-Za-zÀ-ÿ'.-]{1,40}){1,5}")
+# A bare Classroom date line ("3 de mar.", "3 de mar. (Editado: 4 de mar.)", "03/03/2026").
+DATE_LINE = re.compile(r"(?:\d{1,2}\s+de\s+[A-Za-zçÇ]{3,9}\.?(?:\s+de\s+\d{4})?|\d{1,2}/\d{1,2}(?:/\d{2,4})?)"
+                       r"(?:\s*\(.*\))?", re.I)
+
+
 def parse_post(text: str, reference: date | None = None) -> dict:
     """Best-effort parse of a pasted Classroom post. Everything stays editable."""
     text = _text(text, 20000)
@@ -219,12 +227,26 @@ def parse_post(text: str, reference: date | None = None) -> dict:
     out = {"title": "", "module_code": "", "author": "", "posted_at": "", "due_at": "",
            "points": "", "description": "", "repos": [], "kind": "atividade", "grade": ""}
     used = set()
+    title_at = -1
     for i, line in enumerate(lines):
         if not out["title"] and (re.search(r"\[\s*M\d{1,2}\s*\]", line, re.I) or
                                  re.search(r"\b(atividade|trabalho|prova|projeto|exerc[ií]cio)\b", line, re.I)):
             if len(line) <= 200 and not line.lower().startswith(("data de entrega", "prazo")):
                 out["title"] = line
+                title_at = i
                 used.add(i)
+                continue
+        if out["title"] and line.casefold() == out["title"].casefold():
+            used.add(i)          # Classroom repeats the title on the "Seus trabalhos" card.
+            continue
+        if (not out["author"] and title_at >= 0 and i - title_at <= 3 and AUTHOR_LINE.fullmatch(line)):
+            out["author"] = line[:100]
+            used.add(i)
+            continue
+        if not out["posted_at"] and DATE_LINE.fullmatch(line):
+            out["posted_at"] = parse_date(re.sub(r"\(.*\)", "", line), reference)
+            used.add(i)
+            continue
         match = re.match(r"^(?P<autor>[^•·\n]{3,80}?)\s*[•·]\s*(?P<data>.+)$", line)
         if match and not out["author"]:
             out["author"] = match.group("autor").strip()
@@ -487,6 +509,31 @@ class Activities:
         self.invalidate()
         self.study.invalidate()
         return self.activity(ident)
+
+    def import_post(self, text: str, extra_repos=()) -> tuple[dict, bool]:
+        """Create (or complete) an activity from a pasted Classroom post.
+
+        Same title = same activity: empty fields are filled and repositories
+        are added, but nothing the user already edited is overwritten.
+        """
+        parsed = parse_post(text)
+        if not parsed["title"]:
+            raise ValueError("Post de atividade sem título.")
+        repos = list(dict.fromkeys([*parsed["repos"], *[r for r in extra_repos if repo_key(r)]]))[:6]
+        existing = next((a for a in self.activities()
+                         if _norm(a["title"]) == _norm(parsed["title"])), None)
+        if existing:
+            merged = dict(existing)
+            for field in ("module_code", "author", "posted_at", "due_at", "points", "description", "grade"):
+                if not merged.get(field) and parsed.get(field):
+                    merged[field] = parsed[field]
+            merged["repos"] = list(dict.fromkeys([r["repo_url"] for r in existing["repos"]] + repos))[:6]
+            return self.save(merged), False
+        record = {"title": parsed["title"], "kind": parsed["kind"], "module_code": parsed["module_code"],
+                  "author": parsed["author"], "posted_at": parsed["posted_at"], "due_at": parsed["due_at"],
+                  "points": parsed["points"], "description": parsed["description"],
+                  "grade": parsed["grade"], "repos": repos}
+        return self.save(record), True
 
     def delete(self, activity_id: str) -> None:
         with self.conn:

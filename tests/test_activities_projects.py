@@ -395,3 +395,56 @@ class ActivityBridgeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ImportActivityTests(unittest.TestCase):
+    """Colar o post de atividade em Importar e organizar cria a atividade."""
+    PASTE = """[M01] Atividade 01 - Hello World em C#
+Alexandre Rech
+3 de mar.
+Data de entrega: 4 de mar., 14:00
+[M01] Atividade 01 - Hello World em C#
+"""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.app = Application(self.root / "vault", config=self.root / "none.env", log=lambda _t: None)
+        self.addCleanup(self.app.close)
+
+    def test_paste_parser_returns_activity_block_without_warnings(self):
+        from knowledge_bridge.classroom_paste import parse_import_paste
+        result = parse_import_paste(self.PASTE + MY_REPO + "\n")
+        self.assertEqual(result["warnings"], [])
+        self.assertEqual(len(result["activities"]), 1)
+        mixed = parse_import_paste("Aula 03 - Variáveis\nTiago Santini\nAgenda: 05/03/2026\n"
+                                   "Atividades:\nAtividade 02 - Calculadora\n" + self.PASTE)
+        self.assertEqual(len(mixed["posts"]), 1)            # lesson post keeps its own activities section
+        self.assertIn("Calculadora", mixed["posts"][0]["atividades"])
+        self.assertEqual(len(mixed["activities"]), 1)
+
+    def test_import_creates_activity_and_attaches_loose_repo(self):
+        from knowledge_bridge.auto_ingest import AutoOrganizer
+        with patch("knowledge_bridge.github_mapping.GithubMapping", FakeClient):
+            result = AutoOrganizer(self.app, log=lambda _t: None).run(
+                [], self.PASTE + "\n" + MY_REPO, authorized=True)
+        self.assertEqual(result["activities"], 1)
+        acts = StudyNotes(self.app.store, log=lambda _t: None).activities
+        [activity] = acts.activities()
+        self.assertEqual(activity["author"], "Alexandre Rech")
+        self.assertTrue(activity["due_at"].endswith("-03-04"))
+        self.assertEqual(activity["module_id"], "logica-de-programacao")
+        self.assertEqual([r["repo_url"] for r in activity["repos"]], [MY_REPO])
+        self.assertEqual(activity["repos"][0]["sha"], SHA_A)
+        self.assertTrue((self.root / "vault" / activity_note_path(activity["id"])).is_file())
+        # Pasting it again completes, never duplicates.
+        with patch("knowledge_bridge.github_mapping.GithubMapping", FakeClient):
+            AutoOrganizer(self.app, log=lambda _t: None).run([], self.PASTE, authorized=True)
+        self.assertEqual(len(StudyNotes(self.app.store, log=lambda _t: None).activities.activities()), 1)
+
+    def test_bare_date_line_prefers_the_past(self):
+        parsed = parse_post(self.PASTE, reference=date(2026, 11, 9))
+        self.assertEqual(parsed["posted_at"], "2026-03-03")
+        self.assertEqual(parsed["due_at"], "2026-03-04")
+        self.assertEqual(parsed["description"], "")

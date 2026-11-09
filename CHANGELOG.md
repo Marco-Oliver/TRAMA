@@ -1,6 +1,13 @@
 # Histórico de versões do TRAMA
 
-## [Não publicado] — branch feat/2.2.7-atividades-projetos
+## [2.2.8] — 2026-11-09
+
+### Corrigido — importar post de atividade
+- Colar o post de uma atividade/trabalho/prova (ex.: `[M01] Atividade 01 - Hello World em C#`) em **Importar e organizar** agora cadastra a atividade em Resumos → Atividades, em vez de virar pendência "texto fora de um post".
+- Lê o professor na linha logo após o título, a data solta ("3 de mar.") e ignora o título repetido do Classroom. Datas sem ano ficam no passado (post de março lido em novembro = março deste ano).
+- Com uma única atividade no lote, o link do GitHub colado em "Repositórios" vai para ela e a versão entregue é congelada. Colar de novo completa a mesma atividade, sem duplicar.
+
+## [2.2.7] — 2026-11-09
 
 ### Novo — Atividades, trabalhos e provas (Resumos)
 - Pasta **Atividades, trabalhos e provas** em Resumos, com CRUD. Cadastro colando o post do Classroom: título, módulo ([M01]), professor e prazo são lidos sozinhos; o tipo é sugerido e editável. Prova aceita nota e link.

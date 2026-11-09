@@ -32,6 +32,11 @@ AUTHOR = re.compile(
     r"(?:\s+(?:(?:de|da|do|dos|das|e)\s+)?[A-ZÀ-Ý][A-Za-zÀ-ÿ'.-]{1,40}){1,5}$"
 )
 URL = re.compile(r"(?:https?://)[^\s<>'\"\\]+", re.I)
+MODULE_TAG = re.compile(r"^\s*\[\s*M\d{1,2}\s*\]")
+# Activity / work / exam posts ("[M01] Atividade 01 - Hello World em C#").
+ACTIVITY = re.compile(r"^\s*(?:\[\s*M\d{1,2}\s*\]\s*.{2,200}|"
+                      r"(?:Atividade|Trabalho|Prova|Avalia[cç][aã]o|Exerc[ií]cio|Projeto)\s*\d{0,3}\s*[-–—:]\s*.{2,200})$",
+                      re.I)
 
 
 def _clean(raw: str) -> str:
@@ -65,11 +70,12 @@ def _url_row(raw: str, lesson: str, current_recording: str):
 
 
 def parse_import_paste(value: str) -> dict:
-    """Return {links, posts, warnings}; no AI, networking, or side effects."""
+    """Return {links, posts, activities, warnings}; no AI, networking, or side effects."""
     if not isinstance(value, str) or len(value) > MAX_PASTE:
         raise ValueError("Cole até 20 mil caracteres de links ou posts por lote.")
-    posts, links, warnings = [], [], []
+    posts, links, warnings, activities = [], [], [], []
     current = None
+    activity = None   # {"title": str, "lines": [raw lines]} of an activity post
     section = ""
     recording = ""
     awaiting_author = False
@@ -95,13 +101,34 @@ def parse_import_paste(value: str) -> dict:
         posts.append(current)
         current = None
 
+    def flush_activity():
+        nonlocal activity
+        if activity is not None:
+            activities.append("\n".join(activity["lines"])[:20000])
+            activity = None
+
     for number, original in enumerate(value.splitlines(), 1):
         line = _clean(original)
         if not line:
             continue
         header = HEADER.fullmatch(line)
+        # "[M01] ..." is always an activity post; a plain "Atividade 02 - X"
+        # inside a lesson's "Atividades:" section stays part of that lesson.
+        starts_activity = bool(ACTIVITY.fullmatch(line) and not header and (
+            MODULE_TAG.match(line) or not (current is not None and section)))
+        if activity is not None and not header:
+            if starts_activity and line.casefold() != activity["title"].casefold():
+                flush_activity()      # a second, different activity post
+            else:
+                activity["lines"].append(original.strip()[:1500])
+                continue
+        if starts_activity:
+            flush()
+            activity = {"title": line, "lines": [line]}
+            continue
         if header:
             flush()
+            flush_activity()
             lesson_number = int(header.group(1))
             if not 1 <= lesson_number <= 9999:
                 warnings.append(f"Linha {number}: aula fora do intervalo permitido.")
@@ -181,9 +208,12 @@ def parse_import_paste(value: str) -> dict:
         else:
             warnings.append(f"Linha {number}: texto fora de um post/URL reconhecido: {line[:75]}")
     flush()
+    flush_activity()
+    if len(activities) > 30:
+        raise ValueError("Máximo de 30 atividades por lote.")
     if len(posts) > 50:
         raise ValueError("Máximo de 50 posts do Classroom por lote.")
     if len(links) > 80:
         raise ValueError("Máximo de 80 links por lote.")
     links = list({(row["url"], row["lesson"]):row for row in links}.values())
-    return {"links":links, "posts":posts, "warnings":warnings[:100]}
+    return {"links":links, "posts":posts, "activities":activities, "warnings":warnings[:100]}
