@@ -556,13 +556,19 @@ class Application:
         """
         from .study_notes import StudyNotes
         lessons = sorted(l for l in lessons if l)
-        if (not self.auto_study or not lessons or
-                not callable(getattr(self.ai, "study_lesson", None))):
+        if not self.auto_study or not callable(getattr(self.ai, "study_lesson", None)):
             return {"lessons": [], "failed": [], "modules": [], "stopped": ""}
         study = StudyNotes(self.store, log=self.log)
-        due = [l for l in lessons if study.lesson_ready(l) and
+        # Lessons analyzed by the app are queued; an interrupted run (quota,
+        # no provider) retries them next time. Older lessons are never
+        # queued automatically: that is the explicit "Gerar resumos" button.
+        queue = study.auto_queue() | set(lessons)
+        due = [l for l in sorted(queue) if study.lesson_ready(l) and
                study.lesson_status(l) in ("pendente", "desatualizado")]
-        return study.run(self.ai, due)
+        study.set_auto_queue(set(due))
+        result = study.run(self.ai, due)
+        study.set_auto_queue(set(due) - set(result["lessons"]) - set(result["failed"]))
+        return result
 
     @staticmethod
     def _check_comparison(payload: dict, transcript: str, repository: dict) -> dict:

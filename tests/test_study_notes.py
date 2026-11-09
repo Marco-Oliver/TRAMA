@@ -197,6 +197,20 @@ class StudyNotesTests(unittest.TestCase):
         self.assertEqual(self.study().lesson_status("Aula-002"), "desatualizado")
         self.assertEqual(self.study().pending_lessons(), ["Aula-002"])
 
+    def test_interrupted_auto_study_retries_next_run_but_never_backfills(self):
+        self.add("A01 - V01 - Antiga.txt", "texto antigo", {"resumo": "Aula antiga."})
+        self.lesson2()
+        self.app.auto_study = True
+        self.app.ai = FakeStudyRouter(stop_after=0)
+        self.app.study_after_analysis({"Aula-002"})
+        self.assertEqual(self.study().auto_queue(), {"Aula-002"})
+        router = FakeStudyRouter()
+        self.app.ai = router
+        self.app.study_after_analysis(set())          # nenhuma aula nova nesta execução
+        self.assertIsNotNone(self.study().lesson_summary("Aula-002"))
+        self.assertIsNone(self.study().lesson_summary("Aula-001"))
+        self.assertEqual(self.study().auto_queue(), set())
+
     def test_open_doubts_come_from_local_catalog_not_ai(self):
         row = self.add("A04 - V01 - X.txt", "texto", {"resumo": "Resumo."})
         self.app.store.upsert_uncertainty(
@@ -281,6 +295,7 @@ class StudyNotesTests(unittest.TestCase):
         self.lesson2()
         study = self.study()
         study.save_module({"name": "Extra"})
+        study.set_lesson_modules("Aula-002", ["extra"])
         self.app.publisher.rebuild()
         page = self.vault / module_note_path("extra")
         self.assertTrue(page.is_file())

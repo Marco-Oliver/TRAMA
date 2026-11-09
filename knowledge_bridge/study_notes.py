@@ -258,6 +258,20 @@ class StudyNotes:
     def invalidate(self):
         self._memo.clear()
 
+    # ------------------------------------------------------------ auto queue
+    def auto_queue(self) -> set[str]:
+        row = self.conn.execute("SELECT value FROM study_meta WHERE key='auto_queue'").fetchone()
+        try:
+            data = json.loads(row["value"]) if row else []
+        except ValueError:
+            data = []
+        return {x for x in data if isinstance(x, str) and LESSON_RE.fullmatch(x)}
+
+    def set_auto_queue(self, lessons: set[str]) -> None:
+        with self.conn:
+            self.conn.execute("INSERT OR REPLACE INTO study_meta(key,value) VALUES('auto_queue',?)",
+                              (json.dumps(sorted(lessons)[:500]),))
+
     # ------------------------------------------------------------ modules
     def _seed_defaults(self):
         seeded = self.conn.execute(
@@ -1131,8 +1145,11 @@ def render_index(study: StudyNotes) -> str:
              "> Camada de estudo do TRAMA. As notas de evidência continuam em `02-Minhas-Aulas`.", "",
              "## Módulos", ""]
     for module in data["modules"]:
-        lines.append(f"- [[{module_note_path(module['id'])[:-3]}|{_md(module['name'])}]] — "
-                     f"{len(module['lessons'])} aula(s)")
+        if module["lessons"]:
+            lines.append(f"- [[{module_note_path(module['id'])[:-3]}|{_md(module['name'])}]] — "
+                         f"{len(module['lessons'])} aula(s)")
+        else:
+            lines.append(f"- {_md(module['name'])} — nenhuma aula ainda")
     if data["unassigned"]:
         lines.append(f"- [[{module_note_path(UNASSIGNED)[:-3]}|A classificar]] — "
                      f"{len(data['unassigned'])} aula(s)")
@@ -1154,7 +1171,9 @@ def publish(study: StudyNotes, publisher) -> None:
         text = render_lesson(study, lesson)
         if text:
             publisher.write(lesson_note_path(lesson), text)
-    ids = [m["id"] for m in study.modules()]
+    # Only modules with lessons get a page; empty/deleted ones are archived
+    # below when the generated page was never edited by the user.
+    ids = [m["id"] for m in study.modules() if study.module_lessons(m["id"])]
     if study.module_lessons(UNASSIGNED):
         ids.append(UNASSIGNED)
     for module_id in ids:
