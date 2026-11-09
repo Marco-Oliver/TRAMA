@@ -46,7 +46,7 @@ function askTramaConfirm(title,description,acceptLabel='Continuar'){
 }
 async function call(name,...args){if(!bridge||typeof bridge[name]!=='function'){notify('Conecte o aplicativo TRAMA.');return null;}try{return await bridge[name](...args);}catch(e){notify('Falha ao executar: '+String(e).slice(0,160));return null;}}
 async function refresh(){const data=await call('snapshot');if(!data)return;app.snapshot=data;libraryState.favorites=new Set(data.favorites||[]);document.body.classList.toggle('connected',!!data.connected);$('connect-state').textContent=data.connected?'Obsidian conectado':'Configure o cofre do Obsidian';const s=data.stats||{};$('status-counts').textContent=`▤ ${s.notes||0} notas   │   ▶ ${s.videos||0} vídeos   │   ▤ ${s.transcriptions||0} transcrições   │   ▰ ${s.materials||0} materiais   │   ▱ ${s.repositories||0} projetos`;
- document.querySelector('.status-version').textContent='TRAMA v2.2.7  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
+ document.querySelector('.status-version').textContent='TRAMA v2.2.8  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
  if(!data.connected){app.note=null;app.selected=null;}
  renderNavigation();await render();}
 function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
@@ -308,7 +308,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
  if(app.view==='settings'){
   el.innerHTML=`<div class="wide-header"><h2>Ajustes</h2><p>O cofre do Obsidian é a fonte principal. O TRAMA não cria outra biblioteca.</p></div>
   <div class="settings-grid"><div class="setting-block"><h3>Atualizações do TRAMA</h3>
-    <p><strong>Versão instalada: 2.2.7.</strong> Para atualizar: clique em Verificar, depois em Baixar e confirme a instalação. Você não precisa reinstalar Python nem baixar arquivos ZIP.</p>
+    <p><strong>Versão instalada: 2.2.8.</strong> Para atualizar: clique em Verificar, depois em Baixar e confirme a instalação. Você não precisa reinstalar Python nem baixar arquivos ZIP.</p>
     <button id="check-updates">Verificar atualizações</button>
     <p id="update-message" class="setting-status">Clique em “Verificar atualizações” para consultar o GitHub.</p>
     <button id="install-update" class="hidden">Baixar e instalar nova versão</button>
@@ -549,14 +549,41 @@ async function runAutoImport(){
    const result=await call('process_staged',links,true);
    if(!result?.ok){feedback.textContent=result?.message||'O processamento falhou; a fila foi preservada.';return;}
    const pend=result.pending||[],errors=result.errors||[];
-   feedback.textContent=`Concluído: ${result.files||0} arquivo(s) novo(s), ${result.visual_analyzed||0} imagem(ns) analisada(s), ${(result.lessons||[]).length} aula(s), ${result.repositories||0} repositório(s), ${result.calls||0} chamada(s) à IA. `+
-    (pend.length?`Pendências (${pend.length}): ${pend.slice(0,4).join(' | ')}`:'Sem pendências de associação.')+
-    (errors.length?` Erros: ${errors.slice(0,2).join(' | ')}`:'');
-   if(!result.queue_retained){$('auto-links').value='';$('auto-repos').value='';await updateAutoQueue(await call('staged_items'));}
+   const row=(label,value)=>`<li>${escapeHTML(label)}: <strong>${escapeHTML(String(value))}</strong></li>`;
+   feedback.innerHTML=`<span class="auto-result-title">Concluído.</span><ul>`+
+     row('Arquivos novos',result.files||0)+row('Imagens lidas',result.visual_analyzed||0)+
+     row('Aulas',(result.lessons||[]).map(l=>l.replace('Aula-','Aula ')).join(', ')||'nenhuma')+
+     row('Atividades, trabalhos e provas',(result.activity_titles||[]).join(' · ')||result.activities||0)+
+     row('Repositórios',result.repositories||0)+row('Chamadas à IA',result.calls||0)+`</ul>`+
+     (pend.length?`<details><summary>Pendências (${pend.length})</summary><ul>${pend.slice(0,30).map(p=>`<li>${escapeHTML(p)}</li>`).join('')}</ul></details>`:'<p>Sem pendências.</p>')+
+     (errors.length?`<details open><summary>Erros (${errors.length})</summary><ul>${errors.slice(0,10).map(p=>`<li>${escapeHTML(p)}</li>`).join('')}</ul></details>`:'');
+   if(!result.queue_retained){$('auto-links').value='';$('auto-repos').value='';renderAutoPreview(null);await updateAutoQueue(await call('staged_items'));}
    await refresh();notify('Lote processado. Veja o resultado no Obsidian.',7000);
  }finally{button.disabled=false;add.disabled=false;clear.disabled=false;}
 }
 async function importFiles(){openAutoImport();}
+// Live preview of what Importar will recognize (no side effects, no AI).
+let autoPreviewTimer=null;
+function renderAutoPreview(r){
+ const box=$('auto-preview');if(!box)return;
+ if(!r||!r.ok){box.innerHTML=`<span class="auto-preview-empty">${escapeHTML(r?.message||'O que o TRAMA reconhecer aparece aqui enquanto você cola.')}</span>`;return;}
+ const chips=[];
+ for(const p of r.posts||[])chips.push(`<span class="auto-chip"><span>${escapeHTML(p.lesson.replace('-',' '))}${p.title?' — '+escapeHTML(p.title):''}${p.recordings?' · '+p.recordings+' gravação(ões)':''}</span></span>`);
+ for(const a of r.activities||[])chips.push(`<span class="auto-chip gold"><span>${escapeHTML(a.kind)}: ${escapeHTML(a.title)}${a.due_at?' · prazo '+escapeHTML(a.due_at):''}${a.repos?' · '+a.repos+' repositório(s)':''}</span></span>`);
+ if((r.repos||[]).length)chips.push(`<span class="auto-chip blue"><span>${r.repos.length} repositório(s) GitHub</span></span>`);
+ if(r.videos)chips.push(`<span class="auto-chip blue"><span>${r.videos} link(s) de gravação</span></span>`);
+ if(r.links)chips.push(`<span class="auto-chip blue"><span>${r.links} outro(s) link(s)</span></span>`);
+ if((r.warnings||[]).length)chips.push(`<span class="auto-chip warn" title="${escapeHTML(r.warnings.join('\n'))}"><span>${r.warnings.length} linha(s) não reconhecida(s)</span></span>`);
+ box.innerHTML=chips.join('')||'<span class="auto-preview-empty">Nada reconhecido ainda.</span>';
+}
+function scheduleAutoPreview(){
+ clearTimeout(autoPreviewTimer);
+ autoPreviewTimer=setTimeout(async()=>{
+  const text=[$('auto-links').value,$('auto-repos').value].map(v=>v.trim()).filter(Boolean).join('\n');
+  if(!text){renderAutoPreview(null);return;}
+  renderAutoPreview(await call('preview_import',text));
+ },350);
+}
 async function generate(){
  // Na aba Resumos, o botão gera os resumos de estudo pendentes.
  if(app.view==='study'&&typeof studyGenerate==='function'){await studyGenerate(null);return;}
@@ -617,6 +644,7 @@ function bind(){document.querySelectorAll('.nav-item').forEach(el=>el.addEventLi
  $('auto-clear').addEventListener('click',async()=>{await updateAutoQueue(await call('clear_staged'));$('auto-feedback').textContent='Fila limpa. Nenhuma nota foi modificada.';});
  $('auto-paste-zone').addEventListener('click',()=>$('auto-paste-zone').focus());
  $('auto-dialog').addEventListener('paste',pasteAutoImage);
+ $('auto-links').addEventListener('input',scheduleAutoPreview);$('auto-repos').addEventListener('input',scheduleAutoPreview);
  $('context-cancel').addEventListener('click',closeClassroomContext);
  $('context-dismiss').addEventListener('click',closeClassroomContext);
  $('context-form').addEventListener('submit',saveClassroomContext);

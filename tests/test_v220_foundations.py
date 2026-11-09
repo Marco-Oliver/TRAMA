@@ -154,7 +154,7 @@ class DesktopExperienceFoundationsTests(unittest.TestCase):
         self.assertIn('function askTramaConfirm', html)
         self.assertNotIn("const url=prompt(", html)
         self.assertNotIn("if(!confirm(", html)
-        self.assertIn("Cole uma captura de tela ou imagem diretamente aqui.", html)
+        self.assertIn("Cole um print aqui (Ctrl + V)", html)
         self.assertNotIn("Não precisa abrir o Paint.", html)
 
     def test_consent_is_persistent_in_settings_and_can_be_revoked(self):

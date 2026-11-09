@@ -2045,6 +2045,30 @@ class Bridge:
         from .activities import repo_key
         return isinstance(value,str) and len(value)<=300 and repo_key(value)==value
 
+    def preview_import(self, text):
+        """What Importar e organizar will recognize in the pasted text. No side effects."""
+        if not isinstance(text,str) or len(text)>30000:
+            return {'ok':False,'message':'Texto grande demais para um lote.'}
+        from .classroom_paste import parse_import_paste
+        from .activities import parse_post, KIND_LABELS
+        try:
+            parsed=parse_import_paste(text)
+        except ValueError as exc:
+            return {'ok':False,'message':str(exc)[:200]}
+        activities=[]
+        for block in parsed['activities']:
+            info=parse_post(block)
+            activities.append({'title':info['title'],'kind':KIND_LABELS.get(info['kind'],'Atividade'),
+                               'due_at':info['due_at'],'author':info['author'],'repos':len(info['repos'])})
+        links=parsed['links']
+        return {'ok':True,
+                'posts':[{'lesson':p['aula'],'title':p['titulo'],'recordings':len(p['gravacoes'])} for p in parsed['posts']],
+                'activities':activities,
+                'repos':[l['url'] for l in links if l['repo']],
+                'videos':sum(1 for l in links if l['video'] and not l['repo']),
+                'links':sum(1 for l in links if not l['video'] and not l['repo']),
+                'warnings':parsed['warnings'][:20]}
+
     def study_parse_activity(self, text):
         if not isinstance(text,str) or len(text)>20000:
             return {'ok':False,'message':'Cole o texto do post (até 20 mil caracteres).'}
@@ -2296,6 +2320,9 @@ class PublicApi:
 
     def study_update_module(self, module_id, confirmed=False):
         return self._bridge.study_update_module(module_id, confirmed)
+
+    def preview_import(self, text):
+        return self._bridge.preview_import(text)
 
     def study_parse_activity(self, text):
         return self._bridge.study_parse_activity(text)

@@ -79,30 +79,52 @@
   <footer class="statusbar"><span class="status-counts" id="status-counts">Biblioteca</span><span class="status-center" id="status-message">Pronto para organizar seus materiais</span><span class="status-version">TRAMA v2.2.0 <span class="status-divider">│</span> Obsidian conectado</span></footer>
 </div>
 <dialog id="auto-dialog" class="context-dialog auto-dialog" aria-labelledby="auto-title">
-  <div class="dialog-header"><h2 id="auto-title">Preparar importação em lote</h2><button type="button" id="auto-close" aria-label="Fechar">×</button></div>
-  <p>Junte transcrições, documentos, imagens e links. <strong>O TRAMA só organiza e envia materiais à API configurada depois de você clicar em Processar tudo.</strong></p>
-  <div id="auto-paste-zone" class="auto-paste-zone" tabindex="0" aria-label="Cole seu print aqui com Control V">
-    <strong>▧ Cole seu print aqui com Ctrl + V</strong>
-    <span>Cole uma captura de tela ou imagem diretamente aqui.</span>
+  <div class="auto-head">
+    <span class="auto-head-ico"><svg class="ui-svg"><use href="#ic-plus"/></svg></span>
+    <div><h2 id="auto-title">Importar e organizar</h2>
+    <p>Tudo entra por aqui: transcrições, prints, posts de aula, atividades, trabalhos, provas e repositórios. Nada é enviado à IA antes de você clicar em <strong>Processar tudo</strong>.</p></div>
+    <button type="button" id="auto-close" aria-label="Fechar">×</button>
   </div>
-  <div class="auto-queue-toolbar"><strong>Arquivos preparados <span id="auto-queue-count">(0/100)</span></strong>
-    <button type="button" id="auto-add-files">+ Adicionar arquivos</button><button type="button" id="auto-clear">Limpar fila</button>
+  <div class="auto-body">
+   <section class="auto-sec">
+    <h3><svg class="ui-svg"><use href="#ic-file"/></svg> 1. Arquivos e prints</h3>
+    <div id="auto-paste-zone" class="auto-paste-zone" tabindex="0" aria-label="Cole seu print aqui com Control V">
+      <strong>Cole um print aqui (Ctrl + V)</strong>
+      <span>ou adicione transcrições TXT, documentos e imagens.</span>
+    </div>
+    <div class="auto-queue-toolbar"><strong>Na fila <span id="auto-queue-count">(0/100)</span></strong>
+      <button type="button" id="auto-add-files">+ Adicionar arquivos</button><button type="button" id="auto-clear">Limpar fila</button>
+    </div>
+    <ul id="auto-queue" class="auto-queue" aria-label="Arquivos na fila"><li>Adicione arquivos ou cole um print para começar.</li></ul>
+   </section>
+   <section class="auto-sec">
+    <h3><svg class="ui-svg"><use href="#ic-book"/></svg> 2. Texto do Classroom e links</h3>
+    <label for="auto-links">Cole posts de aula, posts de atividade/trabalho/prova, links de gravação e links do GitHub, tudo junto</label>
+    <textarea id="auto-links" rows="8" maxlength="20000" spellcheck="false" placeholder="Aula 03 - Variáveis
+Tiago Santini
+A03 - V01 - Tipos primitivos
+https://drive.google.com/file/d/...
+
+[M01] Atividade 01 - Hello World em C#
+Alexandre Rech
+Data de entrega: 4 de mar.
+https://github.com/Marco-Oliver/HelloWorld"></textarea>
+    <div id="auto-preview" class="auto-preview" aria-live="polite"><span class="auto-preview-empty">O que o TRAMA reconhecer aparece aqui enquanto você cola.</span></div>
+    <div class="auto-more">
+      <label for="auto-repos">Repositórios GitHub relacionados (opcional, um por linha)</label>
+      <textarea id="auto-repos" rows="2" maxlength="10000" spellcheck="false"
+        placeholder="https://github.com/academiadoprogramador-fullstack/projeto-exemplo.git"></textarea>
+      <small>Se o lote tiver uma única atividade, o link vai para ela. Todos aparecem em Projetos.</small>
+    </div>
+   </section>
   </div>
-  <ul id="auto-queue" class="auto-queue" aria-label="Arquivos na fila"><li>Adicione arquivos ou cole um print para começar.</li></ul>
-  <label for="auto-links">Links ou posts copiados do Classroom (cole direto aqui)</label>
-  <textarea id="auto-links" rows="4" maxlength="20000" spellcheck="false" placeholder="Aula 01 | V01 - Apresentação | https://drive.google.com/file/d/...
-Aula 01 | V02 - Metodologia | https://drive.google.com/file/d/...
-https://academiadoprogramador-fullstack.github.io/docs/inicio/"></textarea>
-  <small>Aceita URL, Aula 01 | V02 - Tema | URL ou post completo do Classroom (autor, agenda, conteúdo e atividades). Texto não reconhecido é avisado, sem bloquear o lote.</small>
-  <label for="auto-repos">Repositórios GitHub relacionados</label>
-  <textarea id="auto-repos" rows="2" maxlength="10000" spellcheck="false"
-    placeholder="https://github.com/academiadoprogramador-fullstack/projeto-exemplo.git"></textarea>
-  <small>Um repositório por linha. Cole o link e adicione os TXT: versões, SHAs e associações são automáticos. O botão Git avançado é opcional.</small>
-  <label class="auto-consent" id="auto-consent-row"><input type="checkbox" id="auto-consent"/>
-  Autorizo enviar os materiais à API gratuita configurada <strong>somente ao clicar em Processar tudo.</strong></label>
-  <p id="auto-consent-info" class="trama-consent-info hidden">Envio autorizado nos Ajustes. O processamento só acontece quando você clicar em Processar tudo.</p>
-  <div id="auto-feedback" role="status" aria-live="polite">Fila vazia. Adicione seus materiais; nada será processado ainda.</div>
-  <div class="dialog-actions"><button type="button" id="auto-start" class="auto-primary">Processar tudo</button></div>
+  <div class="auto-foot">
+    <label class="auto-consent" id="auto-consent-row"><input type="checkbox" id="auto-consent"/>
+    Autorizo enviar os materiais à API gratuita configurada <strong>somente ao clicar em Processar tudo.</strong></label>
+    <p id="auto-consent-info" class="trama-consent-info hidden">Envio autorizado nos Ajustes. O processamento só acontece quando você clicar em Processar tudo.</p>
+    <div id="auto-feedback" role="status" aria-live="polite">Fila vazia. Adicione seus materiais; nada será processado ainda.</div>
+    <div class="dialog-actions"><button type="button" id="auto-start" class="auto-primary">Processar tudo</button></div>
+  </div>
 </dialog>
 <dialog id="repo-dialog" class="context-dialog trama-action-dialog" aria-labelledby="repo-title">
   <form id="repo-form" novalidate>

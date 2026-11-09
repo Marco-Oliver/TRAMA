@@ -22,7 +22,7 @@ class NativeBootTests(TestCase):
             'test_ai','open_ai_test_report','search_transcript','teacher_ask','teacher_reset','check_updates','open_update_page','prepare_update','launch_update',
             'study_overview','study_lesson','study_module','study_save_module','study_delete_module',
             'study_move_module','study_set_lesson_modules','study_generate','study_update_module',
-            'study_parse_activity','study_activity','study_dev_lesson','study_save_activity',
+            'preview_import','study_parse_activity','study_activity','study_dev_lesson','study_save_activity',
             'study_delete_activity','study_freeze_activity_repo','study_generate_activity',
             'projects_overview','project_repo','project_tree','project_file','project_add',
             'project_remove','project_owners','project_save_owner','project_delete_owner',
