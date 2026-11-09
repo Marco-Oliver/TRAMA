@@ -226,6 +226,10 @@ def _words(value: str) -> set[str]:
     return {w for w in re.findall(r"[a-z0-9#+.]{3,}", _norm(value)) if w not in _STOP}
 
 
+def _as_list(value) -> list:
+    return value if isinstance(value, list) else []
+
+
 def digest_of(value) -> str:
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True)
                           .encode("utf-8")).hexdigest()
@@ -402,7 +406,7 @@ class StudyNotes:
             if not isinstance(module_ids, list):
                 raise ValueError("Lista de módulos inválida.")
             known = {m["id"] for m in self.modules()}
-            chosen = [m for m in dict.fromkeys(module_ids) if isinstance(m, str) and m in known][:5]
+            chosen = [m for m in dict.fromkeys(m for m in module_ids if isinstance(m, str)) if m in known][:5]
             self.conn.execute(
                 "INSERT INTO study_lesson_overrides(lesson,modules_json) VALUES(?,?) "
                 "ON CONFLICT(lesson) DO UPDATE SET modules_json=excluded.modules_json,"
@@ -637,11 +641,11 @@ class StudyNotes:
         if not out["em_uma_frase"]:
             raise ValueError("Resumo de estudo sem a frase principal.")
         mind = []
-        for theme in payload.get("mapa_mental", [])[:6] if isinstance(payload.get("mapa_mental"), list) else []:
+        for theme in _as_list(payload.get("mapa_mental"))[:6]:
             if not isinstance(theme, dict):
                 continue
             points = []
-            for point in theme.get("pontos", [])[:4] if isinstance(theme.get("pontos"), list) else []:
+            for point in _as_list(theme.get("pontos"))[:4]:
                 text = _text(point.get("texto") if isinstance(point, dict) else point, 220)
                 if text:
                     points.append({"texto": text, "videos": self._video_refs(
@@ -651,7 +655,7 @@ class StudyNotes:
                 mind.append({"tema": title, "pontos": points})
         out["mapa_mental"] = mind
         know = []
-        for item in payload.get("o_que_saber", [])[:8] if isinstance(payload.get("o_que_saber"), list) else []:
+        for item in _as_list(payload.get("o_que_saber"))[:8]:
             if not isinstance(item, dict):
                 continue
             point, explanation = _text(item.get("ponto"), 140), _text(item.get("explicacao"), 480)
@@ -662,7 +666,7 @@ class StudyNotes:
         out["o_que_saber"] = know
         pool = self._literal_pool(lesson, data)
         commands, rejected = [], 0
-        for item in payload.get("comandos", [])[:8] if isinstance(payload.get("comandos"), list) else []:
+        for item in _as_list(payload.get("comandos"))[:8]:
             if not isinstance(item, dict):
                 continue
             code = _text(item.get("codigo"), 300).strip("`").strip()
@@ -683,14 +687,14 @@ class StudyNotes:
         out["ligacoes"] = {"anterior": _text(links.get("anterior"), 300),
                            "prepara": _text(links.get("prepara"), 300)}
         out["lacunas"] = [{"item": _text(g.get("item"), 160), "situacao": _text(g.get("situacao"), 260)}
-                          for g in (payload.get("lacunas") or [])[:6]
+                          for g in _as_list(payload.get("lacunas"))[:6]
                           if isinstance(g, dict) and _text(g.get("item"), 160)]
-        out["para_fazer"] = [t for t in (_text(x, 200) for x in (payload.get("para_fazer") or [])[:6]) if t]
+        out["para_fazer"] = [t for t in (_text(x, 200) for x in _as_list(payload.get("para_fazer"))[:6]) if t]
         out["revisao"] = [{"pergunta": _text(q.get("pergunta"), 200), "resposta": _text(q.get("resposta"), 360)}
-                          for q in (payload.get("revisao") or [])[:3]
+                          for q in _as_list(payload.get("revisao"))[:3]
                           if isinstance(q, dict) and _text(q.get("pergunta"), 200)]
         known = {m["id"] for m in self.modules()}
-        out["modulos"] = [m for m in dict.fromkeys(payload.get("modulos") or [])
+        out["modulos"] = [m for m in dict.fromkeys(m for m in _as_list(payload.get("modulos")) if isinstance(m, str))
                           if isinstance(m, str) and m in known][:3]
         if not out["mapa_mental"] and not out["o_que_saber"]:
             raise ValueError("Resumo de estudo sem pontos principais.")
@@ -811,25 +815,25 @@ class StudyNotes:
         valid = {x["aula"] for x in data["aulas"]}
 
         def refs(raw):
-            return [a for a in dict.fromkeys(raw if isinstance(raw, list) else [])
+            return [a for a in dict.fromkeys(a for a in _as_list(raw) if isinstance(a, str))
                     if isinstance(a, str) and a in valid][:12]
         out = {"visao_geral": _text(payload.get("visao_geral"), 1600)}
         if not out["visao_geral"]:
             raise ValueError("Resumo de módulo sem visão geral.")
         out["trilha"] = [{"etapa": _text(t.get("etapa"), 90), "resumo": _text(t.get("resumo"), 400),
                           "aulas": refs(t.get("aulas"))}
-                         for t in (payload.get("trilha") or [])[:10]
+                         for t in _as_list(payload.get("trilha"))[:10]
                          if isinstance(t, dict) and _text(t.get("etapa"), 90)]
         out["conceitos_chave"] = [{"conceito": _text(c.get("conceito"), 80),
                                    "explicacao": _text(c.get("explicacao"), 320),
                                    "aulas": refs(c.get("aulas"))}
-                                  for c in (payload.get("conceitos_chave") or [])[:12]
+                                  for c in _as_list(payload.get("conceitos_chave"))[:12]
                                   if isinstance(c, dict) and _text(c.get("conceito"), 80)]
         out["como_se_conecta"] = _text(payload.get("como_se_conecta"), 700)
         out["pontos_de_atencao"] = [t for t in (_text(x, 260) for x in
-                                                (payload.get("pontos_de_atencao") or [])[:6]) if t]
+                                                _as_list(payload.get("pontos_de_atencao"))[:6]) if t]
         out["checklist_revisao"] = [t for t in (_text(x, 200) for x in
-                                                (payload.get("checklist_revisao") or [])[:10]) if t]
+                                                _as_list(payload.get("checklist_revisao"))[:10]) if t]
         return out
 
     def generate_module(self, router, module_id: str) -> dict:
@@ -917,7 +921,7 @@ class StudyNotes:
                 stopped = str(exc)[:200]
                 self.log(f"Resumos de estudo pausados: {stopped}")
                 break
-            except (AllProvidersFailed, ProviderError, ValueError) as exc:
+            except (AllProvidersFailed, ProviderError, ValueError, TypeError, AttributeError) as exc:
                 failed.append(lesson)
                 self.log(f"Resumo de estudo não gerado para {lesson}: {str(exc)[:160]}")
         module_done = []
@@ -938,7 +942,7 @@ class StudyNotes:
                 except (BudgetStopped, NoFreeProvider) as exc:
                     stopped = str(exc)[:200]
                     break
-                except (AllProvidersFailed, ProviderError, ValueError) as exc:
+                except (AllProvidersFailed, ProviderError, ValueError, TypeError, AttributeError) as exc:
                     self.log(f"Resumo do módulo {module_id} não gerado: {str(exc)[:160]}")
         return {"lessons": done, "failed": failed, "modules": module_done, "stopped": stopped}
 
