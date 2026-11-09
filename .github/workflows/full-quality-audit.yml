@@ -126,8 +126,8 @@ jobs:
         shell: pwsh
         run: ./tools/windows_installer_smoke.ps1
 
-      - name: Validar upgrade oficial 2.2.2 para 2.2.3 com dados fictícios
+      - name: Validar upgrade oficial 2.2.3 para 2.2.4 com dados fictícios
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./tools/windows_upgrade_smoke.ps1 -LegacyVersion 'v2.2.2'
+        run: ./tools/windows_upgrade_smoke.ps1 -LegacyVersion 'v2.2.3'

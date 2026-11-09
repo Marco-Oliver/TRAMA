@@ -1,7 +1,7 @@
 # Validacao real de upgrade de versoes anteriores para a candidata em runner Windows limpo.
 # Dados e chaves ficticias; nenhuma conta privada e acessada.
 param(
-    [ValidateSet('v2.1.0', 'v2.2.0', 'v2.2.1', 'v2.2.2')]
+    [ValidateSet('v2.1.0', 'v2.2.0', 'v2.2.1', 'v2.2.2', 'v2.2.3')]
     [string]$LegacyVersion = 'v2.1.0'
 )
 $ErrorActionPreference = 'Stop'

@@ -1,5 +1,20 @@
 # Histórico de versões do TRAMA
 
+## [2.2.4] — 2026-11-08
+
+### Fidelidade local da Aula 02 (sem reprocessar IA)
+- Reconhecimento de autores do Classroom com partículas minúsculas (de, da, do, dos, das, e), e reimportação do mesmo post quando somente a extração do parser mudou, preservando histórico.
+- Nomes canônicos de professores/pessoas conhecidas têm prioridade sobre apelidos e grafias imprecisas, mantendo a indicação de identidade provável e prevenção de falsos positivos.
+- Páginas de Pessoas reservadas para autores de posts ou nomes que aparecem em pelo menos três aulas distintas; notas humanas preservadas e páginas automáticas não qualificadas arquivadas.
+- Conceitos duplicados dentro da aula unificados com aliases, sem perder explicações nem horários distintos; C, C# e C++ continuam diferentes.
+- Exemplos verificados literalmente em blocos de código da documentação oficial passam para "Exemplos do material oficial", com arquivo e SHA congelado; a transcrição original não é alterada.
+- Rebuild local atualiza aulas antigas sem reprocessar as análises nem chamar IA.
+
+### Distribuição
+- Instalador 2.2.4 com o mesmo AppId e dados locais preservados.
+- Testes offline Ubuntu/Windows e smokes reais do instalador, incluindo upgrade de 2.1.0, 2.2.0, 2.2.1, 2.2.2 e 2.2.3 para 2.2.4 com dados sintéticos.
+
+
 ## [2.2.3] — 2026-11-08
 
 ### Adicionado — documentação oficial da Academia como terceira fonte
