@@ -4,6 +4,7 @@ on:
     branches:
       - fix/critical-audit-20261031
       - fix/aula-02-local-fidelity
+      - fix/aula02-canonical-links-people
       - feat/official-academy-docs-material
   workflow_dispatch:
 

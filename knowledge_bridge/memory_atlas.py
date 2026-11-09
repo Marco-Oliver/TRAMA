@@ -74,7 +74,8 @@ def note_for(src) -> str:
 
 
 def make_atlas(store, max_concepts: int = 2000,
-               concept_targets: dict | None = None) -> dict:
+               concept_targets: dict | None = None,
+               canonical_name_for_lesson=None) -> dict:
     """Somente fontes catalogadas. Nenhum acesso à rede. Saída JSON serializável."""
     sources = store.sources('transcript')
     concepts: dict[str, dict] = {}
@@ -97,18 +98,24 @@ def make_atlas(store, max_concepts: int = 2000,
                 by_timestamp[timed].append(spoken)
         for row in result.get('conceitos',[]) if isinstance(result.get('conceitos'),list) else []:
             if not isinstance(row,dict):continue
-            name = str(row.get('nome','')).strip()[:90]
+            original_name = str(row.get('nome','')).strip()[:90]
+            name = (canonical_name_for_lesson(
+                original_name, src['lesson'] or '') if canonical_name_for_lesson
+                else original_name)
             key = concept_slug(name)
-            if (len(key)<3 and key != "c") or len(key)>90:continue
+            # The literal .cs file extension is a valid short technical name.
+            if (len(key)<3 and key not in ("c", "cs")) or len(key)>90:continue
             if key not in concepts and len(concepts)>=max_concepts:continue
             stamp = str(row.get('tempo','')).strip('[]')
             stated = by_timestamp.get(stamp, [])
-            literal = bool(literal_technical_mention(name, raw))
+            # Evidence must be looked up using the ORIGINAL cached label;
+            # canonicalization changes only display name and link target.
+            literal = bool(literal_technical_mention(original_name, raw))
             same_time = [spoken for spoken in stated
-                         if literal_technical_mention(name, spoken)]
+                         if literal_technical_mention(original_name, spoken)]
             observed = [(timed, spoken) for timed, spoken in segments
                         if timed != 'sem horário' and
-                        literal_technical_mention(name, spoken)]
+                        literal_technical_mention(original_name, spoken)]
             if same_time:
                 resolved_time, excerpt = stamp, same_time[0]
                 confidence = ('termo encontrado em horário repetido; conferir a ocorrência'
@@ -155,7 +162,10 @@ def make_atlas(store, max_concepts: int = 2000,
         evidence=[]
         for item in payload.get('evidence',[])[:500]:
             if not isinstance(item,dict):continue
-            key=concept_slug(str(item.get('concept','')))
+            original_concept=str(item.get('concept',''))
+            mapped=(canonical_name_for_lesson(original_concept, '')
+                    if canonical_name_for_lesson else original_concept)
+            key=concept_slug(mapped)
             if key not in concepts:continue
             path=str(item.get('path',''))[:220]
             line=item.get('line',0)
