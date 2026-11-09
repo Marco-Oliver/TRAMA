@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="classic.css">
 <link rel="stylesheet" href="faithful.css">
 <link rel="stylesheet" href="graph.css">
+<link rel="stylesheet" href="study.css">
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" class="svg-sprite" aria-hidden="true">
@@ -50,6 +51,7 @@
       <button class="nav-item" title="Conhecimento" aria-label="Conhecimento" data-view="knowledge"><svg class="ui-svg nav-ic"><use href="#ic-network"/></svg> Conhecimento</button>
       <button class="nav-item" title="Projetos" aria-label="Projetos" data-view="projects"><svg class="ui-svg nav-ic"><use href="#ic-folder"/></svg> Projetos</button>
       <button class="nav-item" title="Biblioteca" aria-label="Biblioteca" data-view="library"><svg class="ui-svg nav-ic"><use href="#ic-book"/></svg> Biblioteca</button>
+      <button class="nav-item" title="Resumos" aria-label="Resumos de estudo" data-view="study"><svg class="ui-svg nav-ic"><use href="#ic-file"/></svg> Resumos</button>
       <button class="nav-item" title="Grafo" aria-label="Grafo de conexões" data-view="graph"><svg class="ui-svg nav-ic"><use href="#ic-network"/></svg> Grafo</button>
       <button class="nav-item" title="IA Professor" aria-label="IA Professor" data-view="teacher"><svg class="ui-svg nav-ic"><use href="#ic-star"/></svg> IA Professor</button>
       <div class="nav-split"></div>
@@ -69,6 +71,7 @@
     </section>
     <aside class="details-panel" id="details-panel"></aside>
     <section class="library-workspace hidden" id="library-workspace" aria-label="Biblioteca do Obsidian"></section>
+    <section class="library-workspace study-workspace hidden" id="study-workspace" aria-label="Resumos de estudo"></section>
     <section class="overlay-screen hidden" id="overlay-screen"></section>
   </div>
   <footer class="statusbar"><span class="status-counts" id="status-counts">Biblioteca</span><span class="status-center" id="status-message">Pronto para organizar seus materiais</span><span class="status-version">TRAMA v2.2.0 <span class="status-divider">│</span> Obsidian conectado</span></footer>
@@ -217,10 +220,33 @@ Alexandre Rech — professor"></textarea></label>
    <button type="button" id="lesson-map-save">Confirmar selecionadas</button></div>
  </div>
 </dialog>
+<dialog id="study-module-dialog" class="context-dialog trama-action-dialog" aria-labelledby="study-module-title">
+ <form id="study-module-form" novalidate>
+  <div class="dialog-header"><h2 id="study-module-title">Novo módulo</h2><button type="button" id="study-module-close" aria-label="Fechar">×</button></div>
+  <p>Módulos organizam os resumos. As aulas se encaixam sozinhas; você pode mudar o módulo de qualquer aula, e a sua escolha sempre vale.</p>
+  <label for="study-module-name">Nome do módulo</label>
+  <input id="study-module-name" name="name" maxlength="80" required placeholder="Banco de Dados">
+  <label for="study-module-description">Descrição curta (opcional)</label>
+  <input id="study-module-description" name="description" maxlength="300" placeholder="SQL, Entity Framework e migrations">
+  <label for="study-module-keywords">Palavras-chave para o encaixe automático (separadas por vírgula, opcional)</label>
+  <input id="study-module-keywords" name="keywords" maxlength="600" placeholder="sql, entity framework, migration">
+  <p id="study-module-feedback" class="trama-inline-feedback" role="status" aria-live="polite"></p>
+  <div class="dialog-actions"><button type="button" id="study-module-cancel">Cancelar</button><button type="submit" class="trama-primary">Salvar módulo</button></div>
+ </form>
+</dialog>
+<dialog id="study-lesson-modules-dialog" class="context-dialog trama-action-dialog" aria-labelledby="study-lesson-modules-title">
+ <div class="trama-confirm-body">
+  <div class="dialog-header"><h2 id="study-lesson-modules-title">Módulos da aula</h2><button type="button" id="study-lesson-modules-close" aria-label="Fechar">×</button></div>
+  <div id="study-lesson-modules-list" class="study-dialog-list" role="group" aria-label="Módulos"></div>
+  <p id="study-lesson-modules-feedback" class="trama-inline-feedback" role="status" aria-live="polite"></p>
+  <div class="dialog-actions"><button type="button" id="study-lesson-modules-reset">Voltar ao automático</button><button type="button" id="study-lesson-modules-save" class="trama-primary">Salvar escolha</button></div>
+ </div>
+</dialog>
 <div class="toast hidden" id="toast" role="status"></div>
 <script src="library.js"></script>
 <script src="graph.js"></script>
 <script src="app.js"></script>
 <script src="lesson_code.js"></script>
 <script src="teacher.js"></script>
+<script src="study.js"></script>
 </body></html>

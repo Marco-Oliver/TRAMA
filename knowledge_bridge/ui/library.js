@@ -84,6 +84,11 @@ function libWiki(content,source){
  safe=safe.replace(/&lt;(https?:\/\/[^\s&<>]{5,400})&gt;/g,(_,url)=>
   `<button type="button" class="lib-external-link" data-lib-external="${libE(url)}">${libE(url)}</button>`);
 
+ // Official Academy material (page or file at the lesson's pinned SHA). The
+ // bridge only opens URLs registered for a lesson; anything else stays inert.
+ safe=safe.replace(/\[([^\]\n]{1,180})\]\((https:\/\/(?:academiadoprogramador-fullstack\.github\.io\/docs\/|github\.com\/academiadoprogramador-fullstack\/docs\/blob\/[a-f0-9]{40}\/)[^\s<>"')]{0,700})\)/g,(_,label,url)=>
+  `<button type="button" class="lib-external-link" data-lib-external="${url}">${label}</button>`);
+
  // Markdown references to immutable, indexed GitHub code are clickable.
  // The native bridge validates the repository, SHA, path and actual evidence
  // before opening a browser; arbitrary URLs embedded in notes stay inert.
@@ -195,7 +200,7 @@ async function libChooseNote(id,anchor=''){
 function libMetaPanel(n){const data=app.snapshot,stats=data?.stats||{};const status=data?.connected?'Conectado':'Desconectado';
  const links=[...String(n?.content||'').matchAll(/(?<!!)\[\[([^\]\n]+)\]\]/g)].map(m=>({target:libFindLink(m[1],n.id),label:m[1].split('|').at(-1)}));
  const uniqLinks=[];for(const l of links){if(l.target&&!uniqLinks.some(x=>x.target.id===l.target.id))uniqLinks.push(l);}
- const related=n?.related||[];const noteTags=new Set(n?.tags||[]);const taggedRelated=related.filter(x=>(x.tags||[]).some(tag=>noteTags.has(tag)));const relatedShown=libraryState.relatedTab==='content'?related:taggedRelated;
+ const related=n?.related||[];const noteTags=new Set(n?.tags||[]);const taggedRelated=related.filter(x=>(x.tags||[]).some(tag=>noteTags.has(tag)));const relatedShown=(libraryState.relatedTab==='content'||!noteTags.size)?related:taggedRelated;
  const card=(heading,ico,body)=>`<div class="lib-side-card"><h3><span class="card-heading-ico">${ico}</span>${libE(heading)}</h3><div class="side-body">${body}</div></div>`;
  const stat=(label,val,ico,muted=false)=>`<div class="lib-stat"><span class="stat-label"><span>${ico}</span> ${libE(label)}</span><span class="stat-value ${muted?'muted':''}" title="${libE(val)}">${libE(val)}</span></div>`;
  const action=(title,icon,act)=>`<button class="lib-side-button" data-lib-action="${act}"><span class="action-left">${libIcon(icon,'action-icon')}${libE(title)}</span>${libIcon('arrow','action-end')}</button>`;
@@ -215,7 +220,7 @@ function libMetaPanel(n){const data=app.snapshot,stats=data?.stats||{};const sta
   }
  }
  html+=card('Links e Referências',libIcon('link','heading-icon'),`<div class="lib-meta-caption">Links desta nota (${uniqLinks.length})</div>${uniqLinks.length?uniqLinks.map(quickLink).join(''):'<p class="lib-empty-message">Nenhum link para outra nota.</p>'}`);
- html+=card('Notas Relacionadas',libIcon('file','heading-icon'),`<div class="lib-small-tabs"><button data-lib-relatedtab="content" class="${libraryState.relatedTab==='content'?'active':''}">Por conteúdo (${related.length})</button><button data-lib-relatedtab="tags" class="${libraryState.relatedTab==='tags'?'active':''}">Por tags (${taggedRelated.length})</button></div>${relatedShown.length?relatedShown.map(x=>quickLink({target:x,label:x.title})).join(''):'<p class="lib-empty-message">Nenhuma relação confirmada.</p>'}`);
+ html+=card('Notas Relacionadas',libIcon('file','heading-icon'),(noteTags.size?`<div class="lib-small-tabs"><button data-lib-relatedtab="content" class="${libraryState.relatedTab==='content'?'active':''}">Por conteúdo (${related.length})</button><button data-lib-relatedtab="tags" class="${libraryState.relatedTab==='tags'?'active':''}">Por tags (${taggedRelated.length})</button></div>`:`<div class="lib-related-label">Por conteúdo (${related.length})</div>`)+`${relatedShown.length?relatedShown.map(x=>quickLink({target:x,label:x.title})).join(''):'<p class="lib-empty-message">Nenhuma relação confirmada.</p>'}`);
  html+=`<div class="lib-graph-entry"><button class="lib-side-button" data-lib-action="graph">${libIcon('network','action-icon')} <span>Visualizar grafo de conexões</span> ${libIcon('arrow','action-end')}</button></div>`;
  return html;
 }

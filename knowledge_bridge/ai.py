@@ -385,6 +385,59 @@ No máximo 8 pessoas, 8 atividades, 8 ferramentas, 8 marcos, 20 conceitos, 10 ex
 """
 
 
+def _study_completion(provider: str, model: str, key: str, prompt: str,
+                      schema: dict | None = None) -> dict:
+    """Structured study summary (lesson/module). Separate from analysis contract.
+
+    The prompt already wraps every untrusted input in explicit tags. Output is
+    validated again locally by study_notes before anything is published.
+    """
+    if provider == "gemini":
+        config = {"responseMimeType": "application/json", "maxOutputTokens": 8192,
+                  "thinkingConfig": {"thinkingLevel": "minimal"}}
+        if schema:
+            config["responseJsonSchema"] = schema
+        response = _send(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": config},
+            {"x-goog-api-key": key}, provider)
+        body = _gemini_text(response, provider)
+    else:
+        url = ("https://api.groq.com/openai/v1/chat/completions" if provider == "groq"
+               else "https://openrouter.ai/api/v1/chat/completions")
+        request_body = {"model": model, "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.2, "max_tokens": 8000}
+        if provider == "groq":
+            request_body["response_format"] = {"type": "json_object"}
+        response = _send(url, request_body, {"Authorization": f"Bearer {key}"}, provider)
+        try:
+            choice = response["choices"][0]
+            if choice.get("finish_reason") == "length":
+                raise ProviderError(provider, "resposta cortada por limite de tokens (length)")
+            if choice.get("finish_reason") in ("content_filter", "error"):
+                raise ProviderError(provider, "geração interrompida")
+            body = choice["message"]["content"]
+        except (KeyError, TypeError, IndexError) as exc:
+            raise ProviderError(provider, "resposta sem texto", retryable=True) from exc
+    if not isinstance(body, str) or len(body) > 60_000:
+        raise ProviderError(provider, "tamanho de resposta inesperado")
+    text = body.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.IGNORECASE)
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        pos, last = text.find("{"), text.rfind("}")
+        try:
+            parsed = json.loads(text[pos:last + 1]) if pos != -1 and last > pos else None
+        except ValueError:
+            parsed = None
+    if not isinstance(parsed, dict):
+        raise ProviderError(provider, "resposta estruturada inválida; nada será publicado",
+                            retryable=True)
+    return parsed
+
+
 class FreeAIRouter:
     def __init__(self, env: dict[str, str]):
         self.env = env
@@ -518,6 +571,33 @@ No máximo 8 relações, 5 correções e 5 novidades. Campos ausentes devem ser 
             try:
                 return self._call_with_retries(
                     provider, model, self.env[key_var], prompt, _teacher_completion)
+            except ProviderError as exc:
+                errors.append(str(exc))
+        if not self.active():
+            raise NoFreeProvider("Nenhum provedor Free respondeu: " + "; ".join(errors))
+        if self.attempts >= self.max_requests:
+            raise BudgetStopped("Limite local de chamadas atingido; retome depois.")
+        raise AllProvidersFailed("Provedores ativos, mas sem conteúdo válido: " + "; ".join(errors))
+
+    def study_lesson(self, prompt: str) -> AIResult:
+        """Resumo de estudo de uma aula (1 chamada), dentro do mesmo orçamento Free."""
+        from .study_notes import LESSON_SCHEMA
+        return self._study(prompt, LESSON_SCHEMA)
+
+    def study_module(self, prompt: str) -> AIResult:
+        from .study_notes import MODULE_SCHEMA
+        return self._study(prompt, MODULE_SCHEMA)
+
+    def _study(self, prompt: str, schema: dict) -> AIResult:
+        if not self.active():
+            raise NoFreeProvider("Configure uma chave Free sem faturamento em Ajustes.")
+        errors = []
+        completion = lambda provider, model, key, text: _study_completion(  # noqa: E731
+            provider, model, key, text, schema if provider == "gemini" else None)
+        for provider in self.active():
+            model, key_var = ALLOWED[provider]
+            try:
+                return self._call_with_retries(provider, model, self.env[key_var], prompt, completion)
             except ProviderError as exc:
                 errors.append(str(exc))
         if not self.active():
