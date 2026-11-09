@@ -65,3 +65,24 @@
 .study-gap-open{font-size:10px;font-weight:700;color:#8a5b00;background:#fdf1d8;border-radius:8px;padding:1px 7px;margin-left:4px}
 .study-gap-done{font-size:10.5px;font-weight:600;color:#22704b;background:#e1f2e7;border-radius:8px;padding:1px 7px;margin-left:4px}
 .study-gap-done .study-link-btn{font-size:10.5px;padding:0}
+/* Atividades, trabalhos e provas + aulas de desenvolvimento */
+.study-tag{margin-left:auto;flex:none;font-size:9px;font-weight:700;color:#6b5a2e;background:#f6efda;border-radius:8px;padding:1px 6px}
+.study-tag.grade{color:#1f5f8f;background:#e1eefa}
+.study-subhead{font-size:9.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#7f8d95;padding:6px 0 2px 36px}
+.study-dot.dev{color:#8a6a2a}
+.study-status.dev{color:#6b4f12;background:#f6efda}
+.study-pre{white-space:pre-wrap;margin:0}
+.study-repo{border:1px solid #e2e8e4;border-radius:6px;padding:7px 8px;margin:0 0 8px;background:#fbfcfb}
+.study-repo-head{display:flex;align-items:center;gap:6px;min-width:0}
+.study-repo-head strong{font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.study-repo small{display:block;color:#6b7a83;font-size:10.5px;margin:4px 0}
+.study-repo code{font-size:10.5px}
+.study-repo-actions{display:flex;flex-wrap:wrap;gap:2px 8px}
+.study-repo-actions .lib-link{width:auto}
+.study-activity-dialog{width:min(720px,95vw);max-width:720px}
+.study-activity-dialog textarea{width:100%;box-sizing:border-box;font:12px/1.45 'Segoe UI',Tahoma,sans-serif;padding:7px;border:1px solid #b9c7be;border-radius:4px;resize:vertical}
+.study-form-row{display:flex;align-items:center;gap:10px;margin:6px 0 10px}
+.study-form-row small{color:#4f6a5a;font-size:11px}
+.study-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px;margin:6px 0 10px}
+.study-form-grid label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;font-weight:600;color:#2f4338}
+.study-form-grid input,.study-form-grid select{font-weight:400}

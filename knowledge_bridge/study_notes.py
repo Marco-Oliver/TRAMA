@@ -261,6 +261,16 @@ class StudyNotes:
 
     def invalidate(self):
         self._memo.clear()
+        if getattr(self, "_activities", None) is not None:
+            self._activities.invalidate()
+
+    @property
+    def activities(self):
+        """Atividades/trabalhos/provas (mesmo banco; criado sob demanda)."""
+        if getattr(self, "_activities", None) is None:
+            from .activities import Activities
+            self._activities = Activities(self)
+        return self._activities
 
     # ------------------------------------------------------------ auto queue
     def auto_queue(self) -> set[str]:
@@ -868,8 +878,16 @@ class StudyNotes:
             lessons = [{k: item[k] for k in ("aula", "titulo", "em_uma_frase")} for item in lessons]
         while lessons and size() > 16000:
             lessons = lessons[1:]
+        deliveries = []
+        for activity in self.activities.module_activities(module_id)[:15]:
+            summary = self.activities.summary(activity["id"])
+            p = summary["payload"] if summary else {}
+            deliveries.append({"tipo": activity["kind"], "titulo": activity["title"],
+                               "prazo": activity["due_at"], "em_uma_frase": p.get("em_uma_frase", ""),
+                               "falta": p.get("falta", [])[:3]})
         return {"modulo": {"id": module["id"], "nome": module["name"],
-                           "descricao": module["description"]}, "aulas": lessons}
+                           "descricao": module["description"]}, "aulas": lessons,
+                "entregas": deliveries}
 
     def module_status(self, module_id: str) -> dict:
         lessons_with_summary = [l for l in self.module_lessons(module_id) if self.lesson_summary(l)]
@@ -962,7 +980,19 @@ class StudyNotes:
             gaps.extend({"aula": lesson, "item": g["item"], "situacao": g.get("situacao", ""),
                          "retomada": g["retomada"]} for g in self.gap_followups(lesson)[:4])
         ordered = sorted(concepts.values(), key=lambda c: (-len(c["aulas"]), _norm(c["nome"])))
-        return {"aulas": entries, "conceitos": ordered[:40], "comandos": commands[:30],
+        deliveries = []
+        if module_id != UNASSIGNED:
+            for activity in self.activities.module_activities(module_id):
+                summary = self.activities.summary(activity["id"])
+                deliveries.append({"id": activity["id"], "titulo": activity["title"],
+                                   "tipo": activity["kind"], "prazo": activity["due_at"],
+                                   "nota": activity["grade"], "status": self.activities.status(activity["id"]),
+                                   "em_uma_frase": summary["payload"].get("em_uma_frase", "") if summary else ""})
+        development = [{"aula": l, "titulo": self.lesson_title(l), "data": self.lesson_date(l),
+                        "atividade": a}
+                       for l, a in self.activities.dev_links().items()
+                       if (self.activities.activity(a) or {}).get("module_id") == module_id]
+        return {"entregas": deliveries, "desenvolvimento": development, "aulas": entries, "conceitos": ordered[:40], "comandos": commands[:30],
                 "duvidas": doubts[:30],
                 "lacunas_abertas": [g for g in gaps if not g["retomada"]][:30],
                 "lacunas_retomadas": [g for g in gaps if g["retomada"]][:30]}
@@ -1043,7 +1073,18 @@ class StudyNotes:
             ids = self.module_lessons(module["id"])
             modules.append({**module, "lessons": ids, **self.module_status(module["id"])})
         unassigned = [l["lesson"] for l in lessons if not l["modules"]]
+        acts = self.activities
+        links = acts.dev_links()
+        development = []
+        for lesson in acts.development_lessons():
+            activity = acts.activity(links[lesson]) if lesson in links else None
+            development.append({"lesson": lesson, "title": self.lesson_title(lesson),
+                                "date": self.lesson_date(lesson),
+                                "activity": activity["id"] if activity else "",
+                                "activity_title": activity["title"] if activity else "",
+                                "module": activity["module_id"] if activity else ""})
         return {"lessons": lessons, "modules": modules, "unassigned": unassigned,
+                "activities": acts.overview(), "development": development,
                 "pending": sum(1 for l in lessons if l["status"] in ("pendente", "desatualizado"))}
 
     def lesson_view(self, lesson: str) -> dict:
@@ -1072,6 +1113,7 @@ class StudyNotes:
                 raise ValueError("Módulo não encontrado.")
         summary = self.module_summary(module_id)
         return {"module": module, "living": self.living_module(module_id),
+                "activities": [] if module_id == UNASSIGNED else self.activities.overview_for(module_id),
                 "summary": summary["payload"] if summary else None,
                 "generated": local_time(summary["updated_at"]) if summary else "",
                 "status": self.module_status(module_id),
@@ -1268,6 +1310,25 @@ def render_module(study: StudyNotes, module_id: str) -> str:
         lines.append("")
     if not living["aulas"]:
         lines += ["*Nenhuma aula neste módulo ainda.*", ""]
+    if living["entregas"]:
+        from .activities import activity_note_path, KIND_LABELS
+        lines += ["## Entregas do módulo", ""]
+        for d in living["entregas"]:
+            line = (f"- {KIND_LABELS.get(d['tipo'], 'Atividade')}: "
+                    f"[[{activity_note_path(d['id'])[:-3]}|{_md(d['titulo'])}]]")
+            if d["prazo"]:
+                line += f" — prazo {d['prazo']}"
+            if d["nota"]:
+                line += f" — nota {_md(d['nota'])}"
+            if d["em_uma_frase"]:
+                line += f" — {_md(d['em_uma_frase'])}"
+            lines.append(line)
+        lines.append("")
+    if living["desenvolvimento"]:
+        lines += ["## Aulas de desenvolvimento", ""]
+        lines += [f"- [[{lesson_note_path(d['aula'])[:-3]}|{d['aula']}]]" +
+                  (f" — {_md(d['titulo'])}" if d["titulo"] else "") for d in living["desenvolvimento"]]
+        lines.append("")
     if living["conceitos"]:
         lines += ["## Conceitos vistos no módulo", ""]
         lines += [f"- {_md(c['nome'])} — " + ", ".join(c["aulas"]) for c in living["conceitos"]]
@@ -1299,6 +1360,19 @@ def render_index(study: StudyNotes) -> str:
     if data["unassigned"]:
         lines.append(f"- [[{module_note_path(UNASSIGNED)[:-3]}|A classificar]] — "
                      f"{len(data['unassigned'])} aula(s)")
+    if data["activities"]:
+        from .activities import activity_note_path
+        lines += ["", "## Atividades, trabalhos e provas", ""]
+        for a in data["activities"]:
+            lines.append(f"- {a['kind_label']}: [[{activity_note_path(a['id'])[:-3]}|{_md(a['title'])}]]"
+                         + (f" — prazo {a['due_at']}" if a["due_at"] else "")
+                         + (f" — nota {_md(a['grade'])}" if a["grade"] else ""))
+    if data["development"]:
+        lines += ["", "## Aulas de desenvolvimento", ""]
+        for d in data["development"]:
+            lines.append(f"- [[{lesson_note_path(d['lesson'])[:-3]}|{d['lesson']}"
+                         + (f" — {_md(d['title'])}" if d["title"] else "") + "]]"
+                         + (f" — {_md(d['activity_title'])}" if d["activity_title"] else ""))
     lines += ["", "## Aulas", ""]
     for item in data["lessons"]:
         label = item["lesson"] + (f" — {_md(item['title'])}" if item["title"] else "")
@@ -1310,37 +1384,60 @@ def render_index(study: StudyNotes) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _archive_untouched(study: StudyNotes, folder_rel: str, keep: set[str]) -> None:
+    """Move generated pages no longer produced to 90-Sistema (only if never edited)."""
+    folder = study.vault / folder_rel
+    if not folder.is_dir() or folder.is_symlink():
+        return
+    for path in sorted(folder.glob("*.md"))[:400]:
+        if path.stem in keep or ".PROPOSTA" in path.name or path.is_symlink():
+            continue
+        rel = path.relative_to(study.vault).as_posix()
+        expected = study.store.last_write_hash(rel)
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            continue
+        if not expected or hashlib.sha256(raw).hexdigest() != expected:
+            continue
+        archive = study.vault / "90-Sistema" / "Resumos-Arquivados"
+        archive.mkdir(parents=True, exist_ok=True)
+        target = archive / f"{path.stem}-{expected[:12]}.md"
+        if not target.exists():
+            target.write_bytes(raw)
+        path.unlink()
+
+
 def publish(study: StudyNotes, publisher) -> None:
-    """Write 04-Resumos via Publisher.write (protects manual edits)."""
+    """Write 04-Resumos (+ repository notes) via Publisher.write (protects manual edits)."""
+    from .activities import render_activity, render_dev_lesson, activity_note_path
+    from .projects import Projects, render_repo, repo_note_path
+    study.invalidate()
+    acts = study.activities
+    # Development lessons first, so activity pages can link to their pages.
+    for lesson in acts.development_lessons():
+        publisher.write(lesson_note_path(lesson), render_dev_lesson(acts, lesson))
     publisher.write("04-Resumos/00-Indice.md", render_index(study))
     for lesson in study.lessons():
         text = render_lesson(study, lesson, lesson_vault_links(study, lesson, publisher))
         if text:
             publisher.write(lesson_note_path(lesson), text)
-    # Only modules with lessons get a page; empty/deleted ones are archived
-    # below when the generated page was never edited by the user.
-    ids = [m["id"] for m in study.modules() if study.module_lessons(m["id"])]
+    # Only modules with lessons or deliveries get a page; empty/deleted ones
+    # are archived below when the generated page was never edited by the user.
+    ids = [m["id"] for m in study.modules()
+           if study.module_lessons(m["id"]) or acts.module_activities(m["id"])]
     if study.module_lessons(UNASSIGNED):
         ids.append(UNASSIGNED)
     for module_id in ids:
         publisher.write(module_note_path(module_id), render_module(study, module_id))
-    # Archive pages of deleted modules only when untouched by the user.
-    folder = study.vault / "04-Resumos" / "Modulos"
-    if folder.is_dir() and not folder.is_symlink():
-        for path in sorted(folder.glob("*.md"))[:200]:
-            if path.stem in ids or ".PROPOSTA" in path.name or path.is_symlink():
-                continue
-            rel = path.relative_to(study.vault).as_posix()
-            expected = study.store.last_write_hash(rel)
-            try:
-                raw = path.read_bytes()
-            except OSError:
-                continue
-            if not expected or hashlib.sha256(raw).hexdigest() != expected:
-                continue
-            archive = study.vault / "90-Sistema" / "Resumos-Arquivados"
-            archive.mkdir(parents=True, exist_ok=True)
-            target = archive / f"{path.stem}-{expected[:12]}.md"
-            if not target.exists():
-                target.write_bytes(raw)
-            path.unlink()
+    _archive_untouched(study, "04-Resumos/Modulos", set(ids))
+    activity_ids = [a["id"] for a in acts.activities()]
+    for activity_id in activity_ids:
+        publisher.write(activity_note_path(activity_id), render_activity(acts, activity_id))
+    _archive_untouched(study, "04-Resumos/Atividades", set(activity_ids))
+    projects = Projects(study, acts)
+    urls = projects.repo_urls()
+    for url in urls:
+        publisher.write(repo_note_path(url), render_repo(projects, url))
+    _archive_untouched(study, "03-Meus-Projetos/Repositorios",
+                       {repo_note_path(u).rsplit("/", 1)[-1][:-3] for u in urls})

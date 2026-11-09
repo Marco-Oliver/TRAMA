@@ -588,6 +588,11 @@ No máximo 8 relações, 5 correções e 5 novidades. Campos ausentes devem ser 
         from .study_notes import MODULE_SCHEMA
         return self._study(prompt, MODULE_SCHEMA)
 
+    def study_activity(self, prompt: str) -> AIResult:
+        """Resumo da entrega de uma atividade (1 chamada), código na versão entregue."""
+        from .activities import ACTIVITY_SCHEMA
+        return self._study(prompt, ACTIVITY_SCHEMA)
+
     def _study(self, prompt: str, schema: dict) -> AIResult:
         if not self.active():
             raise NoFreeProvider("Configure uma chave Free sem faturamento em Ajustes.")

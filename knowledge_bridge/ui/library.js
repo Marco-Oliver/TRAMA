@@ -168,7 +168,7 @@ function libTreeMarkup(notes){
   if(!node.folders.has(segment))node.folders.set(segment,{name:segment,folders:new Map(),notes:[],path:node.path+'/'+segment});
   node=node.folders.get(segment);
  }node.notes.push(n);}
- function levelHTML(node,depth=0){let result='';const rank={'01-Meu-Conhecimento':0,'02-Minhas-Aulas':1,'03-Meus-Projetos':2,'04-Recursos':3,'00-Inicio':4,'90-Sistema':5};
+ function levelHTML(node,depth=0){let result='';const rank={'01-Meu-Conhecimento':0,'02-Minhas-Aulas':1,'04-Resumos':2,'03-Meus-Projetos':3,'04-Recursos':4,'00-Inicio':5,'90-Sistema':6};
  const orderedNames=['Área de Estudos','Programação','Linguagens','Orientação a Objetos','Arquitetura','Boas Práticas','Desenvolvimento Web','Cloud & DevOps','Anotações Rápidas','2026 - 2º Semestre','2026 - 1º Semestre','Slides','Artigos','Videos','Vídeos','Templates'];
  const folderRank=x=>{const n=libPretty(x);const i=orderedNames.indexOf(n);return i<0?100:i;};
  const folders=[...node.folders.entries()].sort((a,b)=>depth===0?(rank[a[0]]??10)-(rank[b[0]]??10)||a[0].localeCompare(b[0],'pt-BR',{numeric:true}):(folderRank(a[0])-folderRank(b[0])||a[0].localeCompare(b[0],'pt-BR',{numeric:true})));
@@ -209,7 +209,7 @@ function libMetaPanel(n){const data=app.snapshot,stats=data?.stats||{};const sta
   stat('Vault:',status,libIcon('check','green-icon')),stat('Notas indexadas:',String(stats.notes||0),libIcon('file')),stat('Última leitura:',(data?.scanned_at||'Ao atualizar a biblioteca'),libIcon('clock'),true),stat('Caminho do vault:',(data?.vault||'Não selecionada').replace(/\\/g,'/'),libIcon('folder'),true),
   '<div class="lib-config-action"><button class="lib-side-button lib-compact-button" data-lib-action="settings">⚙ Configurar conexão</button></div>'
  ].join(''));
- html+=card('Ações da Nota',libIcon('file','heading-icon'),action('Abrir nota no Obsidian','arrow','open')+action('Revelar arquivo no Explorer','folder','reveal')+action('Copiar link interno [[...]]','link','copy')+action(libraryState.favorites.has(n.id)?'Remover dos favoritos':'Adicionar aos favoritos','star','favorite')+(libIsProposal(n.id)?action('Comparar com a nota original','file','compare'):'')+action('Como recuperar versões','clock','history'));
+ html+=card('Ações da Nota',libIcon('file','heading-icon'),action('Abrir nota no Obsidian','arrow','open')+action('Revelar arquivo no Explorer','folder','reveal')+action('Copiar link interno [[...]]','link','copy')+action(libraryState.favorites.has(n.id)?'Remover dos favoritos':'Adicionar aos favoritos','star','favorite')+(libIsProposal(n.id)?action('Comparar com a nota original','file','compare'):'')+(libTramaTarget(n.id)?action(libTramaTarget(n.id).label,'arrow','trama-open'):'')+action('Como recuperar versões','clock','history'));
  if(!libIsProposal(n.id)){
   const base=n.id.replace(/\.md$/i,'');
   const proposals=libNotes().filter(p=>libIsProposal(p.id)&&p.id.startsWith(base+'.PROPOSTA'));
@@ -272,6 +272,7 @@ function libWire(){const root=$('library-workspace');
   }
   const act=event.target.closest('[data-lib-action]');if(!act)return;
   const a=act.dataset.libAction;
+  if(a==='trama-open'&&app.note){await libOpenInTrama(app.note.id);return;}
   if(a==='open'&&app.note)await call('open_note',app.note.id);
   if(a==='reveal'&&app.note)await call('reveal_note',app.note.id);
   if(a==='copy'&&app.note){
@@ -367,4 +368,24 @@ async function renderLibraryView(){
     libraryState.searchResolved!==libraryState.search&&!libraryState.searchPending){
    libScheduleContentSearch();
  }
+}
+
+/* Notas geradas pelo TRAMA (Resumos, Atividades, Repositórios) abrem na tela própria. */
+function libTramaTarget(id){
+ let m=/^04-Resumos\/Aulas\/(Aula-\d{3,4})\.md$/.exec(id);if(m)return {kind:'lesson',id:m[1],label:'Abrir em Resumos'};
+ m=/^04-Resumos\/Modulos\/([a-z0-9-]+)\.md$/.exec(id);if(m)return {kind:'module',id:m[1],label:'Abrir em Resumos'};
+ m=/^04-Resumos\/Atividades\/([a-z0-9-]+)\.md$/.exec(id);if(m)return {kind:'activity',id:m[1],label:'Abrir atividade em Resumos'};
+ m=/^03-Meus-Projetos\/Repositorios\/([A-Za-z0-9_.-]+)--([A-Za-z0-9_.-]+)\.md$/.exec(id);if(m)return {kind:'repo',id:'https://github.com/'+m[1]+'/'+m[2],label:'Abrir repositório em Projetos'};
+ return null;
+}
+async function libOpenInTrama(id){
+ const t=libTramaTarget(id);if(!t)return;
+ if(t.kind==='repo'){if(typeof projectsOpenRepo==='function')await projectsOpenRepo(t.id,'');return;}
+ if(typeof studyState==='undefined')return;
+ if(t.kind==='lesson'){
+  const o=await call('study_overview');
+  const dev=o?.ok&&(o.development||[]).some(d=>d.lesson===t.id);
+  studyState.kind=dev?'dev':'lesson';studyState[dev?'dev':'lesson']=t.id;
+ }else{studyState.kind=t.kind;studyState[t.kind]=t.id;}
+ app.view='study';if(typeof renderNavigation==='function')renderNavigation();await render();
 }

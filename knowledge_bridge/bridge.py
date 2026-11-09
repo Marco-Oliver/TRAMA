@@ -2019,6 +2019,243 @@ class Bridge:
                 self._write_lock.release()
 
 
+    # ------------------------------------------------------------------
+    # Atividades / trabalhos / provas (Resumos) e Projetos (repositórios).
+    def _github_reader(self, vault):
+        """One reader per session: Git trees stay in memory between clicks."""
+        from .github_code import GithubCodeReader
+        from .github_cache import GithubCache
+        from .github_mapping import GithubMapping
+        reader=getattr(self,'_project_reader',None)
+        if reader is None or getattr(self,'_project_reader_vault',None)!=str(vault):
+            reader=GithubCodeReader(client=GithubMapping(),cache=GithubCache(vault=vault))
+            self._project_reader=reader
+            self._project_reader_vault=str(vault)
+        else:
+            # A fresh client forgets a previous quota stop; trees stay cached.
+            reader.client=GithubMapping()
+        return reader
+
+    @staticmethod
+    def _valid_activity_id(value):
+        return isinstance(value,str) and re.fullmatch(r'[a-z0-9][a-z0-9-]{0,80}',value) is not None
+
+    @staticmethod
+    def _valid_repo_url(value):
+        from .activities import repo_key
+        return isinstance(value,str) and len(value)<=300 and repo_key(value)==value
+
+    def study_parse_activity(self, text):
+        if not isinstance(text,str) or len(text)>20000:
+            return {'ok':False,'message':'Cole o texto do post (até 20 mil caracteres).'}
+        from .activities import parse_post
+        return {'ok':True,'parsed':parse_post(text)}
+
+    def study_activity(self, activity_id):
+        if not self._valid_activity_id(activity_id):
+            return {'ok':False,'message':'Atividade inválida.'}
+        return self._study_call(lambda _store,study: study.activities.view(activity_id))
+
+    def study_dev_lesson(self, lesson):
+        if not isinstance(lesson,str) or not re.fullmatch(r'Aula-\d{3,4}',lesson):
+            return {'ok':False,'message':'Aula inválida.'}
+        return self._study_call(lambda _store,study: study.activities.dev_view(lesson))
+
+    def _freeze_pending(self, acts, activity):
+        """Best effort: resolve the delivered SHA of repos still without one."""
+        from .github_mapping import GithubMapping
+        frozen,pending=0,[]
+        client=None
+        for repo in activity['repos']:
+            if repo['sha']:
+                continue
+            try:
+                client=client or GithubMapping()
+                acts.freeze_repo(activity['id'],repo['repo_url'],client)
+                frozen+=1
+            except ValueError as exc:
+                acts.mark_repo_pending(activity['id'],repo['repo_url'],str(exc))
+                pending.append(str(exc)[:160])
+        return frozen,pending
+
+    def study_save_activity(self, record):
+        if not isinstance(record,dict) or len(json.dumps(record,ensure_ascii=False,default=str))>16000:
+            return {'ok':False,'message':'Dados da atividade inválidos.'}
+        def action(store,study):
+            acts=study.activities
+            activity=acts.save(record)
+            frozen,pending=self._freeze_pending(acts,activity)
+            self._publish_study(store,study)
+            return {'activity':acts.view(activity['id']),'frozen':frozen,'pending':pending}
+        return self._study_call(action,write=True)
+
+    def study_delete_activity(self, activity_id, confirmed=False):
+        if confirmed is not True:
+            return {'ok':False,'message':'Confirme a exclusão.'}
+        if not self._valid_activity_id(activity_id):
+            return {'ok':False,'message':'Atividade inválida.'}
+        def action(store,study):
+            study.activities.delete(activity_id)
+            self._publish_study(store,study)
+            return {}
+        return self._study_call(action,write=True)
+
+    def study_freeze_activity_repo(self, activity_id, repo_url, ref=''):
+        """Re-resolve the delivered version (e.g. deadline changed, other branch)."""
+        if not self._valid_activity_id(activity_id) or not self._valid_repo_url(repo_url):
+            return {'ok':False,'message':'Dados inválidos.'}
+        if not isinstance(ref,str) or len(ref)>180:
+            return {'ok':False,'message':'Branch inválida.'}
+        def action(store,study):
+            from .github_mapping import GithubMapping
+            result=study.activities.freeze_repo(activity_id,repo_url,GithubMapping(),ref)
+            self._publish_study(store,study)
+            return {'frozen':result,'activity':study.activities.view(activity_id)}
+        return self._study_call(action,write=True)
+
+    def study_generate_activity(self, activity_id, confirmed=False):
+        if confirmed is not True:
+            return {'ok':False,'message':'Confirme o envio do código da entrega à API configurada.'}
+        if not self._valid_activity_id(activity_id):
+            return {'ok':False,'message':'Atividade inválida.'}
+        if not self.settings.get('confirmed_free') or not any(self._key_vault.configured().values()):
+            return {'ok':False,'message':'Configure e confirme sua chave Free em Ajustes.'}
+        vault=self._vault()
+        if not vault:
+            return {'ok':False,'message':'Selecione o cofre do Obsidian primeiro.'}
+        if not self._write_lock.acquire(blocking=False):
+            return {'ok':False,'message':'Outro processamento está em andamento.'}
+        app=None
+        try:
+            from .study_notes import StudyNotes
+            from .ai import ProviderError as _PE
+            app=self._make_application(vault,log=lambda _t:None)
+            study=StudyNotes(app.store,log=lambda _t:None)
+            acts=study.activities
+            activity=acts.activity(activity_id)
+            if not activity:
+                raise ValueError('Atividade não encontrada.')
+            self._freeze_pending(acts,activity)
+            acts.generate(app.ai,activity_id,self._github_reader(vault))
+            self._publish_study(app.store,study)
+            return {'ok':True,'message':'Resumo da entrega gerado.','activity':acts.view(activity_id)}
+        except ValueError as exc:
+            return {'ok':False,'message':str(exc)[:240]}
+        except (NoFreeProvider,BudgetStopped,AllProvidersFailed,ProviderError) as exc:
+            return {'ok':False,'message':'IA indisponível agora: '+redact_sensitive(str(exc))[:200]}
+        except Exception:
+            return {'ok':False,'message':'Não foi possível gerar o resumo da entrega. Nada foi apagado.'}
+        finally:
+            try:
+                if app is not None:
+                    app.close()
+            finally:
+                self._write_lock.release()
+
+    # ---------------------------------------------------------------- Projetos
+    def _projects_call(self, action, *, write=False):
+        def wrapped(store,study):
+            from .projects import Projects
+            return action(store,study,Projects(study))
+        return self._study_call(wrapped,write=write)
+
+    def projects_overview(self):
+        return self._projects_call(lambda _s,_st,projects: projects.overview())
+
+    def project_repo(self, url, refresh=False):
+        if not self._valid_repo_url(url):
+            return {'ok':False,'message':'Repositório inválido.'}
+        def action(store,study,projects):
+            warning=''
+            if refresh in (True,'force'):
+                from .github_mapping import GithubMapping
+                try:
+                    projects.refresh_meta(url,GithubMapping(),force=refresh=='force')
+                except ValueError as exc:
+                    warning=str(exc)[:200]
+            return {**projects.repo_view(url),'warning':warning}
+        return self._projects_call(action)
+
+    def project_tree(self, url, sha):
+        if not self._valid_repo_url(url) or not isinstance(sha,str) or not re.fullmatch(r'[0-9a-f]{40}',sha):
+            return {'ok':False,'message':'Versão inválida.'}
+        vault=self._vault()
+        def action(store,study,projects):
+            reader=self._github_reader(vault)
+            return projects.tree(url,sha,reader,reader.cache)
+        return self._projects_call(action)
+
+    def project_file(self, url, sha, path):
+        if (not self._valid_repo_url(url) or not isinstance(sha,str)
+                or not re.fullmatch(r'[0-9a-f]{40}',sha) or not isinstance(path,str) or len(path)>300):
+            return {'ok':False,'message':'Arquivo inválido.'}
+        vault=self._vault()
+        def action(store,study,projects):
+            data=self._github_reader(vault).read_file(url,sha,path)
+            return {'path':data['path'],'sha':sha,'content':data['content'],'size':data['size']}
+        return self._projects_call(action)
+
+    def project_add(self, url):
+        if not isinstance(url,str) or len(url)>300:
+            return {'ok':False,'message':'Link inválido.'}
+        def action(store,study,projects):
+            key=projects.register(url.strip())
+            self._publish_study(store,study)
+            return {'url':key}
+        return self._projects_call(action,write=True)
+
+    def project_remove(self, url, confirmed=False):
+        if confirmed is not True:
+            return {'ok':False,'message':'Confirme para tirar o repositório da lista.'}
+        if not self._valid_repo_url(url):
+            return {'ok':False,'message':'Repositório inválido.'}
+        def action(store,study,projects):
+            projects.remove(url)
+            self._publish_study(store,study)
+            return {}
+        return self._projects_call(action,write=True)
+
+    def project_owners(self):
+        return self._study_call(lambda _s,study: {'owners':study.activities.owners()})
+
+    def project_save_owner(self, owner, klass, label=''):
+        if not all(isinstance(x,str) and len(x)<=120 for x in (owner,klass,label)):
+            return {'ok':False,'message':'Dados inválidos.'}
+        def action(store,study):
+            owners=study.activities.save_owner(owner,klass,label)
+            self._publish_study(store,study)
+            return {'owners':owners}
+        return self._study_call(action,write=True)
+
+    def project_delete_owner(self, owner, confirmed=False):
+        if confirmed is not True or not isinstance(owner,str) or len(owner)>120:
+            return {'ok':False,'message':'Confirme a remoção.'}
+        def action(store,study):
+            owners=study.activities.delete_owner(owner)
+            self._publish_study(store,study)
+            return {'owners':owners}
+        return self._study_call(action,write=True)
+
+    def open_study_link(self, url):
+        """GitHub links of listed repositories, or a link saved in an activity."""
+        if not isinstance(url,str) or len(url)>800 or not url.startswith('https://'):
+            return {'ok':False,'message':'Link inválido.'}
+        from .activities import repo_key
+        def action(store,study):
+            from .projects import Projects
+            allowed=False
+            key=repo_key(url)
+            if key and re.fullmatch(r'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
+                                    r'(?:/(?:tree|blob)/[0-9a-f]{40}(?:/[A-Za-z0-9_./%+ -]*)?)?/?',url):
+                allowed=key in Projects(study).repo_urls()
+            if not allowed:
+                allowed=any(a['link']==url for a in study.activities.activities())
+            if not allowed:
+                raise ValueError('Link não registrado no TRAMA.')
+            return {'opened':bool(webbrowser.open(url))}
+        return self._study_call(action)
+
+
 class PublicApi:
     """Small explicit JS API; avoids exposing native WebView/GUI objects.
 
@@ -2059,6 +2296,57 @@ class PublicApi:
 
     def study_update_module(self, module_id, confirmed=False):
         return self._bridge.study_update_module(module_id, confirmed)
+
+    def study_parse_activity(self, text):
+        return self._bridge.study_parse_activity(text)
+
+    def study_activity(self, activity_id):
+        return self._bridge.study_activity(activity_id)
+
+    def study_dev_lesson(self, lesson):
+        return self._bridge.study_dev_lesson(lesson)
+
+    def study_save_activity(self, record):
+        return self._bridge.study_save_activity(record)
+
+    def study_delete_activity(self, activity_id, confirmed=False):
+        return self._bridge.study_delete_activity(activity_id, confirmed)
+
+    def study_freeze_activity_repo(self, activity_id, repo_url, ref=''):
+        return self._bridge.study_freeze_activity_repo(activity_id, repo_url, ref)
+
+    def study_generate_activity(self, activity_id, confirmed=False):
+        return self._bridge.study_generate_activity(activity_id, confirmed)
+
+    def projects_overview(self):
+        return self._bridge.projects_overview()
+
+    def project_repo(self, url, refresh=False):
+        return self._bridge.project_repo(url, refresh)
+
+    def project_tree(self, url, sha):
+        return self._bridge.project_tree(url, sha)
+
+    def project_file(self, url, sha, path):
+        return self._bridge.project_file(url, sha, path)
+
+    def project_add(self, url):
+        return self._bridge.project_add(url)
+
+    def project_remove(self, url, confirmed=False):
+        return self._bridge.project_remove(url, confirmed)
+
+    def project_owners(self):
+        return self._bridge.project_owners()
+
+    def project_save_owner(self, owner, klass, label=''):
+        return self._bridge.project_save_owner(owner, klass, label)
+
+    def project_delete_owner(self, owner, confirmed=False):
+        return self._bridge.project_delete_owner(owner, confirmed)
+
+    def open_study_link(self, url):
+        return self._bridge.open_study_link(url)
 
     def snapshot(self):
         return self._bridge.snapshot()
@@ -2258,7 +2546,8 @@ def load_local_ui():
     html=(base/'index.html').read_text(encoding='utf-8')
     substitutions=(('style.css','style.css'),('library.css','library.css'),
                    ('classic.css','classic.css'),('faithful.css','faithful.css'),
-                   ('graph.css','graph.css'),('study.css','study.css'))
+                   ('graph.css','graph.css'),('study.css','study.css'),
+                   ('projects.css','projects.css'))
     # The packaged window requires inline local assets. Keep a strict CSP
     # with exact SHA-256 hashes of the bundled CSS and JS, instead of removing
     # the policy and allowing any injected script to execute.
@@ -2271,7 +2560,7 @@ def load_local_ui():
         css=(base/filename).read_text(encoding='utf-8')
         styles.append(content_hash(css))
         html=html.replace(f'<link rel="stylesheet" href="{href}">','<style>'+css+'</style>')
-    for script in ('library.js','graph.js','app.js','lesson_code.js','teacher.js','study.js'):
+    for script in ('library.js','graph.js','app.js','lesson_code.js','teacher.js','study.js','projects.js'):
         js=(base/script).read_text(encoding='utf-8')
         scripts.append(content_hash(js))
         html=html.replace(f'<script src="{script}"></script>','<script>'+js+'</script>')
