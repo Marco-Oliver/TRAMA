@@ -162,7 +162,20 @@ class VaultIndex:
                 other = self.resolve(link, n)
                 if other:
                     connected.add(other.relative)
-        nodes = sorted(candidates, key=lambda n: (n.relative not in connected, n.relative.casefold()))[:cap]
+        # Connected notes first; when the cap is reached, study pages
+        # (04-Resumos) and hubs survive before an alphabetical tail of
+        # concept pages, so newer sections are never silently cut.
+        degree = {}
+        for n in candidates:
+            for link in n.links:
+                other = self.resolve(link, n)
+                if other and other.relative != n.relative:
+                    degree[n.relative] = degree.get(n.relative, 0) + 1
+                    degree[other.relative] = degree.get(other.relative, 0) + 1
+        nodes = sorted(candidates, key=lambda n: (n.relative not in connected,
+                                                  n.section != '04-Resumos',
+                                                  -degree.get(n.relative, 0),
+                                                  n.relative.casefold()))[:cap]
         ids = {n.relative: i for i, n in enumerate(nodes)}
         edges = set()
         for n in nodes:

@@ -261,6 +261,16 @@ class StudyNotes:
 
     def invalidate(self):
         self._memo.clear()
+        if getattr(self, "_activities", None) is not None:
+            self._activities.invalidate()
+
+    @property
+    def activities(self):
+        """Atividades/trabalhos/provas (mesmo banco; criado sob demanda)."""
+        if getattr(self, "_activities", None) is None:
+            from .activities import Activities
+            self._activities = Activities(self)
+        return self._activities
 
     # ------------------------------------------------------------ auto queue
     def auto_queue(self) -> set[str]:
@@ -725,6 +735,84 @@ class StudyNotes:
         except ValueError:
             return "sem_analise"
 
+    # ------------------------------------------------------------ lacunas
+    _GAP_GENERIC = set("""conteudo atividade atividades aula aulas gravacao gravacoes video videos
+    parte processo apresentacao apresentar mostrar explicar fazer feito feita item itens agenda
+    pendente incompleto incompleta situacao classroom professor turma""".split())
+
+    def _gap_words(self, text: str) -> list[str]:
+        words = []
+        for word in re.findall(r"[a-z0-9#+]{3,}", _norm(text)):
+            if word in _STOP or word in self._GAP_GENERIC or word in words:
+                continue
+            words.append(word)
+        return words[:8]
+
+    def _recording_text(self, lesson: str) -> str:
+        """Only what the recordings show (analyses + study points), never the agenda."""
+        def build():
+            parts = []
+            for src in self._lesson_sources(lesson):
+                analysis = self.store.analysis(src["id"], src["digest"]) or {}
+                parts.append(str(analysis.get("resumo", "")))
+                parts.extend(f"{c.get('nome', '')} {c.get('explicacao', '')}"
+                             for c in analysis.get("conceitos", []) if isinstance(c, dict))
+                parts.extend(str(e) for e in analysis.get("exemplos", []) if isinstance(e, str))
+            summary = self.lesson_summary(lesson)
+            if summary:
+                p = summary["payload"]
+                parts.append(p.get("em_uma_frase", ""))
+                parts.extend(pt["texto"] for t in p.get("mapa_mental", []) for pt in t.get("pontos", []))
+                parts.extend(f"{k['ponto']} {k.get('explicacao', '')}" for k in p.get("o_que_saber", []))
+            return " " + _norm(" ".join(parts)) + " "
+        return self._cached(("recording_text", lesson), build)
+
+    @staticmethod
+    def _matches(word: str, token: str) -> bool:
+        # Prefix match tolerates plurals/inflections (conta/contas, criação/criações).
+        stem = word[:5] if len(word) >= 6 else word
+        return token.startswith(stem) if len(word) >= 4 else token == word
+
+    def _near_hits(self, words: list[str], text: str, need: int, window: int = 30) -> list[str]:
+        """Words of the gap that appear CLOSE TOGETHER in the later lesson
+        (same passage), so "Git" in one place and "instalação" in another
+        does not count as the subject being retaken."""
+        tokens = re.findall(r"[a-z0-9#+]+", text)
+        positions = {w: [i for i, t in enumerate(tokens) if self._matches(w, t)] for w in words}
+        best: list[str] = []
+        for anchor_word, anchor_positions in positions.items():
+            for pos in anchor_positions[:200]:
+                hits = [w for w, ps in positions.items()
+                        if any(abs(p - pos) <= window for p in ps)]
+                if len(hits) > len(best):
+                    best = hits
+                    if len(best) >= need:
+                        return best
+        return best
+
+    def gap_followups(self, lesson: str) -> list[dict]:
+        """Each lacuna of the lesson, marked as retomada if a LATER lesson's
+        recordings mention its subject. A clue, not proof; no AI involved."""
+        summary = self.lesson_summary(lesson)
+        if not summary:
+            return []
+        lessons = self.lessons()
+        later = lessons[lessons.index(lesson) + 1:] if lesson in lessons else []
+        out = []
+        for gap in summary["payload"].get("lacunas", []):
+            words = self._gap_words(gap.get("item", ""))
+            found = None
+            if words and (len(words) > 1 or len(words[0]) >= 5):
+                need = len(words) if len(words) <= 2 else max(2, -(-len(words) * 6 // 10))
+                for candidate in later:
+                    hits = self._near_hits(words, self._recording_text(candidate), need)
+                    if len(hits) >= need:
+                        found = {"aula": candidate, "titulo": self.lesson_title(candidate),
+                                 "termos": hits[:6]}
+                        break
+            out.append({**gap, "retomada": found})
+        return out
+
     def open_doubts(self, lesson: str) -> list[dict]:
         out = []
         for src in self._lesson_sources(lesson):
@@ -790,8 +878,16 @@ class StudyNotes:
             lessons = [{k: item[k] for k in ("aula", "titulo", "em_uma_frase")} for item in lessons]
         while lessons and size() > 16000:
             lessons = lessons[1:]
+        deliveries = []
+        for activity in self.activities.module_activities(module_id)[:15]:
+            summary = self.activities.summary(activity["id"])
+            p = summary["payload"] if summary else {}
+            deliveries.append({"tipo": activity["kind"], "titulo": activity["title"],
+                               "prazo": activity["due_at"], "em_uma_frase": p.get("em_uma_frase", ""),
+                               "falta": p.get("falta", [])[:3]})
         return {"modulo": {"id": module["id"], "nome": module["name"],
-                           "descricao": module["description"]}, "aulas": lessons}
+                           "descricao": module["description"]}, "aulas": lessons,
+                "entregas": deliveries}
 
     def module_status(self, module_id: str) -> dict:
         lessons_with_summary = [l for l in self.module_lessons(module_id) if self.lesson_summary(l)]
@@ -861,7 +957,7 @@ class StudyNotes:
 
     def living_module(self, module_id: str) -> dict:
         """Página viva: agregação local, sem IA."""
-        entries, concepts, commands, doubts = [], {}, [], []
+        entries, concepts, commands, doubts, gaps = [], {}, [], [], []
         for lesson in self.module_lessons(module_id):
             summary = self.lesson_summary(lesson)
             p = summary["payload"] if summary else {}
@@ -881,9 +977,25 @@ class StudyNotes:
             for c in p.get("comandos", [])[:4]:
                 commands.append({"codigo": c["codigo"], "aula": lesson})
             doubts.extend({**d, "aula": lesson} for d in self.open_doubts(lesson)[:4])
+            gaps.extend({"aula": lesson, "item": g["item"], "situacao": g.get("situacao", ""),
+                         "retomada": g["retomada"]} for g in self.gap_followups(lesson)[:4])
         ordered = sorted(concepts.values(), key=lambda c: (-len(c["aulas"]), _norm(c["nome"])))
-        return {"aulas": entries, "conceitos": ordered[:40], "comandos": commands[:30],
-                "duvidas": doubts[:30]}
+        deliveries = []
+        if module_id != UNASSIGNED:
+            for activity in self.activities.module_activities(module_id):
+                summary = self.activities.summary(activity["id"])
+                deliveries.append({"id": activity["id"], "titulo": activity["title"],
+                                   "tipo": activity["kind"], "prazo": activity["due_at"],
+                                   "nota": activity["grade"], "status": self.activities.status(activity["id"]),
+                                   "em_uma_frase": summary["payload"].get("em_uma_frase", "") if summary else ""})
+        development = [{"aula": l, "titulo": self.lesson_title(l), "data": self.lesson_date(l),
+                        "atividade": a}
+                       for l, a in self.activities.dev_links().items()
+                       if (self.activities.activity(a) or {}).get("module_id") == module_id]
+        return {"entregas": deliveries, "desenvolvimento": development, "aulas": entries, "conceitos": ordered[:40], "comandos": commands[:30],
+                "duvidas": doubts[:30],
+                "lacunas_abertas": [g for g in gaps if not g["retomada"]][:30],
+                "lacunas_retomadas": [g for g in gaps if g["retomada"]][:30]}
 
     # ------------------------------------------------------------ batch
     def pending_lessons(self, include_stale=True) -> list[str]:
@@ -961,7 +1073,18 @@ class StudyNotes:
             ids = self.module_lessons(module["id"])
             modules.append({**module, "lessons": ids, **self.module_status(module["id"])})
         unassigned = [l["lesson"] for l in lessons if not l["modules"]]
+        acts = self.activities
+        links = acts.dev_links()
+        development = []
+        for lesson in acts.development_lessons():
+            activity = acts.activity(links[lesson]) if lesson in links else None
+            development.append({"lesson": lesson, "title": self.lesson_title(lesson),
+                                "date": self.lesson_date(lesson),
+                                "activity": activity["id"] if activity else "",
+                                "activity_title": activity["title"] if activity else "",
+                                "module": activity["module_id"] if activity else ""})
         return {"lessons": lessons, "modules": modules, "unassigned": unassigned,
+                "activities": acts.overview(), "development": development,
                 "pending": sum(1 for l in lessons if l["status"] in ("pendente", "desatualizado"))}
 
     def lesson_view(self, lesson: str) -> dict:
@@ -973,6 +1096,7 @@ class StudyNotes:
                 "provider": summary["provider"] if summary else "",
                 "modules": self.lesson_modules(lesson), "module_origin": self.module_origin(lesson),
                 "doubts": self.open_doubts(lesson),
+                "gaps": self.gap_followups(lesson),
                 "videos": [{"code": s["video"] or "", "label": Path(s["label"]).stem} for s in sources],
                 "materials": [{"title": m.get("title", ""), "url": m.get("url", "")}
                               for m in self.store.academy_docs_for_lesson(lesson)][:10],
@@ -989,6 +1113,7 @@ class StudyNotes:
                 raise ValueError("Módulo não encontrado.")
         summary = self.module_summary(module_id)
         return {"module": module, "living": self.living_module(module_id),
+                "activities": [] if module_id == UNASSIGNED else self.activities.overview_for(module_id),
                 "summary": summary["payload"] if summary else None,
                 "generated": local_time(summary["updated_at"]) if summary else "",
                 "status": self.module_status(module_id),
@@ -1018,7 +1143,42 @@ def _vids(codes) -> str:
     return (" · *" + ", ".join(codes) + "*") if codes else ""
 
 
-def render_lesson(study: StudyNotes, lesson: str) -> str | None:
+def lesson_vault_links(study: StudyNotes, lesson: str, publisher=None) -> dict:
+    """Existing evidence notes of a lesson: recordings and concept pages.
+
+    Only files that already exist in the vault are linked, so the Obsidian
+    graph connects a study page to its sources without dangling links.
+    """
+    out = {"gravacoes": [], "conceitos": []}
+    folder = study.vault / "02-Minhas-Aulas" / lesson
+    if folder.is_dir() and not folder.is_symlink():
+        for path in sorted(folder.glob("*.md"))[:40]:
+            if path.stem.startswith("00-") or ".PROPOSTA" in path.name or path.is_symlink():
+                continue
+            out["gravacoes"].append(path.relative_to(study.vault).with_suffix("").as_posix())
+    seen = set()
+    for src in study._lesson_sources(lesson):
+        analysis = study.store.analysis(src["id"], src["digest"]) or {}
+        for concept in _as_list(analysis.get("conceitos")):
+            name = concept.get("nome") if isinstance(concept, dict) else None
+            if not isinstance(name, str) or not name.strip():
+                continue
+            try:
+                target = (publisher._concept_target(name, src["id"], lesson) if publisher is not None
+                          else slug(name))
+            except Exception:  # noqa: BLE001 - linking is best effort
+                target = slug(name)
+            rel = f"01-Meu-Conhecimento/Conceitos/{target}"
+            if rel in seen or not (study.vault / (rel + ".md")).is_file():
+                continue
+            seen.add(rel)
+            out["conceitos"].append((rel, name.strip()[:80]))
+            if len(seen) >= 30:
+                break
+    return out
+
+
+def render_lesson(study: StudyNotes, lesson: str, vault_links: dict | None = None) -> str | None:
     view = study.lesson_view(lesson)
     s = view["summary"]
     if not s:
@@ -1066,8 +1226,17 @@ def render_lesson(study: StudyNotes, lesson: str) -> str | None:
             lines.append(f"- **Prepara para:** {_md(links['prepara'])}")
         lines.append("")
     lines += ["## Lacunas", ""]
-    lines += ([f"- **{_md(g['item'])}** — {_md(g['situacao'])}" for g in s["lacunas"]]
-              or ["*Nenhuma lacuna identificada entre a agenda e as gravações.*"])
+    for g in view["gaps"]:
+        line = f"- **{_md(g['item'])}** — {_md(g['situacao'])}"
+        if g["retomada"]:
+            later = g["retomada"]["aula"]
+            line += (f" — ✓ *retomada em [[{lesson_note_path(later)[:-3]}|{later}]] "
+                     "(pista pelo conteúdo das gravações, conferir)*")
+        else:
+            line += " — *em aberto*"
+        lines.append(line)
+    if not view["gaps"]:
+        lines.append("*Nenhuma lacuna identificada entre a agenda e as gravações.*")
     lines += ["", "## Para fazer", ""]
     lines += ([f"- [ ] {_md(t)}" for t in s["para_fazer"]] or ["*Nenhuma atividade registrada.*"])
     lines += ["", "## Dúvidas em aberto", ""]
@@ -1078,6 +1247,15 @@ def render_lesson(study: StudyNotes, lesson: str) -> str | None:
         lines += [f"{i}. {_md(q['pergunta'])}", f"   - *Resposta:* {_md(q['resposta'])}"]
     if not s["revisao"]:
         lines.append("*Sem perguntas de revisão.*")
+    links = vault_links or {}
+    if links.get("gravacoes") or links.get("conceitos"):
+        lines += ["", "## Ligações no cofre", ""]
+        if links.get("gravacoes"):
+            lines.append("**Gravações:** " + ", ".join(
+                f"[[{rel}|{_md(rel.rsplit('/', 1)[-1])}]]" for rel in links["gravacoes"]))
+        if links.get("conceitos"):
+            lines.append("**Conceitos:** " + ", ".join(
+                f"[[{rel}|{_md(name)}]]" for rel, name in links["conceitos"]))
     lines += ["", f"*Gerado em {_md(view['generated'])} · {_md(view['provider'])}. "
               "Os vídeos citados indicam a origem de cada ponto.*", ""]
     return "\n".join(lines)
@@ -1132,9 +1310,34 @@ def render_module(study: StudyNotes, module_id: str) -> str:
         lines.append("")
     if not living["aulas"]:
         lines += ["*Nenhuma aula neste módulo ainda.*", ""]
+    if living["entregas"]:
+        from .activities import activity_note_path, KIND_LABELS
+        lines += ["## Entregas do módulo", ""]
+        for d in living["entregas"]:
+            line = (f"- {KIND_LABELS.get(d['tipo'], 'Atividade')}: "
+                    f"[[{activity_note_path(d['id'])[:-3]}|{_md(d['titulo'])}]]")
+            if d["prazo"]:
+                line += f" — prazo {d['prazo']}"
+            if d["nota"]:
+                line += f" — nota {_md(d['nota'])}"
+            if d["em_uma_frase"]:
+                line += f" — {_md(d['em_uma_frase'])}"
+            lines.append(line)
+        lines.append("")
+    if living["desenvolvimento"]:
+        lines += ["## Aulas de desenvolvimento", ""]
+        lines += [f"- [[{lesson_note_path(d['aula'])[:-3]}|{d['aula']}]]" +
+                  (f" — {_md(d['titulo'])}" if d["titulo"] else "") for d in living["desenvolvimento"]]
+        lines.append("")
     if living["conceitos"]:
         lines += ["## Conceitos vistos no módulo", ""]
         lines += [f"- {_md(c['nome'])} — " + ", ".join(c["aulas"]) for c in living["conceitos"]]
+        lines.append("")
+    if living["lacunas_abertas"] or living["lacunas_retomadas"]:
+        lines += ["## Lacunas do módulo", ""]
+        lines += [f"- {g['aula']}: **{_md(g['item'])}** — em aberto" for g in living["lacunas_abertas"]]
+        lines += [f"- {g['aula']}: {_md(g['item'])} — ✓ retomada em {g['retomada']['aula']} (pista)"
+                  for g in living["lacunas_retomadas"]]
         lines.append("")
     if living["duvidas"]:
         lines += ["## Dúvidas em aberto no módulo", ""]
@@ -1157,6 +1360,19 @@ def render_index(study: StudyNotes) -> str:
     if data["unassigned"]:
         lines.append(f"- [[{module_note_path(UNASSIGNED)[:-3]}|A classificar]] — "
                      f"{len(data['unassigned'])} aula(s)")
+    if data["activities"]:
+        from .activities import activity_note_path
+        lines += ["", "## Atividades, trabalhos e provas", ""]
+        for a in data["activities"]:
+            lines.append(f"- {a['kind_label']}: [[{activity_note_path(a['id'])[:-3]}|{_md(a['title'])}]]"
+                         + (f" — prazo {a['due_at']}" if a["due_at"] else "")
+                         + (f" — nota {_md(a['grade'])}" if a["grade"] else ""))
+    if data["development"]:
+        lines += ["", "## Aulas de desenvolvimento", ""]
+        for d in data["development"]:
+            lines.append(f"- [[{lesson_note_path(d['lesson'])[:-3]}|{d['lesson']}"
+                         + (f" — {_md(d['title'])}" if d["title"] else "") + "]]"
+                         + (f" — {_md(d['activity_title'])}" if d["activity_title"] else ""))
     lines += ["", "## Aulas", ""]
     for item in data["lessons"]:
         label = item["lesson"] + (f" — {_md(item['title'])}" if item["title"] else "")
@@ -1168,37 +1384,60 @@ def render_index(study: StudyNotes) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _archive_untouched(study: StudyNotes, folder_rel: str, keep: set[str]) -> None:
+    """Move generated pages no longer produced to 90-Sistema (only if never edited)."""
+    folder = study.vault / folder_rel
+    if not folder.is_dir() or folder.is_symlink():
+        return
+    for path in sorted(folder.glob("*.md"))[:400]:
+        if path.stem in keep or ".PROPOSTA" in path.name or path.is_symlink():
+            continue
+        rel = path.relative_to(study.vault).as_posix()
+        expected = study.store.last_write_hash(rel)
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            continue
+        if not expected or hashlib.sha256(raw).hexdigest() != expected:
+            continue
+        archive = study.vault / "90-Sistema" / "Resumos-Arquivados"
+        archive.mkdir(parents=True, exist_ok=True)
+        target = archive / f"{path.stem}-{expected[:12]}.md"
+        if not target.exists():
+            target.write_bytes(raw)
+        path.unlink()
+
+
 def publish(study: StudyNotes, publisher) -> None:
-    """Write 04-Resumos via Publisher.write (protects manual edits)."""
+    """Write 04-Resumos (+ repository notes) via Publisher.write (protects manual edits)."""
+    from .activities import render_activity, render_dev_lesson, activity_note_path
+    from .projects import Projects, render_repo, repo_note_path
+    study.invalidate()
+    acts = study.activities
+    # Development lessons first, so activity pages can link to their pages.
+    for lesson in acts.development_lessons():
+        publisher.write(lesson_note_path(lesson), render_dev_lesson(acts, lesson))
     publisher.write("04-Resumos/00-Indice.md", render_index(study))
     for lesson in study.lessons():
-        text = render_lesson(study, lesson)
+        text = render_lesson(study, lesson, lesson_vault_links(study, lesson, publisher))
         if text:
             publisher.write(lesson_note_path(lesson), text)
-    # Only modules with lessons get a page; empty/deleted ones are archived
-    # below when the generated page was never edited by the user.
-    ids = [m["id"] for m in study.modules() if study.module_lessons(m["id"])]
+    # Only modules with lessons or deliveries get a page; empty/deleted ones
+    # are archived below when the generated page was never edited by the user.
+    ids = [m["id"] for m in study.modules()
+           if study.module_lessons(m["id"]) or acts.module_activities(m["id"])]
     if study.module_lessons(UNASSIGNED):
         ids.append(UNASSIGNED)
     for module_id in ids:
         publisher.write(module_note_path(module_id), render_module(study, module_id))
-    # Archive pages of deleted modules only when untouched by the user.
-    folder = study.vault / "04-Resumos" / "Modulos"
-    if folder.is_dir() and not folder.is_symlink():
-        for path in sorted(folder.glob("*.md"))[:200]:
-            if path.stem in ids or ".PROPOSTA" in path.name or path.is_symlink():
-                continue
-            rel = path.relative_to(study.vault).as_posix()
-            expected = study.store.last_write_hash(rel)
-            try:
-                raw = path.read_bytes()
-            except OSError:
-                continue
-            if not expected or hashlib.sha256(raw).hexdigest() != expected:
-                continue
-            archive = study.vault / "90-Sistema" / "Resumos-Arquivados"
-            archive.mkdir(parents=True, exist_ok=True)
-            target = archive / f"{path.stem}-{expected[:12]}.md"
-            if not target.exists():
-                target.write_bytes(raw)
-            path.unlink()
+    _archive_untouched(study, "04-Resumos/Modulos", set(ids))
+    activity_ids = [a["id"] for a in acts.activities()]
+    for activity_id in activity_ids:
+        publisher.write(activity_note_path(activity_id), render_activity(acts, activity_id))
+    _archive_untouched(study, "04-Resumos/Atividades", set(activity_ids))
+    projects = Projects(study, acts)
+    urls = projects.repo_urls()
+    for url in urls:
+        publisher.write(repo_note_path(url), render_repo(projects, url))
+    _archive_untouched(study, "03-Meus-Projetos/Repositorios",
+                       {repo_note_path(u).rsplit("/", 1)[-1][:-3] for u in urls})

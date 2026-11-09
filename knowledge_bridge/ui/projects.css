@@ -1,0 +1,127 @@
+/* Projetos: mesmo grid da Biblioteca + árvore de arquivos estilo GitHub.
+   Ícones desenhados pelo TRAMA (cores por tipo), sem imagens externas. */
+.projects-workspace{grid-template-columns:310px minmax(420px,1fr) 300px}
+.owner-badge{display:inline-flex;align-items:center;justify-content:center;min-width:50px;height:17px;padding:0 6px;border-radius:9px;font-size:9.5px;font-weight:700;letter-spacing:.2px;flex:none}
+.owner-meu{background:#dcefe3;color:#1d6a43}.owner-dupla{background:#e3e9fb;color:#2f4fa6}
+.owner-professor{background:#f6e6d6;color:#8a4a12}.owner-outro{background:#eceff0;color:#56656d}
+.proj-repo-row .pfo,.proj-card-repo .pfo{width:16px;height:16px}
+.proj-pair-row{color:#4b5b66}
+.proj-pair-ico{color:#7a8a93;font-size:11px;width:12px;text-align:center}
+.proj-repo-head{padding:12px 13px 8px 15px;display:flex;flex-direction:column;gap:7px;border-bottom:1px solid #e3e8e4;margin-bottom:9px}
+.proj-repo-head .study-link-btn{align-self:flex-start;font-size:11px}
+.proj-repo-title{display:flex;align-items:center;gap:7px;min-width:0}
+.proj-repo-title strong{font-size:13.5px;color:#16293a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proj-version{display:flex;align-items:center;gap:7px;font-size:10.5px;color:#5b6a73}
+.proj-version select{flex:1;min-width:0;height:28px;border:1px solid #c5d0cb;border-radius:5px;background:#fff;font-size:11px;color:#203243;padding:0 4px}
+.proj-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.proj-cards .study-card{margin:0}
+.proj-card-repo{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;text-align:left;padding:7px 6px;border-radius:6px;cursor:pointer;color:#1f3242}
+.proj-card-repo:hover{background:#f0f5f1}
+.proj-card-repo span:nth-child(2){flex:1;min-width:0;display:flex;flex-direction:column}
+.proj-card-repo small{color:#6f7f88;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* árvore */
+.pf-tree{padding-top:0}
+.pf-row{display:flex;align-items:center;gap:6px;width:100%;height:24px;border:0;background:transparent;border-radius:4px;text-align:left;cursor:pointer;color:#24333f;font-size:11.5px;white-space:nowrap;overflow:hidden}
+.pf-row:hover{background:#eef3ef}
+.pf-row.selected{background:#d9eee1;color:#123f2d;font-weight:600}
+.pf-name{overflow:hidden;text-overflow:ellipsis}
+.pf-chev{width:10px;font-size:7.5px;color:#7d8a92;flex:none;transition:transform .12s}
+.pf-chev.open{transform:rotate(90deg)}
+.pf-chev.blank{visibility:hidden}
+.pf-d0{padding-left:4px}.pf-d1{padding-left:18px}.pf-d2{padding-left:32px}.pf-d3{padding-left:46px}.pf-d4{padding-left:60px}
+.pf-d5{padding-left:74px}.pf-d6{padding-left:88px}.pf-d7{padding-left:102px}.pf-d8{padding-left:116px}.pf-d9{padding-left:130px}
+.pfo{width:15px;height:15px;flex:none;fill:#90a4ae}
+.pfo-ctrl{fill:#4f86d9}.pfo-view{fill:#e3923a}.pfo-model{fill:#d65b6f}.pfo-www{fill:#2fa3a0}.pfo-migr{fill:#8c66c9}
+.pfo-test{fill:#4caf6e}.pfo-src{fill:#3b9bc4}.pfo-meta{fill:#55606a}.pfo-svc{fill:#d4a72c}.pfo-data{fill:#6b7fd1}
+.pfo-comp{fill:#22a6c7}.pfo-asset{fill:#e0b13d}.pfo-cfg{fill:#7f8c95}.pfo-ver{fill:#c2549a}.pfo-plain{fill:#9fb0b8}
+.pfi{display:inline-flex;align-items:center;justify-content:center;width:17px;height:15px;border-radius:3px;flex:none;font:700 7.5px/1 'Segoe UI',Tahoma,sans-serif;letter-spacing:-.3px;color:#fff;background:#9aa7ae}
+.pfi-cs{background:#7b45b8}.pfi-razor{background:#a35dd0}.pfi-proj{background:#5e3d99}.pfi-sln{background:#6b56a8}
+.pfi-ts{background:#2f74c0}.pfi-tst{background:#3f9c5a}.pfi-js{background:#d9b520;color:#2d2a12}.pfi-html{background:#e2602f}
+.pfi-css{background:#2b7fd1}.pfi-json{background:#e0b53a;color:#3b2f07}.pfi-npm{background:#c43c3c}.pfi-md{background:#4d6475}
+.pfi-sql{background:#c2832f}.pfi-py{background:#3770a5}.pfi-xml{background:#8a8f5a}.pfi-yml{background:#b0465e}
+.pfi-git{background:#e2533a}.pfi-docker{background:#2496ed}.pfi-img{background:#2fa38b}.pfi-txt{background:#87959c}
+.pfi-http{background:#3aa0a0}.pfi-other{background:#b6c1c6}
+
+/* visualizador de arquivo */
+.pv-head{display:flex;align-items:center;gap:8px;margin:2px 0 10px;font-size:13px;color:#1b2c3a}
+.pv-head .pfi{width:22px;height:19px;font-size:9px}
+.pv-head small{color:#6f7f88;font-size:11px;margin-left:auto}
+.pv-code{border:1px solid #d8e0db;border-radius:7px;background:#fbfcfb;overflow:auto;max-height:calc(100vh - 230px);font:12px/1.55 Consolas,'Cascadia Mono',monospace;color:#1f2d39;padding:6px 0}
+.pv-line{display:flex;min-width:max-content}
+.pv-line:hover{background:#eef4ef}
+.pv-num{position:sticky;left:0;flex:none;width:46px;padding-right:12px;text-align:right;color:#9aa8b0;background:#f3f6f4;border-right:1px solid #e1e7e3;user-select:none}
+.pv-text{white-space:pre;padding-left:12px;padding-right:16px}
+.study-path{font:11px Consolas,monospace;background:#f1f4f2;border:1px solid #dfe6e1;border-radius:4px;padding:0 4px;color:#2f4b3d}
+
+/* Ajustes: donos */
+.owners-list{display:flex;flex-direction:column;gap:5px;margin:6px 0 10px}
+.owner-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.owner-row small{color:#6c7b84;flex:1}
+.setting-block .owner-row button{border:1px solid #d9c3be;background:#fff;color:#a3332b;border-radius:4px;width:24px;height:22px;min-height:0;padding:0;margin:0;line-height:1;font-size:14px;cursor:pointer}
+.setting-block .owners-add{display:grid;grid-template-columns:minmax(0,1.2fr) 110px minmax(0,1fr) auto;gap:6px;align-items:center}
+.setting-block .owners-add input,.setting-block .owners-add select{width:auto;min-width:0;height:30px;margin:0;box-sizing:border-box}
+.setting-block .owners-add button{margin:0;height:30px}
+@media(max-width:1180px){.projects-workspace{grid-template-columns:260px minmax(320px,1fr) 250px}}
+@media(max-width:920px){.projects-workspace{grid-template-columns:230px minmax(330px,1fr)}}
+.proj-pairs{display:flex;flex-direction:column;gap:8px}
+.proj-pair{display:grid;grid-template-columns:minmax(0,1fr) 26px minmax(0,1fr);align-items:center;gap:6px}
+.proj-pair-sep{text-align:center;color:#7b8b93;font-size:15px}
+.proj-pair-cell{display:flex;align-items:center;gap:8px;border:1px solid #e0e7e2;border-radius:7px;background:#fbfcfb;padding:7px 9px;cursor:pointer;text-align:left;min-width:0}
+.proj-pair-cell:hover{background:#f0f5f1;border-color:#c9d8ce}
+.proj-pair-cell span:last-child{display:flex;flex-direction:column;min-width:0}
+.proj-pair-cell strong{font-size:12px;color:#1c2f3d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proj-pair-cell small{font-size:10.5px;color:#6f7f88}
+.setting-block .owners-add select{padding:0 6px;line-height:28px}
+
+/* ---- Visual antigo do TRAMA: selos .chip, pastas amarelas na lista, seções iguais à Biblioteca ---- */
+.owner-badge{height:auto;min-width:0;padding:2px 8px;border-radius:16px;font-size:9.5px;font-weight:600;border:1px solid #d9e8dd}
+.owner-meu{background:#e9f3ea;color:#27683e;border-color:#d9e8dd}
+.owner-dupla{background:#eef4f7;color:#44769b;border-color:#dae7ef}
+.owner-professor{background:#f8f4e8;color:#6d5a2b;border-color:#e6dcc0}
+.owner-outro{background:#f1f3f1;color:#5d6b63;border-color:#dfe4e0}
+.proj-pair-row .owner-badge{margin-left:auto}
+.proj-list{list-style:disc}
+.proj-list li small{color:#6b7a83;font-size:12.5px}
+.proj-list-link{font-size:15px}
+.proj-pair-cell{border:1px solid #b5c0bf;border-radius:5px;background:linear-gradient(#fff,#eef1ef)}
+.proj-pair-cell:hover{border-color:#91aea0;background:linear-gradient(#fff,#e6f0e8)}
+.proj-version select{border-radius:3px;border-color:#b6c9b9}
+.pv-code{border-radius:5px;background:#f5f7f6;border-color:#dfe7e1}
+.pv-num{background:#eef2ef}
+.pv-head strong{font-size:15px}
+/* ---- Ícones no estilo antigo (degradê e brilho, como a pasta e o cristal da Biblioteca) ---- */
+/* Selo de repositório: desenho próprio (ramificação de versões), não é a marca do GitHub. */
+.repo-ico{position:relative;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;flex:none;border-radius:50%;
+  background:radial-gradient(circle at 35% 28%,#6a7480 0%,#2b3138 48%,#0d1115 100%);border:1px solid #121a20;box-shadow:inset 0 1px #ffffff40,0 1px 1px #0003}
+.repo-ico svg{width:15px;height:15px;fill:#f2f6f8;stroke:#f2f6f8;stroke-width:1.5;stroke-linecap:round}
+.repo-ico svg path{fill:none}
+.study-head-ico .repo-ico{width:28px;height:28px;border-radius:50%;filter:drop-shadow(0 1px 1px #1b242c)}.study-head-ico .repo-ico svg{width:18px;height:18px}
+.lib-side-button .repo-ico,.lib-side-card h3 .repo-ico{width:20px;height:20px}
+.lib-side-button .repo-ico svg,.lib-side-card h3 .repo-ico svg{width:13px;height:13px}
+/* Pastas da árvore: a mesma pasta amarela antiga, com leve tom por tipo de pasta. */
+.pf-fold{position:relative;transform:scale(.88);transform-origin:center}
+.pf-fold.pfo-ctrl{filter:hue-rotate(175deg) saturate(.9)!important}.pf-fold.pfo-view{filter:hue-rotate(-18deg) saturate(1.1)!important}
+.pf-fold.pfo-model{filter:hue-rotate(-40deg) saturate(.9)!important}.pf-fold.pfo-www{filter:hue-rotate(130deg) saturate(.8)!important}
+.pf-fold.pfo-migr{filter:hue-rotate(230deg) saturate(.7)!important}.pf-fold.pfo-test{filter:hue-rotate(70deg) saturate(.8)!important}
+.pf-fold.pfo-src{filter:hue-rotate(155deg) saturate(.8)!important}.pf-fold.pfo-meta{filter:grayscale(1) brightness(.85)!important}
+.pf-fold.pfo-ver{filter:hue-rotate(275deg) saturate(.7)!important}.pf-fold.pfo-cfg{filter:grayscale(.8)!important}
+/* Arquivos: folha branca com canto dobrado e faixa colorida com a extensão. */
+.pfi{position:relative;display:inline-block;width:14px;height:17px;flex:none;border-radius:1px;background:linear-gradient(#ffffff,#e6ebee);
+  border:1px solid #7f8e99;box-shadow:0 1px 1px #0002;color:transparent;font-size:0}
+.pfi::before{content:'';position:absolute;top:-1px;right:-1px;width:5px;height:5px;background:linear-gradient(225deg,#fbfcfa 50%,#c7d0d6 50%);border-left:1px solid #7f8e99;border-bottom:1px solid #7f8e99}
+.pfi b{position:absolute;left:-3px;right:-3px;bottom:2px;height:8px;border-radius:1px;font:700 6.5px/8px 'Segoe UI',Tahoma,sans-serif;letter-spacing:-.2px;text-align:center;color:#fff;
+  background:linear-gradient(#9aa7ae,#7d8a92);box-shadow:inset 0 1px #ffffff55,0 1px 1px #0003}
+.pfi-other b{display:none}
+.pfi-cs b{background:linear-gradient(#9563cf,#6a3aa8)}.pfi-razor b{background:linear-gradient(#b27ad8,#8a4cb8)}
+.pfi-proj b,.pfi-sln b{background:linear-gradient(#7b5cb8,#553a8f)}.pfi-ts b{background:linear-gradient(#4f93d6,#2a66ad)}
+.pfi-tst b{background:linear-gradient(#5db577,#3a8a52)}.pfi-js b{background:linear-gradient(#f0d24a,#c9a41a);color:#3a2f06}
+.pfi-html b{background:linear-gradient(#f0804f,#cc5222)}.pfi-css b{background:linear-gradient(#4f9be6,#2470be)}
+.pfi-json b{background:linear-gradient(#f2cc5b,#cf9f22);color:#3b2f07}.pfi-npm b{background:linear-gradient(#d95c5c,#b03030)}
+.pfi-md b{background:linear-gradient(#6c8496,#465d6e)}.pfi-sql b{background:linear-gradient(#d99e4e,#b0731f)}
+.pfi-py b{background:linear-gradient(#4f8bc4,#2d5f93)}.pfi-xml b{background:linear-gradient(#a3a874,#7a7f4a)}
+.pfi-yml b{background:linear-gradient(#c8607a,#9c3a52)}.pfi-git b{background:linear-gradient(#ec7258,#c4432a)}
+.pfi-docker b{background:linear-gradient(#4fb0f2,#1c86d6)}.pfi-img b{background:linear-gradient(#4fbca5,#258a75)}
+.pfi-txt b{background:linear-gradient(#a3b0b6,#7d8a92)}.pfi-http b{background:linear-gradient(#58b6b6,#2f8a8a)}
+.pv-head .pfi{width:16px;height:20px}.pv-head .pfi b{bottom:3px}
+.proj-version select{background:linear-gradient(#fff,#eef1ef)}

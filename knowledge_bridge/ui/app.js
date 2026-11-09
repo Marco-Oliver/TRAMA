@@ -6,7 +6,7 @@ const app={view:'lessons',tab:'Nota completa',snapshot:null,note:null,selected:n
 let bridge=null;
 const categories={lessons:'02-Minhas-Aulas',knowledge:'01-Meu-Conhecimento',projects:'03-Meus-Projetos'};
 const titles={lessons:'Minhas Aulas',knowledge:'Meu Conhecimento',projects:'Meus Projetos',library:'Biblioteca do Obsidian'};
-const friendlyKinds={visao_geral:'Visão geral',aula:'Gravação',conceito:'Conceito',pessoa:'Pessoa',projeto:'Projeto',modulo:'Módulo'};
+const friendlyKinds={visao_geral:'Visão geral',aula:'Gravação',conceito:'Conceito',pessoa:'Pessoa',projeto:'Projeto',modulo:'Módulo',resumo_aula:'Resumo da aula',resumo_modulo:'Resumo do módulo',resumo_atividade:'Atividade',indice_resumos:'Índice de resumos',repositorio:'Repositório'};
 const friendlyStates={fontes_organizadas:'Fontes organizadas',aguardando_ia:'Aguardando resumo',resumida_com_ia:'Resumo gerado',sem_transcricao:'Sem transcrição'};
 const prettyLesson=v=>String(v||'').replace(/^Aula-(\d+)$/i,(_,n)=>'Aula '+n);
 
@@ -46,7 +46,7 @@ function askTramaConfirm(title,description,acceptLabel='Continuar'){
 }
 async function call(name,...args){if(!bridge||typeof bridge[name]!=='function'){notify('Conecte o aplicativo TRAMA.');return null;}try{return await bridge[name](...args);}catch(e){notify('Falha ao executar: '+String(e).slice(0,160));return null;}}
 async function refresh(){const data=await call('snapshot');if(!data)return;app.snapshot=data;libraryState.favorites=new Set(data.favorites||[]);document.body.classList.toggle('connected',!!data.connected);$('connect-state').textContent=data.connected?'Obsidian conectado':'Configure o cofre do Obsidian';const s=data.stats||{};$('status-counts').textContent=`▤ ${s.notes||0} notas   │   ▶ ${s.videos||0} vídeos   │   ▤ ${s.transcriptions||0} transcrições   │   ▰ ${s.materials||0} materiais   │   ▱ ${s.repositories||0} projetos`;
- document.querySelector('.status-version').textContent='TRAMA v2.2.6  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
+ document.querySelector('.status-version').textContent='TRAMA v2.2.7  │  '+(data.connected?'Obsidian conectado':'Sem cofre selecionado');
  if(!data.connected){app.note=null;app.selected=null;}
  renderNavigation();await render();}
 function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
@@ -72,7 +72,7 @@ function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
 }
 function renderNavigation(){document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.view===app.view));}
 async function setView(view){app.view=view;app.filter='';app.listFilter='all';app.tab=view==='lessons'?'Nota completa':'Resumo';$('search-all').value='';$('list-search').value='';renderNavigation();await render();}
-async function render(){if(app.view!=='graph'&&app.graphView){app.graphView.destroy();app.graphView=null;}if(!app.snapshot)return;if(app.view==='study'){await renderStudyView();return;}$('study-workspace').classList.add('hidden');if(app.view==='library'){await renderLibraryView();return;}if(['graph','home','settings','teacher'].includes(app.view)){renderOverlay();return;}
+async function render(){if(app.view!=='graph'&&app.graphView){app.graphView.destroy();app.graphView=null;}if(!app.snapshot)return;if(app.view!=='projects')$('projects-workspace').classList.add('hidden');if(app.view==='projects'&&typeof renderProjectsView==='function'){$('study-workspace').classList.add('hidden');await renderProjectsView();return;}if(app.view==='study'){await renderStudyView();return;}$('study-workspace').classList.add('hidden');if(app.view==='library'){await renderLibraryView();return;}if(['graph','home','settings','teacher'].includes(app.view)){renderOverlay();return;}
  $('library-workspace').classList.add('hidden');$('overlay-screen').classList.add('hidden');$('list-panel').classList.remove('hidden');$('note-panel').classList.remove('hidden');$('details-panel').classList.remove('hidden');
  $('list-title').textContent=titles[app.view]||'Minha Biblioteca';
  document.querySelectorAll('[data-list-filter]').forEach(btn=>btn.classList.toggle('active',btn.dataset.listFilter===app.listFilter));
@@ -308,7 +308,7 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
  if(app.view==='settings'){
   el.innerHTML=`<div class="wide-header"><h2>Ajustes</h2><p>O cofre do Obsidian é a fonte principal. O TRAMA não cria outra biblioteca.</p></div>
   <div class="settings-grid"><div class="setting-block"><h3>Atualizações do TRAMA</h3>
-    <p><strong>Versão instalada: 2.2.6.</strong> Para atualizar: clique em Verificar, depois em Baixar e confirme a instalação. Você não precisa reinstalar Python nem baixar arquivos ZIP.</p>
+    <p><strong>Versão instalada: 2.2.7.</strong> Para atualizar: clique em Verificar, depois em Baixar e confirme a instalação. Você não precisa reinstalar Python nem baixar arquivos ZIP.</p>
     <button id="check-updates">Verificar atualizações</button>
     <p id="update-message" class="setting-status">Clique em “Verificar atualizações” para consultar o GitHub.</p>
     <button id="install-update" class="hidden">Baixar e instalar nova versão</button>
@@ -346,7 +346,13 @@ async function renderOverlay(){$('library-workspace').classList.add('hidden');co
       <p id="ai-test-status" class="setting-status" aria-live="polite">Aguardando teste.</p>
     </div>
     <p>O TRAMA interrompe as chamadas ao alcançar a cota ou o limite local; não consegue verificar nem impedir cobranças em uma conta externa com faturamento ativo.</p>
+  </div><div class="setting-block" id="owners-setting"><h3>Donos dos repositórios (Projetos)</h3>
+    <p>Diz ao TRAMA de quem é cada repositório do GitHub: o seu, o da sua dupla ou o do professor. Use o nome do usuário ou da organização no GitHub.</p>
+    <div id="owners-list" class="owners-list"></div>
+    <div class="owners-add"><input id="owner-name" maxlength="100" placeholder="usuário ou organização" aria-label="Usuário ou organização do GitHub"><select id="owner-class" aria-label="Tipo"><option value="meu">Meu</option><option value="dupla">Dupla</option><option value="professor">Professor</option><option value="outro">Outro</option></select><input id="owner-label" maxlength="80" placeholder="nome para exibir (opcional)" aria-label="Nome para exibir"><button type="button" id="owner-save">Salvar</button></div>
+    <p id="owners-status" class="setting-status" aria-live="polite"></p>
   </div></div>`;
+  if(typeof projectsOwnersMount==='function')projectsOwnersMount(el);
   const refreshUpdateStatus=async()=>{
     const output=el.querySelector('#update-message');
     output.textContent='Verificando o canal de atualizações…';

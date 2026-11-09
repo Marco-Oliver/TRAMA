@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="faithful.css">
 <link rel="stylesheet" href="graph.css">
 <link rel="stylesheet" href="study.css">
+<link rel="stylesheet" href="projects.css">
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" class="svg-sprite" aria-hidden="true">
@@ -72,6 +73,7 @@
     <aside class="details-panel" id="details-panel"></aside>
     <section class="library-workspace hidden" id="library-workspace" aria-label="Biblioteca do Obsidian"></section>
     <section class="library-workspace study-workspace hidden" id="study-workspace" aria-label="Resumos de estudo"></section>
+    <section class="library-workspace projects-workspace hidden" id="projects-workspace" aria-label="Projetos e repositórios"></section>
     <section class="overlay-screen hidden" id="overlay-screen"></section>
   </div>
   <footer class="statusbar"><span class="status-counts" id="status-counts">Biblioteca</span><span class="status-center" id="status-message">Pronto para organizar seus materiais</span><span class="status-version">TRAMA v2.2.0 <span class="status-divider">│</span> Obsidian conectado</span></footer>
@@ -242,6 +244,45 @@ Alexandre Rech — professor"></textarea></label>
   <div class="dialog-actions"><button type="button" id="study-lesson-modules-reset">Voltar ao automático</button><button type="button" id="study-lesson-modules-save" class="trama-primary">Salvar escolha</button></div>
  </div>
 </dialog>
+<dialog id="study-activity-dialog" class="context-dialog trama-action-dialog study-activity-dialog" aria-labelledby="study-activity-title">
+ <form id="study-activity-form" novalidate>
+  <div class="dialog-header"><h2 id="study-activity-title">Nova atividade</h2><button type="button" id="study-activity-close" aria-label="Fechar">×</button></div>
+  <p>Cole o post do Classroom e o link do GitHub. O TRAMA preenche título, módulo, professor e prazo; confira e salve.</p>
+  <label for="study-activity-post">Post do Classroom (opcional)</label>
+  <textarea id="study-activity-post" name="post" rows="4" maxlength="20000" placeholder="[M01] Atividade 01 - Hello World em C#&#10;Tiago Santini de Athayde • 3 de mar.&#10;Data de entrega: 10 de mar."></textarea>
+  <div class="study-form-row"><button type="button" id="study-activity-parse">Ler post</button><small id="study-activity-parse-feedback"></small></div>
+  <div class="study-form-grid">
+   <label>Título<input name="title" maxlength="200" required></label>
+   <label>Tipo<select name="kind"><option value="atividade">Atividade</option><option value="trabalho">Trabalho</option><option value="prova">Prova</option></select></label>
+   <label>Módulo<select name="module_id" id="study-activity-module"></select></label>
+   <label>Código (ex.: M01)<input name="module_code" maxlength="6"></label>
+   <label>Professor<input name="author" maxlength="100"></label>
+   <label>Postada em<input name="posted_at" type="date"></label>
+   <label>Prazo de entrega<input name="due_at" type="date"></label>
+   <label>Nota<input name="grade" maxlength="20" placeholder="ex.: 9,5 ou 85/100"></label>
+  </div>
+  <label for="study-activity-repos">Repositórios do GitHub (um por linha: o seu, o da dupla e/ou o do professor)</label>
+  <textarea id="study-activity-repos" name="repos" rows="3" maxlength="2000" placeholder="https://github.com/Marco-Oliver/HelloWorld"></textarea>
+  <label for="study-activity-link">Outro link (opcional, ex.: prova)</label>
+  <input id="study-activity-link" name="link" maxlength="500" placeholder="https://">
+  <label for="study-activity-description">Enunciado</label>
+  <textarea id="study-activity-description" name="description" rows="4" maxlength="6000"></textarea>
+  <label for="study-activity-notes">Minhas anotações (opcional)</label>
+  <textarea id="study-activity-notes" name="notes" rows="2" maxlength="4000"></textarea>
+  <p id="study-activity-feedback" class="trama-inline-feedback" role="status" aria-live="polite"></p>
+  <div class="dialog-actions"><button type="button" id="study-activity-cancel">Cancelar</button><button type="submit" class="trama-primary" id="study-activity-submit">Salvar</button></div>
+ </form>
+</dialog>
+<dialog id="project-add-dialog" class="context-dialog trama-action-dialog" aria-labelledby="project-add-title">
+ <form id="project-add-form" novalidate>
+  <div class="dialog-header"><h2 id="project-add-title">Adicionar repositório</h2><button type="button" id="project-add-close" aria-label="Fechar">×</button></div>
+  <p>Cole o link do repositório no GitHub. O dono (Meu, Dupla ou Professor) vem da lista em Ajustes.</p>
+  <label for="project-add-url">Link do GitHub</label>
+  <input id="project-add-url" name="url" maxlength="300" placeholder="https://github.com/netos-do-velho-barrero/projeto">
+  <p id="project-add-feedback" class="trama-inline-feedback" role="status" aria-live="polite"></p>
+  <div class="dialog-actions"><button type="button" id="project-add-cancel">Cancelar</button><button type="submit" class="trama-primary">Adicionar</button></div>
+ </form>
+</dialog>
 <div class="toast hidden" id="toast" role="status"></div>
 <script src="library.js"></script>
 <script src="graph.js"></script>
@@ -249,4 +290,5 @@ Alexandre Rech — professor"></textarea></label>
 <script src="lesson_code.js"></script>
 <script src="teacher.js"></script>
 <script src="study.js"></script>
+<script src="projects.js"></script>
 </body></html>

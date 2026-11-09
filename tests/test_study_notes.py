@@ -265,6 +265,43 @@ class StudyNotesTests(unittest.TestCase):
         self.assertEqual(router.attempts, 1)
         self.assertEqual(study.module_status("logica-de-programacao")["new_since_summary"], 1)
 
+
+    # -------------------------------------------------------------- lacunas retomadas
+    def test_gap_is_marked_retaken_only_by_a_later_lesson_passage(self):
+        self.lesson2()
+        study = self.study()
+        study.run(FakeStudyRouter(lesson_payload(lacunas=[
+            {"item": "Criação de Conta no Github", "situacao": "problema de captcha"},
+            {"item": "Instalação do Git", "situacao": "não aparece"},
+            {"item": "Entrada de dados", "situacao": "não aparece"}])), ["Aula-002"], modules=False)
+        # Aula anterior não conta; aula posterior sim, mas só no mesmo trecho.
+        self.add("A01 - V01 - Antes.txt", "x", {"resumo": "Criamos a conta no GitHub juntos."})
+        self.add("A03 - V01 - Depois.txt", "x", {
+            "resumo": ("Hoje criamos a conta no GitHub e publicamos o repositório. "
+                       + "palavra " * 60 + "Também falamos de instalação de extensões. "
+                       + "palavra " * 60 + "O comando git commit registra alterações.")})
+        gaps = {g["item"]: g["retomada"] for g in self.study().gap_followups("Aula-002")}
+        self.assertEqual(gaps["Criação de Conta no Github"]["aula"], "Aula-003")
+        self.assertIsNone(gaps["Instalação do Git"])          # termos longe um do outro
+        self.assertIsNone(gaps["Entrada de dados"])
+        study = self.study()
+        living = study.living_module("logica-de-programacao")
+        self.assertEqual({g["item"] for g in living["lacunas_abertas"]},
+                         {"Instalação do Git", "Entrada de dados"})
+        self.app.publisher.rebuild()
+        note = (self.vault / lesson_note_path("Aula-002")).read_text(encoding="utf-8")
+        self.assertIn("retomada em [[04-Resumos/Aulas/Aula-003|Aula-003]]", note)
+        self.assertIn("Instalação do Git** — não aparece — *em aberto*", note)
+
+    def test_gap_followup_needs_no_ai_and_does_not_mark_summary_outdated(self):
+        self.lesson2()
+        study = self.study()
+        study.run(FakeStudyRouter(), ["Aula-002"], modules=False)
+        self.add("A03 - V01 - Depois.txt", "x", {"resumo": "Criação da conta no GitHub com captcha."})
+        study = self.study()
+        self.assertEqual(study.lesson_status("Aula-002"), "atualizado")
+        self.assertEqual(study.gap_followups("Aula-002")[0]["retomada"]["aula"], "Aula-003")
+
     # -------------------------------------------------------------- publication
     def test_publish_writes_04_resumos_and_protects_manual_edits(self):
         self.lesson2()
@@ -290,6 +327,30 @@ class StudyNotesTests(unittest.TestCase):
         self.app.publisher.rebuild()
         self.assertIn("Minha anotação.", note.read_text(encoding="utf-8"))
         self.assertTrue(list(note.parent.glob("Aula-002.PROPOSTA*.md")))
+
+    def test_study_pages_link_recordings_and_concepts_in_the_graph(self):
+        from knowledge_bridge.vault_index import VaultIndex
+        from knowledge_bridge.bridge import _graph_kind
+        self.lesson2()
+        self.study().run(FakeStudyRouter(), ["Aula-002"], modules=False)
+        self.app.publisher.rebuild()
+        text = (self.vault / lesson_note_path("Aula-002")).read_text(encoding="utf-8")
+        self.assertIn("## Ligações no cofre", text)
+        self.assertIn("[[02-Minhas-Aulas/Aula-002/", text)
+        self.assertIn("[[01-Meu-Conhecimento/Conceitos/", text)
+        index = VaultIndex(self.vault)
+        nodes, edges = index.graph(cap=450)
+        ids = [n.relative for n in nodes]
+        study_page = ids.index(lesson_note_path("Aula-002"))
+        neighbours = {ids[b] if a == study_page else ids[a] for a, b in edges if study_page in (a, b)}
+        # Linked to real evidence (recording + concept), not only to hidden index pages.
+        self.assertTrue(any(n.startswith("02-Minhas-Aulas/Aula-002/") and "/00-" not in n
+                            for n in neighbours))
+        self.assertTrue(any(n.startswith("01-Meu-Conhecimento/Conceitos/") for n in neighbours))
+        self.assertEqual(_graph_kind(nodes[study_page]), "resumo")
+        # A small cap keeps study pages rather than cutting them alphabetically.
+        small, _ = index.graph(cap=6)
+        self.assertIn(lesson_note_path("Aula-002"), [n.relative for n in small])
 
     def test_deleted_module_page_is_archived_only_if_untouched(self):
         self.lesson2()

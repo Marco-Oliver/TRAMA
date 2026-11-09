@@ -62,3 +62,72 @@
 .study-dialog-list{max-height:320px;overflow:auto;border:1px solid #dbe3dd;border-radius:6px;padding:6px 10px;margin:8px 0}
 @media(max-width:1180px){.study-workspace{grid-template-columns:255px minmax(320px,1fr) 250px}}
 @media(max-width:920px){.study-workspace{grid-template-columns:225px minmax(330px,1fr)}}
+.study-gap-open{font-size:10px;font-weight:700;color:#8a5b00;background:#fdf1d8;border-radius:8px;padding:1px 7px;margin-left:4px}
+.study-gap-done{font-size:10.5px;font-weight:600;color:#22704b;background:#e1f2e7;border-radius:8px;padding:1px 7px;margin-left:4px}
+.study-gap-done .study-link-btn{font-size:10.5px;padding:0}
+/* Atividades, trabalhos e provas + aulas de desenvolvimento */
+.study-tag{margin-left:auto;flex:none;font-size:9px;font-weight:700;color:#6b5a2e;background:#f6efda;border-radius:8px;padding:1px 6px}
+.study-tag.grade{color:#1f5f8f;background:#e1eefa}
+.study-subhead{font-size:9.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#7f8d95;padding:6px 0 2px 36px}
+.study-dot.dev{color:#8a6a2a}
+.study-status.dev{color:#6b4f12;background:#f6efda}
+.study-pre{white-space:pre-wrap;margin:0}
+.study-repo{border:1px solid #e2e8e4;border-radius:6px;padding:7px 8px;margin:0 0 8px;background:#fbfcfb}
+.study-repo-head{display:flex;align-items:center;gap:6px;min-width:0}
+.study-repo-head strong{font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.study-repo small{display:block;color:#6b7a83;font-size:10.5px;margin:4px 0}
+.study-repo code{font-size:10.5px}
+.study-repo-actions{display:flex;flex-wrap:wrap;gap:2px 8px}
+.study-repo-actions .lib-link{width:auto}
+.study-activity-dialog{width:min(720px,95vw);max-width:720px}
+.study-activity-dialog textarea{width:100%;box-sizing:border-box;font:12px/1.45 'Segoe UI',Tahoma,sans-serif;padding:7px;border:1px solid #b9c7be;border-radius:4px;resize:vertical}
+.study-form-row{display:flex;align-items:center;gap:10px;margin:6px 0 10px}
+.study-form-row small{color:#4f6a5a;font-size:11px}
+.study-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px;margin:6px 0 10px}
+.study-form-grid label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;font-weight:600;color:#2f4338}
+.study-form-grid input,.study-form-grid select{font-weight:400}
+
+/* ---- Visual antigo do TRAMA (igual à Biblioteca/Aulas): seções com ícones do app,
+   texto corrido, botões em degradê claro e selos .chip. Sobrepõe o estilo acima. ---- */
+.study-head-ico{color:#3c7a5a;display:flex}.study-head-ico .ui-svg{width:24px;height:24px;stroke-width:2}
+.study-primary,.study-module-tools .study-primary{border:1px solid #b6c9b9;border-radius:3px;background:linear-gradient(#fff,#e8f0e7);color:#216443;font-weight:700;min-height:30px;padding:5px 10px;cursor:pointer}
+.study-primary:hover,.study-module-tools .study-primary:hover{background:linear-gradient(#fff,#dcebdc)}
+.study-primary:disabled,.study-module-tools .study-primary:disabled{background:linear-gradient(#fbfcfb,#eef1ee);color:#8a9890;border-color:#d0d8d2}
+.study-module-tools button{border:1px solid #b5c0bf;border-radius:3px;background:linear-gradient(#fff,#eef1ef);font-size:12px}
+.study-chip{border:1px solid #d9e8dd;background:#e9f3ea;color:#27683e;border-radius:16px;padding:3px 9px;font-size:10px;font-weight:600}
+.study-chip.muted{border-color:#dae7ef;background:#eef4f7;color:#44769b}
+.chip.study-status{border-radius:16px;padding:4px 9px}
+.chip.study-status.warn{background:#fbf3e2;border-color:#efdfba;color:#86600f}
+.chip.study-status.pending{background:#eef4f7;border-color:#dae7ef;color:#44769b}
+.chip.study-status.off,.chip.study-status.dev{background:#f1f3f1;border-color:#dfe4e0;color:#5d6b63}
+.study-tag{font-size:9px;font-weight:600;border:1px solid #e6dcc0;background:#f8f4e8;color:#6d5a2b;border-radius:16px;padding:1px 7px}
+.study-tag.grade{border-color:#dae7ef;background:#eef4f7;color:#44769b}
+.study-dot{margin-left:auto;width:auto;font-size:8px;font-weight:400}
+.study-dot.ok{color:#5aa77a}.study-dot.warn{color:#d3a240}.study-dot.pending{color:#7aa3c8}.study-dot.off{color:#b9c3c8}
+.study-phrase{background:none;border:0;padding:0;margin:0 0 6px}
+.study-phrase blockquote{margin:0 0 6px}
+.study-alert{background:#fbf6ea;border:0;border-left:3px solid #d8b56a;border-radius:0;padding:8px 13px;font-size:13px;color:#6a4b0b}
+.study-grid{display:block}
+.study-sec{border-top:1px solid #cdd5d1;margin:18px 0 0;padding-top:8px}
+.study-sec h2{margin:0 0 9px}
+.study-sec-body{font-size:15px;line-height:1.46;color:#1f304b}
+.study-sec-body>p:first-child{margin-top:0}
+.study-sec-body .study-empty{font-size:14px;color:#6b7a73;font-style:italic}
+.study-sec.warn h2 .lib-section-icon{color:#b07a17}
+.study-mind{display:block}
+.study-mind-theme{border:0;padding:0;background:none;margin:0 0 8px}
+.study-mind-theme h4{font-size:15px;margin:8px 0 2px;color:#1e5a3d}
+.study-videos .study-video{font-size:10px;background:#eef4f7;color:#44769b;border:1px solid #dae7ef;border-radius:16px}
+.study-living-row{border-bottom:1px solid #e6ebe8;padding:7px 0}
+.study-living-row .study-link-btn{font-size:15px;font-weight:600;color:#066ad0}
+.study-link-btn{color:#066ad0;font-size:14px}
+.study-modules-line{font-size:12px}
+.study-quiz summary{font-weight:600;font-size:15px}
+.study-quiz p{font-size:14.5px}
+.study-cmd small{font-size:12px}
+.study-subhead{font-size:10px;letter-spacing:.3px;color:#718678;padding-left:40px}
+.study-repo{border:0;border-bottom:1px solid #e6ebe8;border-radius:0;background:none;padding:7px 2px}
+.study-repo:last-child{border-bottom:0}
+.study-repo-head strong{font-size:13px}
+.study-repo small{font-size:12px}
+.study-path{font:12px Consolas,monospace}
