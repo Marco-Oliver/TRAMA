@@ -24,15 +24,14 @@ const PROJ_FOLDER_COLORS=[
   [/^(assets|images?|img|imagens|css|js|lib)$/i,'asset'],[/^(config|properties|configuracoes)$/i,'cfg'],
   [/^(v|vers[aã]o)[ ._-]*\d+/i,'ver']];
 function projFileIcon(path){
-  for(const [re,cls,label] of PROJ_FILE_ICONS)if(re.test(path))return `<span class="pfi pfi-${cls}" aria-hidden="true">${escapeHTML(label)}</span>`;
-  return '<span class="pfi pfi-other" aria-hidden="true">•</span>';
+  for(const [re,cls,label] of PROJ_FILE_ICONS)if(re.test(path))return `<span class="pfi pfi-${cls}" aria-hidden="true"><b>${escapeHTML(label)}</b></span>`;
+  return '<span class="pfi pfi-other" aria-hidden="true"><b></b></span>';
 }
 function projFolderIcon(name,open){
   let cls='plain';for(const [re,c] of PROJ_FOLDER_COLORS)if(re.test(name)){cls=c;break;}
-  const path=open?'M1.5 4.5V3.2c0-.5.4-.9.9-.9h3.7l1.5 1.5h6c.5 0 .9.4.9.9v.8H4.3L1.5 12.8zM1.5 13l2.6-7.2h11.4L12.9 13z':
-    'M1.5 3.2c0-.5.4-.9.9-.9h3.7l1.5 1.5h6c.5 0 .9.4.9.9V13H1.5z';
-  return `<svg class="pfo pfo-${cls}" viewBox="0 0 16 16" aria-hidden="true"><path d="${path}"/></svg>`;
+  return `<span class="lib-folder-icon pf-fold pfo-${cls}" aria-hidden="true"></span>`;
 }
+const PROJ_REPO_ICON='<span class="repo-ico" aria-hidden="true"><svg viewBox="0 0 16 16"><circle cx="5" cy="3.6" r="1.6"/><circle cx="5" cy="12.4" r="1.6"/><circle cx="11.2" cy="6" r="1.6"/><path d="M5 5.2v5.6M11.2 7.6c0 2.2-2.4 2.4-5.2 3.4"/></svg></span>';
 function projOwnerBadge(klass){return `<span class="owner-badge owner-${escapeHTML(klass)}">${escapeHTML(PROJ_OWNER[klass]||'Outro')}</span>`;}
 function projSize(n){return n>=1024?(n/1024).toFixed(n>=10240?0:1)+' KB':n+' B';}
 
@@ -139,7 +138,7 @@ function projVersionOptions(){
 function projPaint(){
   const root=$('projects-workspace');
   root.innerHTML=`<section class="lib-tree-panel proj-tree" id="proj-tree"></section>
-   <section class="lib-note-panel"><div class="lib-tab-strip"><div class="lib-open-tab"><span>${libIcon('folder')}</span><span class="lib-tab-text" id="proj-tab">${escapeHTML(projState.file?.path?.split('/').at(-1)||(projState.view?projState.view.name:'Projetos'))}</span></div></div>
+   <section class="lib-note-panel"><div class="lib-tab-strip"><div class="lib-open-tab">${PROJ_REPO_ICON}<span class="lib-tab-text" id="proj-tab">${escapeHTML(projState.file?.path?.split('/').at(-1)||(projState.view?projState.view.name:'Projetos'))}</span></div></div>
    <div class="lib-note-scroll" id="proj-main"></div></section>
    <aside class="lib-right-panel" id="proj-side"></aside>`;
   projPaintTree();projPaintMain();projPaintSide();
@@ -150,7 +149,7 @@ function projPaintTree(){
   if(!projState.repo){
     const groups=projState.overview?.groups||[];
     const q=projState.search.trim().toLowerCase();
-    let html=`<div class="lib-tree-head"><span class="study-head-ico">${libIcon('folder')}</span><div><strong>Projetos</strong><small>Seus repositórios, os da dupla e os do professor.</small></div></div>
+    let html=`<div class="lib-tree-head"><span class="study-head-ico">${PROJ_REPO_ICON}</span><div><strong>Projetos do GitHub</strong><small>Os seus repositórios, os da dupla e os do professor.</small></div></div>
      <div class="study-tree-actions"><button type="button" id="proj-add" class="study-primary">＋ Adicionar repositório</button></div>
      <div class="lib-search"><span>⌕</span><input id="proj-search" maxlength="80" placeholder="Buscar repositório..." value="${escapeHTML(projState.search)}" aria-label="Buscar repositório"></div><div class="lib-tree-scroll">`;
     for(const g of groups){
@@ -246,11 +245,11 @@ function projPaintSide(){
   const version=(v.versions||[]).find(x=>x.sha===projState.version);
   const ghUrl=projState.file?.path&&projState.version?`${v.url}/blob/${projState.version}/${projState.file.path.split('/').map(encodeURIComponent).join('/')}`:
     (projState.version?`${v.url}/tree/${projState.version}`:v.url);
-  let html=`<section class="lib-side-card"><h3><span class="card-heading-ico">${libIcon('folder','heading-icon')}</span>Repositório</h3><div class="side-body">
+  let html=`<section class="lib-side-card"><h3><span class="card-heading-ico">${PROJ_REPO_ICON}</span>Repositório</h3><div class="side-body">
     <div class="lib-stat"><span class="stat-label">Dono</span><span class="stat-value"><select id="proj-owner-class" aria-label="Dono do repositório">${['meu','dupla','professor','outro'].map(k=>`<option value="${k}"${v.owner_class===k?' selected':''}>${PROJ_OWNER[k]}</option>`).join('')}</select></span></div>
     <div class="lib-stat"><span class="stat-label">GitHub</span><span class="stat-value muted">${escapeHTML(v.owner)}</span></div>
     <div class="lib-stat"><span class="stat-label">Versão</span><span class="stat-value muted">${escapeHTML(version?version.label:'—')}${projState.folder?' · pasta '+escapeHTML(projState.folder):''}</span></div>
-    <button type="button" class="lib-side-button" id="proj-open-github" data-url="${escapeHTML(ghUrl)}"><span class="action-left">${libIcon('arrow','action-icon')}Abrir no GitHub${projState.file?.path?' (este arquivo)':''}</span>${libIcon('arrow','action-end')}</button>
+    <button type="button" class="lib-side-button" id="proj-open-github" data-url="${escapeHTML(ghUrl)}"><span class="action-left">${PROJ_REPO_ICON}Abrir no GitHub${projState.file?.path?' (este arquivo)':''}</span>${libIcon('arrow','action-end')}</button>
     <button type="button" class="lib-side-button" id="proj-refresh"><span class="action-left">${libIcon('refresh','action-icon')}Atualizar versões</span>${libIcon('arrow','action-end')}</button>
     <button type="button" class="lib-side-button" id="proj-open-note"><span class="action-left">${libIcon('file','action-icon')}Abrir nota no Obsidian</span>${libIcon('arrow','action-end')}</button>
     <button type="button" class="lib-side-button study-danger" id="proj-remove"><span class="action-left">Tirar da lista</span>${libIcon('arrow','action-end')}</button></div></section>`;

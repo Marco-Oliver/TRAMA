@@ -90,3 +90,38 @@
 .pv-code{border-radius:5px;background:#f5f7f6;border-color:#dfe7e1}
 .pv-num{background:#eef2ef}
 .pv-head strong{font-size:15px}
+/* ---- Ícones no estilo antigo (degradê e brilho, como a pasta e o cristal da Biblioteca) ---- */
+/* Selo de repositório: desenho próprio (ramificação de versões), não é a marca do GitHub. */
+.repo-ico{position:relative;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;flex:none;border-radius:5px;
+  background:linear-gradient(160deg,#5d6b78 0%,#2f3b46 55%,#1b242c 100%);border:1px solid #121a20;box-shadow:inset 0 1px #ffffff40,0 1px 1px #0003}
+.repo-ico svg{width:15px;height:15px;fill:#f2f6f8;stroke:#f2f6f8;stroke-width:1.5;stroke-linecap:round}
+.repo-ico svg path{fill:none}
+.study-head-ico .repo-ico{width:26px;height:28px;border-radius:7px;filter:drop-shadow(0 1px 1px #1b242c)}.study-head-ico .repo-ico svg{width:18px;height:18px}
+.lib-side-button .repo-ico,.lib-side-card h3 .repo-ico{width:20px;height:20px}
+.lib-side-button .repo-ico svg,.lib-side-card h3 .repo-ico svg{width:13px;height:13px}
+/* Pastas da árvore: a mesma pasta amarela antiga, com leve tom por tipo de pasta. */
+.pf-fold{position:relative;transform:scale(.88);transform-origin:center}
+.pf-fold.pfo-ctrl{filter:hue-rotate(175deg) saturate(.9)!important}.pf-fold.pfo-view{filter:hue-rotate(-18deg) saturate(1.1)!important}
+.pf-fold.pfo-model{filter:hue-rotate(-40deg) saturate(.9)!important}.pf-fold.pfo-www{filter:hue-rotate(130deg) saturate(.8)!important}
+.pf-fold.pfo-migr{filter:hue-rotate(230deg) saturate(.7)!important}.pf-fold.pfo-test{filter:hue-rotate(70deg) saturate(.8)!important}
+.pf-fold.pfo-src{filter:hue-rotate(155deg) saturate(.8)!important}.pf-fold.pfo-meta{filter:grayscale(1) brightness(.85)!important}
+.pf-fold.pfo-ver{filter:hue-rotate(275deg) saturate(.7)!important}.pf-fold.pfo-cfg{filter:grayscale(.8)!important}
+/* Arquivos: folha branca com canto dobrado e faixa colorida com a extensão. */
+.pfi{position:relative;display:inline-block;width:14px;height:17px;flex:none;border-radius:1px;background:linear-gradient(#ffffff,#e6ebee);
+  border:1px solid #7f8e99;box-shadow:0 1px 1px #0002;color:transparent;font-size:0}
+.pfi::before{content:'';position:absolute;top:-1px;right:-1px;width:5px;height:5px;background:linear-gradient(225deg,#fbfcfa 50%,#c7d0d6 50%);border-left:1px solid #7f8e99;border-bottom:1px solid #7f8e99}
+.pfi b{position:absolute;left:-3px;right:-3px;bottom:2px;height:8px;border-radius:1px;font:700 6.5px/8px 'Segoe UI',Tahoma,sans-serif;letter-spacing:-.2px;text-align:center;color:#fff;
+  background:linear-gradient(#9aa7ae,#7d8a92);box-shadow:inset 0 1px #ffffff55,0 1px 1px #0003}
+.pfi-other b{display:none}
+.pfi-cs b{background:linear-gradient(#9563cf,#6a3aa8)}.pfi-razor b{background:linear-gradient(#b27ad8,#8a4cb8)}
+.pfi-proj b,.pfi-sln b{background:linear-gradient(#7b5cb8,#553a8f)}.pfi-ts b{background:linear-gradient(#4f93d6,#2a66ad)}
+.pfi-tst b{background:linear-gradient(#5db577,#3a8a52)}.pfi-js b{background:linear-gradient(#f0d24a,#c9a41a);color:#3a2f06}
+.pfi-html b{background:linear-gradient(#f0804f,#cc5222)}.pfi-css b{background:linear-gradient(#4f9be6,#2470be)}
+.pfi-json b{background:linear-gradient(#f2cc5b,#cf9f22);color:#3b2f07}.pfi-npm b{background:linear-gradient(#d95c5c,#b03030)}
+.pfi-md b{background:linear-gradient(#6c8496,#465d6e)}.pfi-sql b{background:linear-gradient(#d99e4e,#b0731f)}
+.pfi-py b{background:linear-gradient(#4f8bc4,#2d5f93)}.pfi-xml b{background:linear-gradient(#a3a874,#7a7f4a)}
+.pfi-yml b{background:linear-gradient(#c8607a,#9c3a52)}.pfi-git b{background:linear-gradient(#ec7258,#c4432a)}
+.pfi-docker b{background:linear-gradient(#4fb0f2,#1c86d6)}.pfi-img b{background:linear-gradient(#4fbca5,#258a75)}
+.pfi-txt b{background:linear-gradient(#a3b0b6,#7d8a92)}.pfi-http b{background:linear-gradient(#58b6b6,#2f8a8a)}
+.pv-head .pfi{width:16px;height:20px}.pv-head .pfi b{bottom:3px}
+.proj-version select{background:linear-gradient(#fff,#eef1ef)}
