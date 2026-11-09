@@ -16,7 +16,7 @@
 .tg-dark .tg-chip{background:#2c3236;border-color:#40484d;color:#dfe5e1}
 .tg-dot{width:10px;height:10px;border-radius:50%;flex:none}
 .tg-dot-aula{background:#4f8fd0}.tg-dot-conceito{background:#3fa774}.tg-dot-duvida{background:#e0a43a}
-.tg-dot-projeto{background:#c0794f}.tg-dot-indice{background:#8a7bb8}.tg-dot-outro{background:#8c9a93}
+.tg-dot-projeto{background:#c0794f}.tg-dot-indice{background:#8a7bb8}.tg-dot-outro{background:#8c9a93}.tg-dot-resumo{background:#2f9c9c}
 .tg-canvas{flex:1;min-height:0;width:100%;display:block;cursor:grab;touch-action:none}
 .tg-canvas.tg-pointer{cursor:pointer}
 .tg-canvas:active{cursor:grabbing}

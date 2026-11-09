@@ -328,6 +328,30 @@ class StudyNotesTests(unittest.TestCase):
         self.assertIn("Minha anotação.", note.read_text(encoding="utf-8"))
         self.assertTrue(list(note.parent.glob("Aula-002.PROPOSTA*.md")))
 
+    def test_study_pages_link_recordings_and_concepts_in_the_graph(self):
+        from knowledge_bridge.vault_index import VaultIndex
+        from knowledge_bridge.bridge import _graph_kind
+        self.lesson2()
+        self.study().run(FakeStudyRouter(), ["Aula-002"], modules=False)
+        self.app.publisher.rebuild()
+        text = (self.vault / lesson_note_path("Aula-002")).read_text(encoding="utf-8")
+        self.assertIn("## Ligações no cofre", text)
+        self.assertIn("[[02-Minhas-Aulas/Aula-002/", text)
+        self.assertIn("[[01-Meu-Conhecimento/Conceitos/", text)
+        index = VaultIndex(self.vault)
+        nodes, edges = index.graph(cap=450)
+        ids = [n.relative for n in nodes]
+        study_page = ids.index(lesson_note_path("Aula-002"))
+        neighbours = {ids[b] if a == study_page else ids[a] for a, b in edges if study_page in (a, b)}
+        # Linked to real evidence (recording + concept), not only to hidden index pages.
+        self.assertTrue(any(n.startswith("02-Minhas-Aulas/Aula-002/") and "/00-" not in n
+                            for n in neighbours))
+        self.assertTrue(any(n.startswith("01-Meu-Conhecimento/Conceitos/") for n in neighbours))
+        self.assertEqual(_graph_kind(nodes[study_page]), "resumo")
+        # A small cap keeps study pages rather than cutting them alphabetically.
+        small, _ = index.graph(cap=6)
+        self.assertIn(lesson_note_path("Aula-002"), [n.relative for n in small])
+
     def test_deleted_module_page_is_archived_only_if_untouched(self):
         self.lesson2()
         study = self.study()

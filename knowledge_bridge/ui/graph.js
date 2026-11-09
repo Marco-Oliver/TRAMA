@@ -1,6 +1,6 @@
 /* TRAMA — Grafo de conexões (canvas, sem dependências externas).
    Uso: const g = TramaGraph.mount(container, {nodes, edges}, {onOpen(id){...}});
-   nodes: [{id, title, kind, degree?}]   kind: aula | conceito | duvida | projeto | indice | outro
+   nodes: [{id, title, kind, degree?}]   kind: aula | conceito | duvida | projeto | resumo | indice | outro
    edges: [[a, b], ...] índices em nodes */
 (function (global) {
   'use strict';
@@ -10,6 +10,7 @@
     conceito: { label: 'Conceitos', color: '#3fa774' },
     duvida:   { label: 'Dúvidas',   color: '#e0a43a' },
     projeto:  { label: 'Projetos',  color: '#c0794f' },
+    resumo:   { label: 'Resumos',   color: '#2f9c9c' },
     indice:   { label: 'Índices',   color: '#8a7bb8' },
     outro:    { label: 'Outros',    color: '#8c9a93' }
   };

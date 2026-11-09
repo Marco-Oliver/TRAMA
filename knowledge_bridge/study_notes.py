@@ -1101,7 +1101,42 @@ def _vids(codes) -> str:
     return (" · *" + ", ".join(codes) + "*") if codes else ""
 
 
-def render_lesson(study: StudyNotes, lesson: str) -> str | None:
+def lesson_vault_links(study: StudyNotes, lesson: str, publisher=None) -> dict:
+    """Existing evidence notes of a lesson: recordings and concept pages.
+
+    Only files that already exist in the vault are linked, so the Obsidian
+    graph connects a study page to its sources without dangling links.
+    """
+    out = {"gravacoes": [], "conceitos": []}
+    folder = study.vault / "02-Minhas-Aulas" / lesson
+    if folder.is_dir() and not folder.is_symlink():
+        for path in sorted(folder.glob("*.md"))[:40]:
+            if path.stem.startswith("00-") or ".PROPOSTA" in path.name or path.is_symlink():
+                continue
+            out["gravacoes"].append(path.relative_to(study.vault).with_suffix("").as_posix())
+    seen = set()
+    for src in study._lesson_sources(lesson):
+        analysis = study.store.analysis(src["id"], src["digest"]) or {}
+        for concept in _as_list(analysis.get("conceitos")):
+            name = concept.get("nome") if isinstance(concept, dict) else None
+            if not isinstance(name, str) or not name.strip():
+                continue
+            try:
+                target = (publisher._concept_target(name, src["id"], lesson) if publisher is not None
+                          else slug(name))
+            except Exception:  # noqa: BLE001 - linking is best effort
+                target = slug(name)
+            rel = f"01-Meu-Conhecimento/Conceitos/{target}"
+            if rel in seen or not (study.vault / (rel + ".md")).is_file():
+                continue
+            seen.add(rel)
+            out["conceitos"].append((rel, name.strip()[:80]))
+            if len(seen) >= 30:
+                break
+    return out
+
+
+def render_lesson(study: StudyNotes, lesson: str, vault_links: dict | None = None) -> str | None:
     view = study.lesson_view(lesson)
     s = view["summary"]
     if not s:
@@ -1170,6 +1205,15 @@ def render_lesson(study: StudyNotes, lesson: str) -> str | None:
         lines += [f"{i}. {_md(q['pergunta'])}", f"   - *Resposta:* {_md(q['resposta'])}"]
     if not s["revisao"]:
         lines.append("*Sem perguntas de revisão.*")
+    links = vault_links or {}
+    if links.get("gravacoes") or links.get("conceitos"):
+        lines += ["", "## Ligações no cofre", ""]
+        if links.get("gravacoes"):
+            lines.append("**Gravações:** " + ", ".join(
+                f"[[{rel}|{_md(rel.rsplit('/', 1)[-1])}]]" for rel in links["gravacoes"]))
+        if links.get("conceitos"):
+            lines.append("**Conceitos:** " + ", ".join(
+                f"[[{rel}|{_md(name)}]]" for rel, name in links["conceitos"]))
     lines += ["", f"*Gerado em {_md(view['generated'])} · {_md(view['provider'])}. "
               "Os vídeos citados indicam a origem de cada ponto.*", ""]
     return "\n".join(lines)
@@ -1270,7 +1314,7 @@ def publish(study: StudyNotes, publisher) -> None:
     """Write 04-Resumos via Publisher.write (protects manual edits)."""
     publisher.write("04-Resumos/00-Indice.md", render_index(study))
     for lesson in study.lessons():
-        text = render_lesson(study, lesson)
+        text = render_lesson(study, lesson, lesson_vault_links(study, lesson, publisher))
         if text:
             publisher.write(lesson_note_path(lesson), text)
     # Only modules with lessons get a page; empty/deleted ones are archived

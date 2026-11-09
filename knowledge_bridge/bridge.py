@@ -52,6 +52,8 @@ def _graph_kind(note) -> str:
         return "aula"
     if note.section == "03-Meus-Projetos":
         return "projeto"
+    if note.section == "04-Resumos":
+        return "resumo"
     return "outro"
 
 class Bridge:
