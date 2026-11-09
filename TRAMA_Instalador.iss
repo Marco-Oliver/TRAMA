@@ -1,5 +1,5 @@
 #define MyAppName "TRAMA"
-#define MyAppVersion "2.2.4"
+#define MyAppVersion "2.2.5"
 #define MyAppExeName "TRAMA.exe"
 
 [Setup]

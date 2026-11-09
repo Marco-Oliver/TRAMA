@@ -1,5 +1,18 @@
 # Histórico de versões do TRAMA
 
+## [2.2.5] — 2026-11-09
+
+### Corrigido — consistência de conceitos e nomes nas aulas
+- Conceitos canônicos da aula usados de forma consistente na nota da gravação, visão geral, mapa de evolução, módulos e índices do Obsidian, sem links para páginas antigas de conceitos já unificados (por exemplo, Extensão C# Dev Kit → C# Dev Kit; Arquivo .cs/Extensão .cs → .cs).
+- Nome do autor do Classroom, **Tiago Santini de Athayde**, prevalece sobre o nome reduzido **Thiago Santini**, que permanece como alias. Menções incertas, como Thago Rover, apontam para o nome canônico sem afirmar equivalência sem evidência.
+- Página antiga de pessoa gerada automaticamente é arquivada quando elegível, preservando notas editadas manualmente.
+- Rebuild local aproveita dados e análises já existentes: sem novas chamadas à IA, sem alterar TXT originais nem segredos.
+
+### Distribuição
+- App e instalador Windows 2.2.5, mantendo AppId, cofre, SQLite, configurações e chaves locais.
+- Release condicionada a testes de regressão e adversariais, instalação/reinstalação/desinstalação e upgrades de v2.1.0, v2.2.0, v2.2.1, v2.2.2, v2.2.3 e v2.2.4 para v2.2.5, com dados sintéticos.
+
+
 ## [2.2.4] — 2026-11-08
 
 ### Fidelidade local da Aula 02 (sem reprocessar IA)
