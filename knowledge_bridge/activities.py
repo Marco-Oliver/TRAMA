@@ -490,8 +490,8 @@ class Activities:
 
     def delete(self, activity_id: str) -> None:
         with self.conn:
-            for table in ("study_activity_repos", "study_activity_summaries"):
-                self.conn.execute(f"DELETE FROM {table} WHERE activity_id=?", (activity_id,))
+            self.conn.execute("DELETE FROM study_activity_repos WHERE activity_id=?", (activity_id,))
+            self.conn.execute("DELETE FROM study_activity_summaries WHERE activity_id=?", (activity_id,))
             self.conn.execute("DELETE FROM study_activities WHERE id=?", (activity_id,))
         self.invalidate()
         self.study.invalidate()

@@ -55,6 +55,8 @@ jobs:
           node --check knowledge_bridge/ui/graph.js
           node --check knowledge_bridge/ui/app.js
           node --check knowledge_bridge/ui/teacher.js
+          node --check knowledge_bridge/ui/study.js
+          node --check knowledge_bridge/ui/projects.js
   browser:
     if: (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || contains(github.event.head_commit.message, '[full-audit]'))
     runs-on: ubuntu-latest
