@@ -1,5 +1,27 @@
 # Histórico de versões do TRAMA
 
+## [Não publicado] — branch feat/2.2.7-atividades-projetos
+
+### Novo — Atividades, trabalhos e provas (Resumos)
+- Pasta **Atividades, trabalhos e provas** em Resumos, com CRUD. Cadastro colando o post do Classroom: título, módulo ([M01]), professor e prazo são lidos sozinhos; o tipo é sugerido e editável. Prova aceita nota e link.
+- Uma atividade guarda vários repositórios (o seu, o da dupla e o do professor). A **versão entregue** é o último commit até o prazo, congelada por SHA.
+- **Resumo da entrega por IA** (1 chamada) a partir do código da versão entregue: o que foi pedido, o que foi feito, estrutura, conceitos das aulas no código e o que falta. Arquivos e trechos são conferidos no código antes de publicar.
+- **Aulas de desenvolvimento**: aulas só com post (ex.: "Dúvidas e ajudas") aparecem em Resumos e se ligam ao trabalho em andamento pela data/prazo ou pelo nome.
+- Módulos mostram as entregas, e o resumo do módulo pela IA passa a considerá-las.
+- **Lacunas retomadas**: uma lacuna da aula vira "retomada na Aula X" quando uma gravação posterior trata do assunto (sem IA).
+
+### Novo — aba Projetos
+- Repositórios agrupados em **Meus / Dupla / Professor**, com os pares lado a lado (professor × nosso).
+- Navegação de arquivos estilo GitHub dentro do TRAMA, com número de linha e seletor de **versão**: entregue, main, branches, tags e pastas V0/V1/V2.
+- Donos dos repositórios editáveis em **Ajustes**.
+- Somente leitura via API REST (sem clone, sem commit). Arquivos são lidos pelo endereço raw do SHA e não gastam a cota da API.
+
+### Obsidian, Biblioteca e Grafo
+- Notas em `04-Resumos/Atividades/` e uma nota por repositório em `03-Meus-Projetos/Repositorios/`, com links da versão entregue e do repositório atual e a seção **Contexto para IA**. O código não é copiado para o cofre.
+- Biblioteca: notas de Resumos e Projetos ganham o botão para abrir na tela própria do TRAMA.
+- Grafo: resumos ligados às gravações e aos conceitos da aula, com cor e filtro próprios.
+- Resumos e Projetos no visual da Biblioteca (mesmos ícones e tipografia).
+
 ## [2.2.6] — 2026-11-09
 
 ### Novo — aba Resumos (camada de estudo)
