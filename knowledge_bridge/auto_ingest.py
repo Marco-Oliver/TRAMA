@@ -368,6 +368,8 @@ class AutoOrganizer:
                     outcome['pending'].append('Atividade não cadastrada: '+str(exc)[:120])
                     continue
                 outcome['activities']+=1
+                outcome.setdefault('activity_titles',[]).append(
+                    ('nova: ' if created else 'atualizada: ')+activity['title'][:90])
                 for repo in activity['repos']:
                     if repo['sha']:
                         continue
@@ -388,6 +390,13 @@ class AutoOrganizer:
         docs_suggestion_paused=False
         for entry in links:
             if entry['repo']:
+                # Every GitHub link that enters through Importar also shows in Projetos.
+                try:
+                    from .study_notes import StudyNotes
+                    from .projects import Projects
+                    Projects(StudyNotes(self.app.store,log=lambda _t:None)).register(entry['url'])
+                except ValueError:
+                    pass
                 try:
                     outcome['repositories']+=int(self.app.add_repo(entry['url']))
                 except (OSError,ValueError,RuntimeError) as exc:

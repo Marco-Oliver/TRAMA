@@ -448,3 +448,17 @@ Data de entrega: 4 de mar., 14:00
         self.assertEqual(parsed["posted_at"], "2026-03-03")
         self.assertEqual(parsed["due_at"], "2026-03-04")
         self.assertEqual(parsed["description"], "")
+
+
+class ImportPreviewTests(unittest.TestCase):
+    def test_preview_counts_without_side_effects(self):
+        bridge = Bridge.__new__(Bridge)
+        r = bridge.preview_import("Aula 05 - Condicionais\nTiago Santini\nA05 - V01 - If\n"
+                                  "https://drive.google.com/file/d/x/view\n" + ImportActivityTests.PASTE +
+                                  MY_REPO + "\nlinha solta qualquer\n")
+        self.assertTrue(r["ok"])
+        self.assertEqual([p["lesson"] for p in r["posts"]], ["Aula-005"])
+        self.assertEqual(r["activities"][0]["kind"], "Atividade")
+        self.assertEqual(r["activities"][0]["repos"], 1)
+        self.assertEqual(r["videos"], 1)
+        self.assertFalse(bridge.preview_import("x" * 40000)["ok"])

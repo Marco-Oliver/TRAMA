@@ -2,6 +2,12 @@
 
 ## [2.2.8] — 2026-11-09
 
+### Importar e organizar como fonte principal
+- Tela nova no visual do TRAMA, em duas colunas: **1. Arquivos e prints** e **2. Texto do Classroom e links** (posts de aula, posts de atividade, gravações e GitHub, tudo no mesmo campo).
+- **Prévia ao vivo** enquanto você cola: aulas, atividades/trabalhos/provas com prazo, repositórios, links de gravação e linhas não reconhecidas, antes de processar e sem IA.
+- Resultado em lista (arquivos, aulas, atividades novas/atualizadas, repositórios, chamadas à IA) e pendências recolhíveis.
+- Todo link do GitHub que entra pelo Importar também aparece em **Projetos**.
+
 ### Corrigido — importar post de atividade
 - Colar o post de uma atividade/trabalho/prova (ex.: `[M01] Atividade 01 - Hello World em C#`) em **Importar e organizar** agora cadastra a atividade em Resumos → Atividades, em vez de virar pendência "texto fora de um post".
 - Lê o professor na linha logo após o título, a data solta ("3 de mar.") e ignora o título repetido do Classroom. Datas sem ano ficam no passado (post de março lido em novembro = março deste ano).
