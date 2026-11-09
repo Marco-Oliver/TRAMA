@@ -350,11 +350,17 @@ class Publisher:
             return canonical
         return name
 
-    def _concept_target(self, name: str, source_id: str = "") -> str:
-        """Keep the spoken label in text; optionally link its verified alias."""
+    def _concept_target(self, name: str, source_id: str = "",
+                        lesson: str = "") -> str:
+        """Resolve a concept in its LESSON before choosing its real page.
+
+        Same spelling may have different aliases in other lessons. Global
+        guesses are not reliable when a lesson-specific mapping exists.
+        """
         corrected = self._concept_aliases.get((source_id, name.casefold()),
-                  self._canonical_concept_name(name))
-        return self._concept_targets.get(concept_slug(corrected), concept_file_slug(corrected))
+                    self._canonical_concept_name(name, lesson))
+        return self._concept_targets.get(
+            concept_slug(corrected), concept_file_slug(corrected))
 
     @staticmethod
     def _asr_concept_warning(concept: dict) -> str:
@@ -833,7 +839,8 @@ class Publisher:
         merged_concepts=self._deduplicate_lesson_concepts(lesson,[
             concept for src,_note in recordings
             for concept in (self.db.analysis(src['id'],src['digest']) or {}).get('conceitos',[])
-            if isinstance(concept,dict)])
+            if isinstance(concept,dict) and (self.db.analysis(src['id'],src['digest']) or {})
+               .get('tipo_aula') not in ('apresentacao','organizacional','atividade')])
         self._append_official_material(rows,lesson,{"conceitos":merged_concepts})
         rows += ['', '## Pessoas citadas', '']
         person_links=[]; concept_links=[]
@@ -874,14 +881,18 @@ class Publisher:
                 entry=(f"[[{slug(canonical)}|{_escape_md(canonical)}]]"
                        if slug(canonical) in self._eligible_people else _escape_md(presenter))
                 if entry not in person_links:person_links.append(entry)
-            if a.get("tipo_aula") not in ("apresentacao","organizacional","atividade"):
-                for c in a.get('conceitos',[]):
-                    if not isinstance(c,dict):
-                        continue
-                    name=str(c.get('nome','')).strip()
-                    if not name:continue
-                    link=f"[[{self._concept_target(name)}|{_escape_md(name)}]]"
-                    if link not in concept_links:concept_links.append(link)
+        # The same lesson-level canonical concepts as the recording note.
+        # A single target can have multiple prior labels; never link each
+        # former alias to its own non-existent Markdown page.
+        seen_concept_targets=set()
+        for concept in merged_concepts:
+            name=str(concept.get('nome','')).strip()
+            if not name:
+                continue
+            target=self._concept_target(name, lesson=lesson)
+            if target not in seen_concept_targets:
+                seen_concept_targets.add(target)
+                concept_links.append(f"[[{target}|{_escape_md(name)}]]")
         rows.extend([f'- {link} — confira o contexto na fonte' for link in person_links]
                     if person_links else ['*Ainda sem pessoas associadas com evidência.*'])
         variant_warnings=[]
@@ -1763,7 +1774,9 @@ class Publisher:
         refresh_uncertainties(self.db, self.lesson_repo_index)
         self._prepare_lesson_concept_names()
         self._prepare_concept_targets()
-        self._atlas = make_atlas(self.db, concept_targets=self._concept_targets)
+        self._atlas = make_atlas(
+            self.db, concept_targets=self._concept_targets,
+            canonical_name_for_lesson=self._canonical_concept_name)
         concept_map = defaultdict(list)
         module_map = defaultdict(list)
         lesson_links = []
@@ -2117,9 +2130,10 @@ class Publisher:
                     encoding="utf-8-sig", errors="replace")
                 valid_times = {t for t, _ in timed_lines(raw) if t != "sem horário"}
                 for concept in analysis.get("conceitos", []):
-                    name = str(concept.get("nome", "")).strip()
-                    if not name:
+                    raw_name = str(concept.get("nome", "")).strip()
+                    if not raw_name:
                         continue
+                    name = self._canonical_concept_name(raw_name, lesson)
                     explanation = str(concept.get("explicacao", "")).strip()
                     stamp = str(concept.get("tempo", "")).strip()
                     key = (src["id"], concept_slug(name), stamp, explanation.casefold())
@@ -2130,8 +2144,8 @@ class Publisher:
                     where = (f"[[{note_path}#^{_time_id(stamp)}|{src['lesson']} · {stamp}]]"
                              if stamp in valid_times else
                              f"[[{note_path}|{src['lesson'] or src['label']}]]")
-                    literal = "termo literal presente" if _term_in_source(name, raw) else "termo inferido pela IA"
-                    body.append(f"- **[[{self._concept_target(name)}|{_escape_md(name)}]]**: "
+                    literal = "termo literal presente" if _term_in_source(raw_name, raw) else "termo inferido pela IA"
+                    body.append(f"- **[[{self._concept_target(name, lesson=lesson)}|{_escape_md(name)}]]**: "
                                 f"{_escape_md(explanation)} — {where} ({literal}).")
             if not seen:
                 body.append("*Nenhum conceito extraído ainda; o resumo por gravação permanece disponível.*")
