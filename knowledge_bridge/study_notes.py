@@ -725,6 +725,84 @@ class StudyNotes:
         except ValueError:
             return "sem_analise"
 
+    # ------------------------------------------------------------ lacunas
+    _GAP_GENERIC = set("""conteudo atividade atividades aula aulas gravacao gravacoes video videos
+    parte processo apresentacao apresentar mostrar explicar fazer feito feita item itens agenda
+    pendente incompleto incompleta situacao classroom professor turma""".split())
+
+    def _gap_words(self, text: str) -> list[str]:
+        words = []
+        for word in re.findall(r"[a-z0-9#+]{3,}", _norm(text)):
+            if word in _STOP or word in self._GAP_GENERIC or word in words:
+                continue
+            words.append(word)
+        return words[:8]
+
+    def _recording_text(self, lesson: str) -> str:
+        """Only what the recordings show (analyses + study points), never the agenda."""
+        def build():
+            parts = []
+            for src in self._lesson_sources(lesson):
+                analysis = self.store.analysis(src["id"], src["digest"]) or {}
+                parts.append(str(analysis.get("resumo", "")))
+                parts.extend(f"{c.get('nome', '')} {c.get('explicacao', '')}"
+                             for c in analysis.get("conceitos", []) if isinstance(c, dict))
+                parts.extend(str(e) for e in analysis.get("exemplos", []) if isinstance(e, str))
+            summary = self.lesson_summary(lesson)
+            if summary:
+                p = summary["payload"]
+                parts.append(p.get("em_uma_frase", ""))
+                parts.extend(pt["texto"] for t in p.get("mapa_mental", []) for pt in t.get("pontos", []))
+                parts.extend(f"{k['ponto']} {k.get('explicacao', '')}" for k in p.get("o_que_saber", []))
+            return " " + _norm(" ".join(parts)) + " "
+        return self._cached(("recording_text", lesson), build)
+
+    @staticmethod
+    def _matches(word: str, token: str) -> bool:
+        # Prefix match tolerates plurals/inflections (conta/contas, criação/criações).
+        stem = word[:5] if len(word) >= 6 else word
+        return token.startswith(stem) if len(word) >= 4 else token == word
+
+    def _near_hits(self, words: list[str], text: str, need: int, window: int = 30) -> list[str]:
+        """Words of the gap that appear CLOSE TOGETHER in the later lesson
+        (same passage), so "Git" in one place and "instalação" in another
+        does not count as the subject being retaken."""
+        tokens = re.findall(r"[a-z0-9#+]+", text)
+        positions = {w: [i for i, t in enumerate(tokens) if self._matches(w, t)] for w in words}
+        best: list[str] = []
+        for anchor_word, anchor_positions in positions.items():
+            for pos in anchor_positions[:200]:
+                hits = [w for w, ps in positions.items()
+                        if any(abs(p - pos) <= window for p in ps)]
+                if len(hits) > len(best):
+                    best = hits
+                    if len(best) >= need:
+                        return best
+        return best
+
+    def gap_followups(self, lesson: str) -> list[dict]:
+        """Each lacuna of the lesson, marked as retomada if a LATER lesson's
+        recordings mention its subject. A clue, not proof; no AI involved."""
+        summary = self.lesson_summary(lesson)
+        if not summary:
+            return []
+        lessons = self.lessons()
+        later = lessons[lessons.index(lesson) + 1:] if lesson in lessons else []
+        out = []
+        for gap in summary["payload"].get("lacunas", []):
+            words = self._gap_words(gap.get("item", ""))
+            found = None
+            if words and (len(words) > 1 or len(words[0]) >= 5):
+                need = len(words) if len(words) <= 2 else max(2, -(-len(words) * 6 // 10))
+                for candidate in later:
+                    hits = self._near_hits(words, self._recording_text(candidate), need)
+                    if len(hits) >= need:
+                        found = {"aula": candidate, "titulo": self.lesson_title(candidate),
+                                 "termos": hits[:6]}
+                        break
+            out.append({**gap, "retomada": found})
+        return out
+
     def open_doubts(self, lesson: str) -> list[dict]:
         out = []
         for src in self._lesson_sources(lesson):
@@ -861,7 +939,7 @@ class StudyNotes:
 
     def living_module(self, module_id: str) -> dict:
         """Página viva: agregação local, sem IA."""
-        entries, concepts, commands, doubts = [], {}, [], []
+        entries, concepts, commands, doubts, gaps = [], {}, [], [], []
         for lesson in self.module_lessons(module_id):
             summary = self.lesson_summary(lesson)
             p = summary["payload"] if summary else {}
@@ -881,9 +959,13 @@ class StudyNotes:
             for c in p.get("comandos", [])[:4]:
                 commands.append({"codigo": c["codigo"], "aula": lesson})
             doubts.extend({**d, "aula": lesson} for d in self.open_doubts(lesson)[:4])
+            gaps.extend({"aula": lesson, "item": g["item"], "situacao": g.get("situacao", ""),
+                         "retomada": g["retomada"]} for g in self.gap_followups(lesson)[:4])
         ordered = sorted(concepts.values(), key=lambda c: (-len(c["aulas"]), _norm(c["nome"])))
         return {"aulas": entries, "conceitos": ordered[:40], "comandos": commands[:30],
-                "duvidas": doubts[:30]}
+                "duvidas": doubts[:30],
+                "lacunas_abertas": [g for g in gaps if not g["retomada"]][:30],
+                "lacunas_retomadas": [g for g in gaps if g["retomada"]][:30]}
 
     # ------------------------------------------------------------ batch
     def pending_lessons(self, include_stale=True) -> list[str]:
@@ -973,6 +1055,7 @@ class StudyNotes:
                 "provider": summary["provider"] if summary else "",
                 "modules": self.lesson_modules(lesson), "module_origin": self.module_origin(lesson),
                 "doubts": self.open_doubts(lesson),
+                "gaps": self.gap_followups(lesson),
                 "videos": [{"code": s["video"] or "", "label": Path(s["label"]).stem} for s in sources],
                 "materials": [{"title": m.get("title", ""), "url": m.get("url", "")}
                               for m in self.store.academy_docs_for_lesson(lesson)][:10],
@@ -1066,8 +1149,17 @@ def render_lesson(study: StudyNotes, lesson: str) -> str | None:
             lines.append(f"- **Prepara para:** {_md(links['prepara'])}")
         lines.append("")
     lines += ["## Lacunas", ""]
-    lines += ([f"- **{_md(g['item'])}** — {_md(g['situacao'])}" for g in s["lacunas"]]
-              or ["*Nenhuma lacuna identificada entre a agenda e as gravações.*"])
+    for g in view["gaps"]:
+        line = f"- **{_md(g['item'])}** — {_md(g['situacao'])}"
+        if g["retomada"]:
+            later = g["retomada"]["aula"]
+            line += (f" — ✓ *retomada em [[{lesson_note_path(later)[:-3]}|{later}]] "
+                     "(pista pelo conteúdo das gravações, conferir)*")
+        else:
+            line += " — *em aberto*"
+        lines.append(line)
+    if not view["gaps"]:
+        lines.append("*Nenhuma lacuna identificada entre a agenda e as gravações.*")
     lines += ["", "## Para fazer", ""]
     lines += ([f"- [ ] {_md(t)}" for t in s["para_fazer"]] or ["*Nenhuma atividade registrada.*"])
     lines += ["", "## Dúvidas em aberto", ""]
@@ -1135,6 +1227,12 @@ def render_module(study: StudyNotes, module_id: str) -> str:
     if living["conceitos"]:
         lines += ["## Conceitos vistos no módulo", ""]
         lines += [f"- {_md(c['nome'])} — " + ", ".join(c["aulas"]) for c in living["conceitos"]]
+        lines.append("")
+    if living["lacunas_abertas"] or living["lacunas_retomadas"]:
+        lines += ["## Lacunas do módulo", ""]
+        lines += [f"- {g['aula']}: **{_md(g['item'])}** — em aberto" for g in living["lacunas_abertas"]]
+        lines += [f"- {g['aula']}: {_md(g['item'])} — ✓ retomada em {g['retomada']['aula']} (pista)"
+                  for g in living["lacunas_retomadas"]]
         lines.append("")
     if living["duvidas"]:
         lines += ["## Dúvidas em aberto no módulo", ""]

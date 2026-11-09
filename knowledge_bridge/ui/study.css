@@ -62,3 +62,6 @@
 .study-dialog-list{max-height:320px;overflow:auto;border:1px solid #dbe3dd;border-radius:6px;padding:6px 10px;margin:8px 0}
 @media(max-width:1180px){.study-workspace{grid-template-columns:255px minmax(320px,1fr) 250px}}
 @media(max-width:920px){.study-workspace{grid-template-columns:225px minmax(330px,1fr)}}
+.study-gap-open{font-size:10px;font-weight:700;color:#8a5b00;background:#fdf1d8;border-radius:8px;padding:1px 7px;margin-left:4px}
+.study-gap-done{font-size:10.5px;font-weight:600;color:#22704b;background:#e1f2e7;border-radius:8px;padding:1px 7px;margin-left:4px}
+.study-gap-done .study-link-btn{font-size:10.5px;padding:0}

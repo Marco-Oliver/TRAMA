@@ -265,6 +265,43 @@ class StudyNotesTests(unittest.TestCase):
         self.assertEqual(router.attempts, 1)
         self.assertEqual(study.module_status("logica-de-programacao")["new_since_summary"], 1)
 
+
+    # -------------------------------------------------------------- lacunas retomadas
+    def test_gap_is_marked_retaken_only_by_a_later_lesson_passage(self):
+        self.lesson2()
+        study = self.study()
+        study.run(FakeStudyRouter(lesson_payload(lacunas=[
+            {"item": "Criação de Conta no Github", "situacao": "problema de captcha"},
+            {"item": "Instalação do Git", "situacao": "não aparece"},
+            {"item": "Entrada de dados", "situacao": "não aparece"}])), ["Aula-002"], modules=False)
+        # Aula anterior não conta; aula posterior sim, mas só no mesmo trecho.
+        self.add("A01 - V01 - Antes.txt", "x", {"resumo": "Criamos a conta no GitHub juntos."})
+        self.add("A03 - V01 - Depois.txt", "x", {
+            "resumo": ("Hoje criamos a conta no GitHub e publicamos o repositório. "
+                       + "palavra " * 60 + "Também falamos de instalação de extensões. "
+                       + "palavra " * 60 + "O comando git commit registra alterações.")})
+        gaps = {g["item"]: g["retomada"] for g in self.study().gap_followups("Aula-002")}
+        self.assertEqual(gaps["Criação de Conta no Github"]["aula"], "Aula-003")
+        self.assertIsNone(gaps["Instalação do Git"])          # termos longe um do outro
+        self.assertIsNone(gaps["Entrada de dados"])
+        study = self.study()
+        living = study.living_module("logica-de-programacao")
+        self.assertEqual({g["item"] for g in living["lacunas_abertas"]},
+                         {"Instalação do Git", "Entrada de dados"})
+        self.app.publisher.rebuild()
+        note = (self.vault / lesson_note_path("Aula-002")).read_text(encoding="utf-8")
+        self.assertIn("retomada em [[04-Resumos/Aulas/Aula-003|Aula-003]]", note)
+        self.assertIn("Instalação do Git** — não aparece — *em aberto*", note)
+
+    def test_gap_followup_needs_no_ai_and_does_not_mark_summary_outdated(self):
+        self.lesson2()
+        study = self.study()
+        study.run(FakeStudyRouter(), ["Aula-002"], modules=False)
+        self.add("A03 - V01 - Depois.txt", "x", {"resumo": "Criação da conta no GitHub com captcha."})
+        study = self.study()
+        self.assertEqual(study.lesson_status("Aula-002"), "atualizado")
+        self.assertEqual(study.gap_followups("Aula-002")[0]["retomada"]["aula"], "Aula-003")
+
     # -------------------------------------------------------------- publication
     def test_publish_writes_04_resumos_and_protects_manual_edits(self):
         self.lesson2()
