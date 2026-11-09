@@ -42,7 +42,9 @@ class ReadableLibraryV18Tests(unittest.TestCase):
         self.assertIn('https://drive.google.com/file/d/333',text)
         self.assertEqual(len(self.app.store.sources('transcript')),3)
         self.assertEqual(len(list(self.vault.rglob('*.mp4'))),0)
-        self.assertTrue((self.vault/'01-Meu-Conhecimento/Pessoas/tiago-santini.md').exists())
+        # One-off name without a confirmed Classroom author stays in its
+        # lesson note; no orphan person profile is generated.
+        self.assertFalse((self.vault/'01-Meu-Conhecimento/Pessoas/tiago-santini.md').exists())
         self.assertIn('[[',text)
 
     def test_context_only_and_no_fake_technical_concepts(self):

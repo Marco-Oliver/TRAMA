@@ -25,8 +25,11 @@ DATE_HEADER = re.compile(
 SECTION = re.compile(r"^\s*(Conte[uú]do|Atividades)\s*:\s*(.*)$", re.I)
 OMIT = re.compile(r"^\s*(?:V[ií]deo|Coment[aá]rios da turma)\s*:?\s*$", re.I)
 EDITED = re.compile(r"\s*\(\s*editado\s*:\s*[^)]{0,100}\)", re.I)
+# Lowercase family-name particles may occur between capitalized names.
+# Require at least two capitalized words; do not treat ordinary post text as an author.
 AUTHOR = re.compile(
-    r"^[A-ZÀ-Ý][A-Za-zÀ-ÿ'.-]{1,40}(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ'.-]{1,40}){1,4}$"
+    r"^[A-ZÀ-Ý][A-Za-zÀ-ÿ'.-]{1,40}"
+    r"(?:\s+(?:(?:de|da|do|dos|das|e)\s+)?[A-ZÀ-Ý][A-Za-zÀ-ÿ'.-]{1,40}){1,5}$"
 )
 URL = re.compile(r"(?:https?://)[^\s<>'\"\\]+", re.I)
 
