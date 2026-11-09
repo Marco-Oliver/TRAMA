@@ -72,7 +72,7 @@ function getNotes(){const notes=app.snapshot?.notes||[];let matches=notes;
 }
 function renderNavigation(){document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.view===app.view));}
 async function setView(view){app.view=view;app.filter='';app.listFilter='all';app.tab=view==='lessons'?'Nota completa':'Resumo';$('search-all').value='';$('list-search').value='';renderNavigation();await render();}
-async function render(){if(app.view!=='graph'&&app.graphView){app.graphView.destroy();app.graphView=null;}if(!app.snapshot)return;if(app.view==='library'){await renderLibraryView();return;}if(['graph','home','settings','teacher'].includes(app.view)){renderOverlay();return;}
+async function render(){if(app.view!=='graph'&&app.graphView){app.graphView.destroy();app.graphView=null;}if(!app.snapshot)return;if(app.view==='study'){await renderStudyView();return;}$('study-workspace').classList.add('hidden');if(app.view==='library'){await renderLibraryView();return;}if(['graph','home','settings','teacher'].includes(app.view)){renderOverlay();return;}
  $('library-workspace').classList.add('hidden');$('overlay-screen').classList.add('hidden');$('list-panel').classList.remove('hidden');$('note-panel').classList.remove('hidden');$('details-panel').classList.remove('hidden');
  $('list-title').textContent=titles[app.view]||'Minha Biblioteca';
  document.querySelectorAll('[data-list-filter]').forEach(btn=>btn.classList.toggle('active',btn.dataset.listFilter===app.listFilter));
@@ -279,8 +279,16 @@ function renderRight(){const area=$('details-panel'),n=app.note;if(!n){area.inne
   if((action==='knowledge-people'||action==='knowledge-other'||action==='lesson-recordings'||action==='02-Minhas-Aulas')&&!list.length)continue;
   html+=detail(title,icon,list.length?list.map((v,i)=>detailRow('↗',v.title,action,i)).join(''):empty('Sem vínculos confirmados ainda.'));
  }
- html+=detail('Ações da Nota','⚙','<button class="detail-action" id="open-note">↗ &nbsp; Abrir nota no Obsidian</button><button class="detail-action" id="copy-note">▤ &nbsp; Copiar link interno</button>');
+ const isFav=libraryState.favorites.has(n.id);
+ html+=detail('Ações da Nota','⚙','<button class="detail-action" id="open-note">↗ &nbsp; Abrir nota no Obsidian</button><button class="detail-action" id="copy-note">▤ &nbsp; Copiar link interno</button><button class="detail-action" id="fav-note">'+(isFav?'★ &nbsp; Remover dos favoritos':'☆ &nbsp; Adicionar aos favoritos')+'</button>');
  area.innerHTML=html;
+ area.querySelector('#fav-note').addEventListener('click',async()=>{
+   const r=await call('toggle_favorite',n.id);
+   if(!r?.ok){notify(r?.message||'Não foi possível salvar o favorito.');return;}
+   libraryState.favorites=new Set(r.favorites||[]);if(app.snapshot)app.snapshot.favorites=r.favorites||[];
+   notify(libraryState.favorites.has(n.id)?'Adicionado aos favoritos.':'Removido dos favoritos.');
+   if(app.listFilter==='favorites')await render();else renderRight();
+ });
  area.querySelector('#open-note').addEventListener('click',()=>call('open_note',n.id));
  area.querySelector('#copy-note').addEventListener('click',async()=>{
    const response=await call('copy_note_link',n.id);
@@ -544,6 +552,8 @@ async function runAutoImport(){
 }
 async function importFiles(){openAutoImport();}
 async function generate(){
+ // Na aba Resumos, o botão gera os resumos de estudo pendentes.
+ if(app.view==='study'&&typeof studyGenerate==='function'){await studyGenerate(null);return;}
  if(!app.aiConsent && !await askTramaConfirm('Gerar resumos','Apenas os materiais necessários serão enviados à API configurada. As análises já concluídas serão reaproveitadas.','Gerar resumos'))return;
  notify('Processando notas com a IA gratuita configurada…',10000);
  const r=await call('process',true);

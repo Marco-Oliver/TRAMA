@@ -1,5 +1,22 @@
 # Histórico de versões do TRAMA
 
+## [Não publicado] — branch feat/notas-resumos
+
+### Novo — aba Resumos (camada de estudo)
+- Nova aba **Resumos** no menu, no visual da Biblioteca, com árvore **Aulas / Módulos**.
+- **Resumo de cada aula** juntando todas as gravações em 9 partes: em uma frase, mapa mental, o que você precisa saber, comandos e código, ligação com outras aulas, lacunas (agenda × gravações), para fazer, dúvidas em aberto e revisão rápida.
+- Fidelidade conferida localmente antes de publicar: cada ponto cita o vídeo de origem (V01, V02…) que existe de verdade; comandos só entram se aparecerem literalmente no TXT ou num bloco de código do material oficial; dúvidas em aberto vêm do catálogo local, não da IA. A IA recebe apenas os resumos já validados de cada gravação, nunca o TXT inteiro.
+- Botão **Gerar resumos** para aulas já processadas (com pausa entre chamadas para respeitar 15 req/min) e geração automática ao processar aulas novas no app (+1 chamada por aula).
+- **Módulos com CRUD**: os 9 módulos do curso vêm cadastrados; criar, editar, reordenar e excluir (aulas e resumos nunca são apagados). Cada aula se encaixa sozinha (IA ou palavras-chave) e a escolha manual sempre vence.
+- **Página viva do módulo**, atualizada a cada aula sem IA, e **resumo do módulo pela IA** gerado após 3 aulas e atualizado a cada 5 aulas novas (ou pelo botão).
+- Pasta **04-Resumos/** no Obsidian (índice, aulas e módulos), com a mesma proteção de edições manuais (.PROPOSTA).
+
+### Corrigido — auditoria do front
+- Links de materiais registrados na aula (Whimsical, docs da Academia, arquivo no SHA congelado) agora abrem pelo TRAMA; antes só links de vídeo eram aceitos. URLs não registradas continuam bloqueadas.
+- Botão de **favoritar** também nas abas Aulas e Conhecimento (o filtro "Favoritas" dependia de favoritar pela Biblioteca).
+- "Notas relacionadas → Por tags" deixa de aparecer vazio quando a nota não tem tags.
+- "Gerar Resumos" da barra superior, dentro da aba Resumos, gera os resumos de estudo pendentes.
+
 ## [2.2.5] — 2026-11-09
 
 ### Corrigido — consistência de conceitos e nomes nas aulas

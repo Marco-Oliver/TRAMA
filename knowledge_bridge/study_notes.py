@@ -192,6 +192,16 @@ def _now() -> str:
     return datetime.now().strftime("%d/%m/%Y %H:%M")
 
 
+def local_time(value: str) -> str:
+    """SQLite CURRENT_TIMESTAMP is UTC; show the user's local time in pt-BR."""
+    from datetime import timezone
+    try:
+        stamp = datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return str(value or "")
+    return stamp.astimezone().strftime("%d/%m/%Y %H:%M")
+
+
 def _text(value, limit: int) -> str:
     if not isinstance(value, str):
         return ""
@@ -941,7 +951,7 @@ class StudyNotes:
         sources = sorted(self._lesson_sources(lesson), key=lambda s: (s["video"] or "zz", s["label"]))
         return {"lesson": lesson, "title": self.lesson_title(lesson), "date": self.lesson_date(lesson),
                 "status": self.lesson_status(lesson), "summary": summary["payload"] if summary else None,
-                "generated": summary["updated_at"] if summary else "",
+                "generated": local_time(summary["updated_at"]) if summary else "",
                 "provider": summary["provider"] if summary else "",
                 "modules": self.lesson_modules(lesson), "module_origin": self.module_origin(lesson),
                 "doubts": self.open_doubts(lesson),
@@ -962,7 +972,7 @@ class StudyNotes:
         summary = self.module_summary(module_id)
         return {"module": module, "living": self.living_module(module_id),
                 "summary": summary["payload"] if summary else None,
-                "generated": summary["updated_at"] if summary else "",
+                "generated": local_time(summary["updated_at"]) if summary else "",
                 "status": self.module_status(module_id),
                 "note": module_note_path(module_id)}
 

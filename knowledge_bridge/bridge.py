@@ -1690,6 +1690,25 @@ class Bridge:
         except ValueError:
             return False
 
+    @staticmethod
+    def _registered_official_material(con, url):
+        """Official Academy page or its file at the lesson's pinned SHA."""
+        from urllib.parse import unquote
+        try:
+            if con.execute("SELECT 1 FROM academy_docs_links WHERE url=? LIMIT 1",(url,)).fetchone():
+                return True
+            prefix='https://github.com/academiadoprogramador-fullstack/docs/blob/'
+            if not url.startswith(prefix):
+                return False
+            rest=url[len(prefix):].split('#',1)[0]
+            sha,_,path=rest.partition('/')
+            if not re.fullmatch(r'[a-f0-9]{40}',sha) or not path:
+                return False
+            return con.execute("SELECT 1 FROM academy_docs_links WHERE commit_sha=? AND path=? LIMIT 1",
+                               (sha,unquote(path))).fetchone() is not None
+        except sqlite3.Error:
+            return False
+
     def open_video_link(self,url):
         """Apenas URLs cadastradas pelo usuário; não aceita protocolos arbitrários."""
         vault=self._vault()
@@ -1704,11 +1723,17 @@ class Bridge:
                 for (stored,) in con.execute("SELECT stored_path FROM sources WHERE kind='classroom'"):
                     record=self._safe_classroom_record(vault,stored)
                     rows=record.get('videos',[]) if record else []
-                    if isinstance(rows,list) and any(
+                    links=record.get('links',[]) if record else []
+                    # Recordings AND materials the user registered in the
+                    # lesson context (Whimsical, docs, Drive...). Nothing else.
+                    if ((isinstance(rows,list) and any(
                             isinstance(row,dict) and row.get('url') == url
-                            for row in rows[:30]):
+                            for row in rows[:30])) or
+                            (isinstance(links,list) and url in links[:30])):
                         allowed=True
                         break
+                if not allowed:
+                    allowed=self._registered_official_material(con,url)
         except (OSError,sqlite3.Error):
             return {'ok':False,'message':'Não foi possível verificar o link do vídeo.'}
         if not allowed:
@@ -1957,7 +1982,8 @@ class Bridge:
             from .study_notes import StudyNotes
             app=self._make_application(vault,log=lambda text:logs.append(redact_sensitive(str(text))[:300]))
             # Batch of small study requests: spaced to stay under 15 req/min.
-            app.ai.max_requests=min(100,max(app.ai.max_requests,30))
+            if isinstance(getattr(app.ai,'max_requests',None),int):
+                app.ai.max_requests=min(100,max(app.ai.max_requests,30))
             study=StudyNotes(app.store,log=app.log)
             result=action(app,study)
             self._publish_study(app.store,study)
@@ -1970,6 +1996,8 @@ class Bridge:
                          f"{len(result['failed'])} aula(s) falharam e podem ser tentadas de novo.")
             elif not result['lessons'] and not result['modules']:
                 message='Todos os resumos já estão em dia.'
+            elif not result['lessons']:
+                message='Resumo do módulo atualizado.'
             else:
                 message=(f"{len(result['lessons'])} resumo(s) de aula e "
                          f"{len(result['modules'])} de módulo gerado(s).")
@@ -2228,7 +2256,7 @@ def load_local_ui():
     html=(base/'index.html').read_text(encoding='utf-8')
     substitutions=(('style.css','style.css'),('library.css','library.css'),
                    ('classic.css','classic.css'),('faithful.css','faithful.css'),
-                   ('graph.css','graph.css'))
+                   ('graph.css','graph.css'),('study.css','study.css'))
     # The packaged window requires inline local assets. Keep a strict CSP
     # with exact SHA-256 hashes of the bundled CSS and JS, instead of removing
     # the policy and allowing any injected script to execute.
@@ -2241,7 +2269,7 @@ def load_local_ui():
         css=(base/filename).read_text(encoding='utf-8')
         styles.append(content_hash(css))
         html=html.replace(f'<link rel="stylesheet" href="{href}">','<style>'+css+'</style>')
-    for script in ('library.js','graph.js','app.js','lesson_code.js','teacher.js'):
+    for script in ('library.js','graph.js','app.js','lesson_code.js','teacher.js','study.js'):
         js=(base/script).read_text(encoding='utf-8')
         scripts.append(content_hash(js))
         html=html.replace(f'<script src="{script}"></script>','<script>'+js+'</script>')

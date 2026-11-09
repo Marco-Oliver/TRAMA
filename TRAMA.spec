@@ -15,7 +15,7 @@ analysis = Analysis(
         (str(root / 'release_channel.json'), '.'),
         (str(code / 'ui'), 'knowledge_bridge/ui'),
     ],
-    hiddenimports=['clr', 'webview.platforms.edgechromium', 'knowledge_bridge.auto_ingest'],
+    hiddenimports=['clr', 'webview.platforms.edgechromium', 'knowledge_bridge.auto_ingest', 'knowledge_bridge.study_notes'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

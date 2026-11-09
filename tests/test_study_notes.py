@@ -340,5 +340,48 @@ class StudyBridgeTests(unittest.TestCase):
                 self.assertFalse(bridge.study_save_module({"name": ""})["ok"])
 
 
+class AuditFixesTests(unittest.TestCase):
+    """Links de materiais registrados na aula abrem; o resto continua bloqueado."""
+
+    def test_registered_material_and_official_doc_links_open_others_do_not(self):
+        from knowledge_bridge.auto_ingest import AutoOrganizer
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vault = root / "vault"
+            app = Application(vault, config=root / "none.env", log=lambda _t: None)
+            post = {"aula": "Aula-002", "titulo": "T", "data": "", "descricao": "", "pessoas": "",
+                    "atividades": "", "videos": "", "links": "https://whimsical.com/aula-02"}
+            AutoOrganizer(app, log=lambda _t: None)._save_extracted(
+                {"id": "p", "stored_path": "(post)"}, "Aula-002", post, reason="teste")
+            sha = "9af5282b722d71a5f97d60a7cdbe9a8da826d838"
+            app.store.freeze_academy_docs("Aula-002", sha)
+            docs = "https://academiadoprogramador-fullstack.github.io/docs/tutoriais/dotnet-sdk/"
+            app.store.register_academy_doc("Aula-002", docs, sha, "docs/01 - Tutoriais/01 - Dotnet SDK.md",
+                                           "SDK", [], [], [])
+            app.close()
+            bridge = Bridge.__new__(Bridge)
+            bridge.settings = {}
+            opened = []
+            blob = ("https://github.com/academiadoprogramador-fullstack/docs/blob/" + sha +
+                    "/docs/01%20-%20Tutoriais/01%20-%20Dotnet%20SDK.md#L22")
+            with patch.object(Bridge, "_vault", return_value=vault.resolve()), \
+                    patch("knowledge_bridge.bridge.webbrowser.open", side_effect=lambda u: opened.append(u) or True):
+                for url in ("https://whimsical.com/aula-02", docs, blob):
+                    self.assertTrue(bridge.open_video_link(url)["ok"], url)
+                for url in ("https://evil.example/x", "https://github.com/academiadoprogramador-fullstack/docs/blob/"
+                            + "0" * 40 + "/docs/x.md", "javascript:alert(1)"):
+                    self.assertFalse(bridge.open_video_link(url)["ok"], url)
+            self.assertEqual(len(opened), 3)
+
+    def test_packaged_ui_contains_study_view_and_assets(self):
+        from knowledge_bridge.bridge import load_local_ui
+        html = load_local_ui()
+        self.assertIn('data-view="study"', html)
+        self.assertIn("renderStudyView", html)
+        self.assertIn(".study-workspace", html)
+        self.assertIn('id="study-module-dialog"', html)
+        self.assertNotIn('<script src=', html)
+
+
 if __name__ == "__main__":
     unittest.main()
