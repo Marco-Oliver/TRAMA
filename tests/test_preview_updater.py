@@ -70,7 +70,7 @@ class GitHubPreviewStub:
 
 class PreviewUpdateTests(unittest.TestCase):
     def test_preview_build_version_is_not_confused_with_stable_semver(self):
-        self.assertEqual(VERSION,"2.2.5")
+        self.assertEqual(VERSION,"2.2.6")
         self.assertEqual(preview_build_number("2.2.0-preview.41"),41)
         self.assertEqual(preview_build_number(TAG),42)
         for invalid in ("v2.2.0","v2.1.0","v2.2.0-preview",

@@ -1,6 +1,6 @@
 # Histórico de versões do TRAMA
 
-## [Não publicado] — branch feat/notas-resumos
+## [2.2.6] — 2026-11-09
 
 ### Novo — aba Resumos (camada de estudo)
 - Nova aba **Resumos** no menu, no visual da Biblioteca, com árvore **Aulas / Módulos**.
